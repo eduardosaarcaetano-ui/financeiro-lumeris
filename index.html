@@ -45,6 +45,7 @@
           <button class="nav-item" data-view="vendas" type="button">Vendas</button>
           <button class="nav-item" data-view="projetos" type="button">Projetos</button>
           <button class="nav-item" data-view="banco" type="button">Banco</button>
+          <button class="nav-item" data-view="notasfiscais" type="button">Notas Fiscais</button>
           <button class="nav-item" data-view="pessoas" type="button">Cadastros</button>
           <button class="nav-item" data-view="relatorios" type="button">Relatórios</button>
           <button class="nav-item hidden" data-view="usuarios" id="navUsuarios" type="button">Usuários</button>
@@ -109,6 +110,43 @@
               <small class="muted">Saldo mais atual conforme OFX importado</small>
             </div>
             <div class="bank-balance-list" id="bankBalanceList"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Notas fiscais</h2>
+              <small class="muted">Indicadores do mês corrente</small>
+            </div>
+            <div class="kpi-grid invoice-kpis">
+              <article class="kpi">
+                <span>Faturado no mês (NF)</span>
+                <strong id="kpiInvoiceMonthTotal">R$ 0,00</strong>
+              </article>
+              <article class="kpi">
+                <span>Faturado em serviço</span>
+                <strong id="kpiInvoiceServiceTotal">R$ 0,00</strong>
+              </article>
+              <article class="kpi">
+                <span>Faturado em material/produto</span>
+                <strong id="kpiInvoiceMaterialTotal">R$ 0,00</strong>
+              </article>
+              <article class="kpi">
+                <span>Despesas com NF (mês)</span>
+                <strong id="kpiInvoiceExpenseTotal">R$ 0,00</strong>
+              </article>
+              <article class="kpi">
+                <span>Despesas sem NF (mês)</span>
+                <strong id="kpiExpenseNoInvoice">R$ 0,00</strong>
+              </article>
+              <article class="kpi">
+                <span>NF emitidas ainda não recebidas</span>
+                <strong id="kpiInvoiceIssuedPending">R$ 0,00</strong>
+              </article>
+              <article class="kpi">
+                <span>NF recebidas ainda não pagas</span>
+                <strong id="kpiInvoiceReceivedPending">R$ 0,00</strong>
+              </article>
+            </div>
           </section>
 
           <div class="dashboard-grid">
@@ -407,6 +445,76 @@
           </div>
         </section>
 
+        <section class="view" id="notasfiscais">
+          <div class="toolbar invoice-kind-tabs" id="invoiceKindTabs">
+            <button type="button" class="chip-tab active" data-invoice-kind="servico">NF de Serviço emitida</button>
+            <button type="button" class="chip-tab" data-invoice-kind="material">NF de Material/Produto emitida</button>
+            <button type="button" class="chip-tab" data-invoice-kind="despesa">NF de despesa recebida</button>
+          </div>
+
+          <div class="split invoice-layout">
+            <form class="panel form-panel" id="invoiceForm">
+              <h2 id="invoiceFormTitle">Nova NF de serviço</h2>
+              <input type="hidden" id="invoiceId" />
+              <input type="hidden" id="invoiceKind" value="servico" />
+              <label>Número da NF
+                <input id="invoiceNumber" required maxlength="40" />
+              </label>
+              <label>Série
+                <input id="invoiceSeries" maxlength="20" />
+              </label>
+              <label id="invoicePersonWrap"><span id="invoicePersonLabel">Cliente</span>
+                <select id="invoicePerson" required></select>
+              </label>
+              <label>CNPJ/CPF
+                <input id="invoiceDocument" maxlength="30" />
+              </label>
+              <label>Data de emissão
+                <input id="invoiceIssueDate" type="date" required />
+              </label>
+              <label id="invoiceCompetenceWrap">Data de competência
+                <input id="invoiceCompetenceDate" type="date" />
+              </label>
+              <label id="invoiceDueDateWrap" class="hidden">Data de vencimento
+                <input id="invoiceDueDate" type="date" />
+              </label>
+              <label>Projeto / centro de custo
+                <select id="invoiceProject"></select>
+              </label>
+              <label>Categoria
+                <input id="invoiceCategory" maxlength="60" list="categorySuggestions" />
+              </label>
+              <label>Valor bruto
+                <input id="invoiceGrossAmount" type="number" min="0" step="0.01" required />
+              </label>
+              <label>Impostos
+                <input id="invoiceTaxAmount" type="number" min="0" step="0.01" value="0" />
+              </label>
+              <label>Valor contábil
+                <input id="invoiceAccountingValue" type="number" min="0" step="0.01" />
+              </label>
+              <label>Status
+                <select id="invoiceStatus"></select>
+              </label>
+              <label class="full">Descrição
+                <input id="invoiceDescription" maxlength="200" />
+              </label>
+              <label class="full">Observações
+                <textarea id="invoiceNotes" rows="2" maxlength="300"></textarea>
+              </label>
+              <button class="primary-btn" type="submit">Salvar NF</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Notas fiscais</h2>
+                <input id="invoiceSearch" type="search" placeholder="Buscar número, nome, descrição" />
+              </div>
+              <div class="people-list" id="invoiceList"></div>
+            </section>
+          </div>
+        </section>
+
         <section class="view" id="pessoas">
           <div class="split">
             <form class="panel form-panel" id="personForm">
@@ -554,6 +662,76 @@
                 <h2>Inadimplência e vencidos</h2>
               </div>
               <div id="overdueReport" class="report-list"></div>
+            </section>
+          </div>
+
+          <div class="report-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Faturamento por NF</h2>
+              </div>
+              <div id="invoiceBillingReport" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>NF de despesa recebidas</h2>
+              </div>
+              <div id="invoiceExpenseReport" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Despesas sem NF vinculada</h2>
+              </div>
+              <div id="expenseNoInvoiceReport" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Contas pagas sem NF</h2>
+              </div>
+              <div id="paidNoInvoiceReport" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Contas a receber sem NF emitida</h2>
+              </div>
+              <div id="receivableNoInvoiceReport" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Faturamento por projeto</h2>
+              </div>
+              <div id="invoiceByProjectReport" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Faturamento por cliente</h2>
+              </div>
+              <div id="invoiceByClientReport" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Despesas com NF por fornecedor</h2>
+              </div>
+              <div id="invoiceBySupplierReport" class="report-list"></div>
+            </section>
+            <section class="panel full-panel">
+              <div class="panel-head">
+                <h2>Diferença entre valor financeiro e valor contábil</h2>
+              </div>
+              <div class="table-wrap compact-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>NF</th>
+                      <th>Vínculo</th>
+                      <th class="money">Valor contábil</th>
+                      <th class="money">Valor financeiro</th>
+                      <th class="money">Diferença</th>
+                    </tr>
+                  </thead>
+                  <tbody id="invoiceDivergenceReport"></tbody>
+                </table>
+              </div>
             </section>
           </div>
         </section>
@@ -727,6 +905,9 @@
           <label class="full">Conciliar com conta
             <select id="bankMatchTransaction"></select>
           </label>
+          <label class="full">Conciliar com nota fiscal
+            <select id="bankMatchInvoice"></select>
+          </label>
           <label class="full">Observacoes
             <textarea id="bankNotes" rows="3" maxlength="300"></textarea>
           </label>
@@ -767,6 +948,22 @@
         <menu class="modal-actions">
           <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
           <button class="primary-btn" id="bankSyncSubmit" value="default" type="submit">Buscar extrato</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="invoiceLinkDialog">
+      <form method="dialog" class="modal" id="invoiceLinkForm">
+        <div class="modal-head">
+          <h2 id="invoiceLinkTitle">Vincular NF a lançamentos</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <input type="hidden" id="invoiceLinkId" />
+        <p class="muted" id="invoiceLinkSummary"></p>
+        <div class="people-list" id="invoiceLinkList"></div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Salvar vínculo</button>
         </menu>
       </form>
     </dialog>

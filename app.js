@@ -14,6 +14,30 @@ const MASTER_INITIAL_PASSWORD = "7695988";
 
 const SEARCH_ICON_SVG = '<svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>';
 
+let currentInvoiceKind = "servico";
+
+const INVOICE_STATUS_OPTIONS_EMITIDA = [
+  { value: "emitida", label: "Emitida" },
+  { value: "recebida_parcial", label: "Recebida parcialmente" },
+  { value: "recebida_total", label: "Recebida totalmente" },
+  { value: "cancelada", label: "Cancelada" },
+];
+
+const INVOICE_STATUS_OPTIONS_DESPESA = [
+  { value: "aberto", label: "Em aberto" },
+  { value: "paga", label: "Paga" },
+  { value: "conciliada", label: "Conciliada" },
+  { value: "cancelada", label: "Cancelada" },
+];
+
+// Um único menu "Notas Fiscais" com 3 sub-abas (kind), em vez de 3 telas separadas —
+// evita triplicar formulário/lista/relatórios para dados que têm a mesma forma.
+const INVOICE_KIND_META = {
+  servico: { label: "NF de Serviço emitida", direction: "emitida", personLabel: "Cliente", statusOptions: INVOICE_STATUS_OPTIONS_EMITIDA },
+  material: { label: "NF de Material/Produto emitida", direction: "emitida", personLabel: "Cliente", statusOptions: INVOICE_STATUS_OPTIONS_EMITIDA },
+  despesa: { label: "NF de despesa recebida", direction: "recebida", personLabel: "Fornecedor", statusOptions: INVOICE_STATUS_OPTIONS_DESPESA },
+};
+
 // Camada de integração bancária: cada provedor implementa fetchStatement(account, {start, end})
 // e devolve movimentos no MESMO formato produzido por parseOfx, para reaproveitar dedupe/conciliação.
 // "inter" e "santander" nunca chamam o banco direto do navegador (impossível: exigem mTLS/segredos que
@@ -67,6 +91,38 @@ const els = {
   userRole: document.querySelector("#userRole"),
   userActive: document.querySelector("#userActive"),
   usersList: document.querySelector("#usersList"),
+  invoiceForm: document.querySelector("#invoiceForm"),
+  invoiceFormTitle: document.querySelector("#invoiceFormTitle"),
+  invoiceId: document.querySelector("#invoiceId"),
+  invoiceKind: document.querySelector("#invoiceKind"),
+  invoiceNumber: document.querySelector("#invoiceNumber"),
+  invoiceSeries: document.querySelector("#invoiceSeries"),
+  invoicePersonWrap: document.querySelector("#invoicePersonWrap"),
+  invoicePersonLabel: document.querySelector("#invoicePersonLabel"),
+  invoicePerson: document.querySelector("#invoicePerson"),
+  invoiceDocument: document.querySelector("#invoiceDocument"),
+  invoiceIssueDate: document.querySelector("#invoiceIssueDate"),
+  invoiceCompetenceWrap: document.querySelector("#invoiceCompetenceWrap"),
+  invoiceCompetenceDate: document.querySelector("#invoiceCompetenceDate"),
+  invoiceDueDateWrap: document.querySelector("#invoiceDueDateWrap"),
+  invoiceDueDate: document.querySelector("#invoiceDueDate"),
+  invoiceProject: document.querySelector("#invoiceProject"),
+  invoiceCategory: document.querySelector("#invoiceCategory"),
+  invoiceGrossAmount: document.querySelector("#invoiceGrossAmount"),
+  invoiceTaxAmount: document.querySelector("#invoiceTaxAmount"),
+  invoiceAccountingValue: document.querySelector("#invoiceAccountingValue"),
+  invoiceStatus: document.querySelector("#invoiceStatus"),
+  invoiceDescription: document.querySelector("#invoiceDescription"),
+  invoiceNotes: document.querySelector("#invoiceNotes"),
+  invoiceSearch: document.querySelector("#invoiceSearch"),
+  invoiceList: document.querySelector("#invoiceList"),
+  invoiceLinkDialog: document.querySelector("#invoiceLinkDialog"),
+  invoiceLinkForm: document.querySelector("#invoiceLinkForm"),
+  invoiceLinkId: document.querySelector("#invoiceLinkId"),
+  invoiceLinkTitle: document.querySelector("#invoiceLinkTitle"),
+  invoiceLinkSummary: document.querySelector("#invoiceLinkSummary"),
+  invoiceLinkList: document.querySelector("#invoiceLinkList"),
+  bankMatchInvoice: document.querySelector("#bankMatchInvoice"),
   navItems: document.querySelectorAll(".nav-item"),
   views: document.querySelectorAll(".view"),
   transactionDialog: document.querySelector("#transactionDialog"),
@@ -162,6 +218,7 @@ const viewNames = {
   vendas: "Vendas parceladas",
   projetos: "Projetos e centros de custo",
   banco: "Conciliação bancária",
+  notasfiscais: "Notas Fiscais",
   pessoas: "Clientes e fornecedores",
   relatorios: "Relatórios financeiros",
   usuarios: "Usuários",
@@ -204,6 +261,27 @@ function bindEvents() {
   els.logoutBtn.addEventListener("click", handleLogout);
   els.userForm.addEventListener("submit", saveUser);
   enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente…" });
+
+  document.querySelectorAll("[data-invoice-kind]").forEach((button) => {
+    button.addEventListener("click", () => setInvoiceKind(button.dataset.invoiceKind));
+  });
+  els.invoiceForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    saveInvoice();
+  });
+  els.invoiceSearch.addEventListener("input", renderInvoices);
+  els.invoiceGrossAmount.addEventListener("input", suggestInvoiceAccountingValue);
+  els.invoiceTaxAmount.addEventListener("input", suggestInvoiceAccountingValue);
+  els.invoiceLinkForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.invoiceLinkDialog.close();
+      return;
+    }
+    saveInvoiceLink();
+  });
+  updateInvoiceFormForKind(currentInvoiceKind);
+  els.invoiceIssueDate.value = todayIso;
   els.navItems.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   document.querySelector("#newTransactionBtn").addEventListener("click", () => openTransactionDialog());
   document.querySelector("#newSaleBtn").addEventListener("click", openSaleDialog);
@@ -337,6 +415,7 @@ function loadState() {
     bankMovements: [],
     transactions: [],
     users: [],
+    invoices: [],
   });
 }
 
@@ -350,7 +429,31 @@ function normalizeState(data) {
     bankMovements: Array.isArray(data.bankMovements) ? data.bankMovements : [],
     transactions: Array.isArray(data.transactions) ? data.transactions : [],
     users: Array.isArray(data.users) ? data.users : [],
+    invoices: Array.isArray(data.invoices) ? data.invoices : [],
   };
+
+  normalized.invoices = normalized.invoices.map((item) => ({
+    id: crypto.randomUUID(),
+    kind: "servico",
+    number: "",
+    series: "",
+    issueDate: "",
+    competenceDate: "",
+    dueDate: "",
+    personId: "",
+    document: "",
+    projectId: "",
+    category: "",
+    grossAmount: 0,
+    taxAmount: 0,
+    accountingValue: 0,
+    description: "",
+    status: item.kind === "despesa" ? "aberto" : "emitida",
+    notes: "",
+    createdAt: "",
+    updatedAt: "",
+    ...item,
+  }));
 
   normalized.users = normalized.users.map((item) => ({
     id: crypto.randomUUID(),
@@ -398,6 +501,7 @@ function normalizeState(data) {
     directProjectCost: false,
     projectId: "",
     allocations: [],
+    invoiceId: "",
     ...item,
   }));
   normalized.transactions.forEach((item) => {
@@ -411,6 +515,7 @@ function normalizeState(data) {
     projectId: "",
     notes: "",
     transactionId: "",
+    invoiceId: "",
     ...item,
   }));
   hydrateBankMovementNaturalKeys(normalized.bankMovements);
@@ -900,10 +1005,12 @@ function renderAll() {
   renderProjectReports();
   renderBank();
   renderPeople();
+  renderInvoices();
   renderReports();
   hydratePersonOptions();
   hydrateSalePeople();
   hydrateProjectOptions();
+  hydrateInvoicePersonOptions();
   hydrateStatusOptions();
 }
 
@@ -926,6 +1033,7 @@ function renderDashboard() {
   renderBankBalances();
   renderCashflowBars();
   renderUpcoming();
+  renderInvoiceDashboardKpis();
 }
 
 function renderBankBalances() {
@@ -996,6 +1104,27 @@ function renderUpcoming() {
         <span class="muted">${formatDate(item.dueDate)} · ${personName(item.personId)} · ${item.type === "receber" ? "Receber" : "Pagar"}</span>
       </article>`).join("")
     : emptyMessage("Nenhum vencimento em aberto.");
+}
+
+function renderInvoiceDashboardKpis() {
+  const monthInvoices = state.invoices.filter((item) => isInPeriod(item.issueDate, currentMonthStart, currentMonthEnd) && item.status !== "cancelada");
+  const serviceTotal = sum(monthInvoices.filter((item) => item.kind === "servico").map(accountingValueOf));
+  const materialTotal = sum(monthInvoices.filter((item) => item.kind === "material").map(accountingValueOf));
+  const expenseTotal = sum(monthInvoices.filter((item) => item.kind === "despesa").map(accountingValueOf));
+
+  const monthExpenses = state.transactions.filter((item) => item.type === "pagar" && isInPeriod(item.dueDate, currentMonthStart, currentMonthEnd));
+  const expenseNoInvoice = sum(monthExpenses.filter((item) => !item.invoiceId));
+
+  const issuedPending = sum(state.invoices.filter((item) => (item.kind === "servico" || item.kind === "material") && ["emitida", "recebida_parcial"].includes(item.status)).map(accountingValueOf));
+  const receivedPending = sum(state.invoices.filter((item) => item.kind === "despesa" && item.status === "aberto").map(accountingValueOf));
+
+  document.querySelector("#kpiInvoiceMonthTotal").textContent = money(serviceTotal + materialTotal);
+  document.querySelector("#kpiInvoiceServiceTotal").textContent = money(serviceTotal);
+  document.querySelector("#kpiInvoiceMaterialTotal").textContent = money(materialTotal);
+  document.querySelector("#kpiInvoiceExpenseTotal").textContent = money(expenseTotal);
+  document.querySelector("#kpiExpenseNoInvoice").textContent = money(expenseNoInvoice);
+  document.querySelector("#kpiInvoiceIssuedPending").textContent = money(issuedPending);
+  document.querySelector("#kpiInvoiceReceivedPending").textContent = money(receivedPending);
 }
 
 function renderTransactionTables() {
@@ -1337,6 +1466,7 @@ function hydrateProjectOptions() {
   els.saleProject.innerHTML = optionalProjectOptions;
   els.bankProject.innerHTML = optionalProjectOptions;
   els.projectReportSelect.innerHTML = optionalProjectOptions;
+  els.invoiceProject.innerHTML = optionalProjectOptions;
   els.projectCustomer.innerHTML = `<option value="">Sem cliente vinculado</option>${state.people
     .filter((person) => person.type === "cliente" || person.type === "ambos")
     .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
@@ -1987,7 +2117,7 @@ function bankRow(item) {
 }
 
 function bankStatus(item) {
-  if (item.transactionId) return "conciliado";
+  if (item.transactionId || item.invoiceId) return "conciliado";
   if (item.category) return "classificado";
   return "pendente";
 }
@@ -2036,7 +2166,30 @@ function openBankDialog(movement) {
       if (allocations.length === 1) els.bankProject.value = allocations[0].projectId;
     }
   };
+  hydrateBankInvoiceMatches(movement);
+  els.bankMatchInvoice.value = movement.invoiceId || "";
   els.bankDialog.showModal();
+}
+
+function hydrateBankInvoiceMatches(movement) {
+  const wantKinds = movement.type === "entrada" ? ["servico", "material"] : ["despesa"];
+  const matches = state.invoices
+    .filter((item) => wantKinds.includes(item.kind))
+    .filter((item) => item.status !== "cancelada")
+    .map((item) => ({ item, score: invoiceMatchScore(movement, item) }))
+    .filter((entry) => entry.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 30);
+
+  els.bankMatchInvoice.innerHTML = [
+    `<option value="">Sem vínculo com NF</option>`,
+    ...matches.map(({ item }) => `<option value="${item.id}">NF ${escapeHtml(item.number)} · ${escapeHtml(personName(item.personId))} · valor contábil ${money(item.accountingValue)}</option>`),
+  ].join("");
+}
+
+function invoiceMatchScore(movement, invoice) {
+  const amountDiff = Math.abs(movement.amount - invoice.accountingValue);
+  return amountDiff > 0.02 ? -1 : 100 - amountDiff;
 }
 
 function hydrateBankMatches(movement) {
@@ -2092,6 +2245,14 @@ function saveBankClassification() {
     }
   }
 
+  movement.invoiceId = els.bankMatchInvoice.value;
+  if (movement.invoiceId) {
+    const invoice = state.invoices.find((item) => item.id === movement.invoiceId);
+    if (invoice && invoice.status !== "cancelada") {
+      invoice.status = invoice.kind === "despesa" ? "paga" : "recebida_total";
+    }
+  }
+
   persist();
   renderAll();
   els.bankDialog.close();
@@ -2099,6 +2260,7 @@ function saveBankClassification() {
 }
 
 function unlinkBankMovement(movement) {
+  movement.invoiceId = "";
   if (!movement.transactionId) return;
   const transaction = state.transactions.find((item) => item.id === movement.transactionId);
   if (transaction?.bankMovementId === movement.id) {
@@ -2135,6 +2297,233 @@ function exportBankCsv() {
     item.notes,
   ]);
   downloadCsv(`movimentos-bancarios-${todayIso}.csv`, [["data", "tipo", "historico", "banco", "conta", "documento", "categoria", "projeto", "grupo_dre", "status", "valor", "conciliado", "observacoes"], ...rows]);
+}
+
+// ---- Notas Fiscais ----
+
+function setInvoiceKind(kind) {
+  currentInvoiceKind = kind;
+  document.querySelectorAll("[data-invoice-kind]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.invoiceKind === kind);
+  });
+  resetInvoiceForm();
+  renderInvoices();
+}
+
+function resetInvoiceForm() {
+  els.invoiceForm.reset();
+  els.invoiceId.value = "";
+  els.invoiceIssueDate.value = todayIso;
+  updateInvoiceFormForKind(currentInvoiceKind);
+  suggestInvoiceAccountingValue();
+}
+
+function updateInvoiceFormForKind(kind) {
+  const meta = INVOICE_KIND_META[kind] || INVOICE_KIND_META.servico;
+  els.invoiceKind.value = kind;
+  els.invoiceFormTitle.textContent = els.invoiceId.value ? `Editar ${meta.label}` : `Nova ${meta.label}`;
+  els.invoicePersonLabel.textContent = meta.personLabel;
+  els.invoiceCompetenceWrap.classList.toggle("hidden", meta.direction !== "emitida");
+  els.invoiceDueDateWrap.classList.toggle("hidden", meta.direction !== "recebida");
+  els.invoiceStatus.innerHTML = meta.statusOptions.map((option) => `<option value="${option.value}">${option.label}</option>`).join("");
+  hydrateInvoicePersonOptions();
+}
+
+function hydrateInvoicePersonOptions() {
+  const meta = INVOICE_KIND_META[els.invoiceKind.value] || INVOICE_KIND_META.servico;
+  const wantType = meta.direction === "emitida" ? "cliente" : "fornecedor";
+  const people = state.people.filter((person) => person.type === "ambos" || person.type === wantType);
+  els.invoicePerson.innerHTML = people.length
+    ? people.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")
+    : `<option value="">Cadastre ${wantType === "cliente" ? "um cliente" : "um fornecedor"} primeiro</option>`;
+}
+
+function suggestInvoiceAccountingValue() {
+  if (els.invoiceId.value) return;
+  const gross = Number(els.invoiceGrossAmount.value || 0);
+  const tax = Number(els.invoiceTaxAmount.value || 0);
+  els.invoiceAccountingValue.value = roundCurrency(gross - tax);
+}
+
+function accountingValueOf(invoice) {
+  return invoice.accountingValue || 0;
+}
+
+function linkedTransactionsForInvoice(invoiceId) {
+  return state.transactions.filter((item) => item.invoiceId === invoiceId);
+}
+
+function invoiceStatusLabel(invoice) {
+  const meta = INVOICE_KIND_META[invoice.kind] || INVOICE_KIND_META.servico;
+  return meta.statusOptions.find((option) => option.value === invoice.status)?.label || invoice.status;
+}
+
+function saveInvoice() {
+  const kind = els.invoiceKind.value;
+  const meta = INVOICE_KIND_META[kind] || INVOICE_KIND_META.servico;
+  const id = els.invoiceId.value || crypto.randomUUID();
+  const number = els.invoiceNumber.value.trim();
+  const personId = els.invoicePerson.value;
+
+  const duplicate = state.invoices.some((item) => item.id !== id && item.kind === kind && item.personId === personId && item.number.trim().toLowerCase() === number.toLowerCase());
+  if (duplicate) {
+    toast("Já existe uma NF com esse número para esse cliente/fornecedor.");
+    return;
+  }
+
+  const existing = state.invoices.find((item) => item.id === id);
+  const invoice = {
+    id,
+    kind,
+    number,
+    series: els.invoiceSeries.value.trim(),
+    issueDate: els.invoiceIssueDate.value,
+    competenceDate: meta.direction === "emitida" ? els.invoiceCompetenceDate.value : "",
+    dueDate: meta.direction === "recebida" ? els.invoiceDueDate.value : "",
+    personId,
+    document: els.invoiceDocument.value.trim(),
+    projectId: els.invoiceProject.value,
+    category: els.invoiceCategory.value.trim(),
+    grossAmount: Number(els.invoiceGrossAmount.value || 0),
+    taxAmount: Number(els.invoiceTaxAmount.value || 0),
+    accountingValue: Number(els.invoiceAccountingValue.value || 0),
+    description: els.invoiceDescription.value.trim(),
+    status: els.invoiceStatus.value,
+    notes: els.invoiceNotes.value.trim(),
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const index = state.invoices.findIndex((item) => item.id === id);
+  if (index >= 0) state.invoices[index] = invoice;
+  else state.invoices.push(invoice);
+
+  persist();
+  renderAll();
+  resetInvoiceForm();
+  toast("Nota fiscal salva.");
+}
+
+function renderInvoices() {
+  const search = els.invoiceSearch.value.toLowerCase().trim();
+  const invoices = state.invoices
+    .filter((item) => item.kind === currentInvoiceKind)
+    .filter((item) => `${item.number} ${personName(item.personId)} ${item.description}`.toLowerCase().includes(search))
+    .sort((a, b) => (b.issueDate || "").localeCompare(a.issueDate || ""));
+
+  els.invoiceList.innerHTML = invoices.length
+    ? invoices.map(invoiceRow).join("")
+    : emptyMessage("Nenhuma nota fiscal cadastrada.");
+
+  document.querySelectorAll("[data-invoice-action]").forEach((button) => {
+    button.addEventListener("click", () => handleInvoiceAction(button.dataset.invoiceAction, button.dataset.id));
+  });
+}
+
+function invoiceRow(invoice) {
+  const linked = linkedTransactionsForInvoice(invoice.id);
+  const linkText = linked.length ? `${linked.length} parcela(s) vinculada(s) (${money(sum(linked))})` : "sem vínculo financeiro";
+  return `
+    <article class="person-item">
+      <strong><span>NF ${escapeHtml(invoice.number)}${invoice.series ? "/" + escapeHtml(invoice.series) : ""} · ${escapeHtml(personName(invoice.personId))}</span><span>${money(invoice.accountingValue)}</span></strong>
+      <span class="muted">${formatDate(invoice.issueDate)} · ${invoiceStatusLabel(invoice)} · ${linkText}</span>
+      <div class="row-actions">
+        <button type="button" data-invoice-action="edit" data-id="${invoice.id}">Editar</button>
+        <button type="button" data-invoice-action="link" data-id="${invoice.id}">Vincular</button>
+        <button type="button" data-invoice-action="delete" data-id="${invoice.id}">Excluir</button>
+      </div>
+    </article>`;
+}
+
+function handleInvoiceAction(action, id) {
+  const invoice = state.invoices.find((item) => item.id === id);
+  if (!invoice) return;
+
+  if (action === "edit") {
+    setInvoiceKind(invoice.kind);
+    els.invoiceId.value = invoice.id;
+    els.invoiceNumber.value = invoice.number;
+    els.invoiceSeries.value = invoice.series;
+    els.invoicePerson.value = invoice.personId;
+    els.invoiceDocument.value = invoice.document;
+    els.invoiceIssueDate.value = invoice.issueDate;
+    els.invoiceCompetenceDate.value = invoice.competenceDate;
+    els.invoiceDueDate.value = invoice.dueDate;
+    els.invoiceProject.value = invoice.projectId;
+    els.invoiceCategory.value = invoice.category;
+    els.invoiceGrossAmount.value = invoice.grossAmount;
+    els.invoiceTaxAmount.value = invoice.taxAmount;
+    els.invoiceAccountingValue.value = invoice.accountingValue;
+    els.invoiceStatus.value = invoice.status;
+    els.invoiceDescription.value = invoice.description;
+    els.invoiceNotes.value = invoice.notes;
+    els.invoiceFormTitle.textContent = `Editar ${(INVOICE_KIND_META[invoice.kind] || INVOICE_KIND_META.servico).label}`;
+    return;
+  }
+
+  if (action === "link") {
+    openInvoiceLinkDialog(invoice);
+    return;
+  }
+
+  if (action === "delete") {
+    if (linkedTransactionsForInvoice(invoice.id).length) {
+      toast("Desvincule os lançamentos financeiros antes de excluir esta NF.");
+      return;
+    }
+    state.bankMovements.filter((item) => item.invoiceId === invoice.id).forEach((item) => {
+      item.invoiceId = "";
+    });
+    state.invoices = state.invoices.filter((item) => item.id !== invoice.id);
+    persist();
+    renderAll();
+    toast("Nota fiscal excluída.");
+  }
+}
+
+function openInvoiceLinkDialog(invoice) {
+  const meta = INVOICE_KIND_META[invoice.kind] || INVOICE_KIND_META.servico;
+  const wantType = meta.direction === "emitida" ? "receber" : "pagar";
+
+  els.invoiceLinkId.value = invoice.id;
+  els.invoiceLinkTitle.textContent = `Vincular NF ${invoice.number} a lançamentos`;
+  els.invoiceLinkSummary.textContent = `Valor contábil da NF: ${money(invoice.accountingValue)}`;
+
+  const candidates = state.transactions
+    .filter((item) => item.type === wantType)
+    .filter((item) => !item.invoiceId || item.invoiceId === invoice.id)
+    .filter((item) => !invoice.personId || item.personId === invoice.personId)
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+
+  els.invoiceLinkList.innerHTML = candidates.length
+    ? candidates.map((item) => `
+      <label class="checkbox-line invoice-link-row">
+        <input type="checkbox" data-link-transaction="${item.id}" ${item.invoiceId === invoice.id ? "checked" : ""} />
+        ${formatDate(item.dueDate)} · ${escapeHtml(item.description)} · ${money(item.amount)} · ${statusLabel(item.status)}
+      </label>`).join("")
+    : emptyMessage("Nenhum lançamento compatível (mesmo cliente/fornecedor, sem NF vinculada).");
+
+  els.invoiceLinkDialog.showModal();
+}
+
+function saveInvoiceLink() {
+  const invoiceId = els.invoiceLinkId.value;
+  const checkboxes = els.invoiceLinkList.querySelectorAll("[data-link-transaction]");
+
+  checkboxes.forEach((box) => {
+    const transaction = state.transactions.find((item) => item.id === box.dataset.linkTransaction);
+    if (!transaction) return;
+    if (box.checked) {
+      transaction.invoiceId = invoiceId;
+    } else if (transaction.invoiceId === invoiceId) {
+      transaction.invoiceId = "";
+    }
+  });
+
+  persist();
+  renderAll();
+  els.invoiceLinkDialog.close();
+  toast("Vínculo atualizado.");
 }
 
 function renderPeople() {
@@ -2193,7 +2582,7 @@ function handlePersonAction(action, id) {
     return;
   }
 
-  const inUse = state.transactions.some((item) => item.personId === id) || state.sales.some((sale) => sale.personId === id);
+  const inUse = state.transactions.some((item) => item.personId === id) || state.sales.some((sale) => sale.personId === id) || state.invoices.some((item) => item.personId === id);
   if (inUse) {
     toast("Não é possível excluir: há lançamentos vinculados.");
     return;
@@ -2387,6 +2776,158 @@ function renderReports() {
   renderPeriodReport("pagarPeriodReport", pagarPeriod);
   renderCategoryReport(periodTransactions);
   renderOverdueReport();
+  renderInvoiceReports(period);
+}
+
+function renderInvoiceReports(period) {
+  const periodInvoices = state.invoices.filter((item) => isInPeriod(item.issueDate, period.start, period.end) && item.status !== "cancelada");
+  const servico = periodInvoices.filter((item) => item.kind === "servico");
+  const material = periodInvoices.filter((item) => item.kind === "material");
+  const despesa = periodInvoices.filter((item) => item.kind === "despesa");
+
+  renderInvoiceBillingReport(servico, material);
+  renderInvoiceExpenseReport(despesa);
+  renderExpenseNoInvoiceReport(period);
+  renderPaidNoInvoiceReport(period);
+  renderReceivableNoInvoiceReport(period);
+  renderInvoiceByProjectReport(periodInvoices.filter((item) => item.kind !== "despesa"));
+  renderInvoiceByClientReport(periodInvoices.filter((item) => item.kind !== "despesa"));
+  renderInvoiceBySupplierReport(despesa);
+  renderInvoiceDivergenceReport();
+}
+
+function renderInvoiceBillingReport(servico, material) {
+  const servicoTotal = sum(servico.map(accountingValueOf));
+  const materialTotal = sum(material.map(accountingValueOf));
+  document.querySelector("#invoiceBillingReport").innerHTML = `
+    <article class="report-item">
+      <strong><span>NF de Serviço</span><span>${money(servicoTotal)}</span></strong>
+      <span class="muted">${servico.length} nota(s) emitida(s) no período</span>
+    </article>
+    <article class="report-item">
+      <strong><span>NF de Material/Produto</span><span>${money(materialTotal)}</span></strong>
+      <span class="muted">${material.length} nota(s) emitida(s) no período</span>
+    </article>
+    <article class="report-item">
+      <strong><span>Total geral faturado</span><span>${money(servicoTotal + materialTotal)}</span></strong>
+      <span class="muted">${servico.length + material.length} nota(s) no total</span>
+    </article>`;
+}
+
+function renderInvoiceExpenseReport(despesa) {
+  const total = sum(despesa.map(accountingValueOf));
+  document.querySelector("#invoiceExpenseReport").innerHTML = despesa.length
+    ? `<article class="report-item">
+        <strong><span>NF de despesa recebidas</span><span>${money(total)}</span></strong>
+        <span class="muted">${despesa.length} nota(s) no período</span>
+      </article>`
+    : emptyMessage("Nenhuma NF de despesa recebida no período.");
+}
+
+function renderExpenseNoInvoiceReport(period) {
+  const rows = state.transactions
+    .filter((item) => item.type === "pagar" && !item.invoiceId && isInPeriod(item.dueDate, period.start, period.end))
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  document.querySelector("#expenseNoInvoiceReport").innerHTML = rows.length
+    ? rows.map((item) => `
+      <article class="report-item">
+        <strong><span>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></strong>
+        <span class="muted">${formatDate(item.dueDate)} · ${personName(item.personId)} · ${statusLabel(item.status)}</span>
+      </article>`).join("")
+    : emptyMessage("Todas as despesas do período têm NF vinculada.");
+}
+
+function renderPaidNoInvoiceReport(period) {
+  const rows = state.transactions
+    .filter((item) => item.type === "pagar" && item.status === "pago" && !item.invoiceId && isInPeriod(item.paidDate, period.start, period.end))
+    .sort((a, b) => a.paidDate.localeCompare(b.paidDate));
+  document.querySelector("#paidNoInvoiceReport").innerHTML = rows.length
+    ? rows.map((item) => `
+      <article class="report-item">
+        <strong><span>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></strong>
+        <span class="muted">${formatDate(item.paidDate)} · ${personName(item.personId)}</span>
+      </article>`).join("")
+    : emptyMessage("Nenhuma conta paga sem NF no período.");
+}
+
+function renderReceivableNoInvoiceReport(period) {
+  const rows = state.transactions
+    .filter((item) => item.type === "receber" && !item.invoiceId && isInPeriod(item.dueDate, period.start, period.end))
+    .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  document.querySelector("#receivableNoInvoiceReport").innerHTML = rows.length
+    ? rows.map((item) => `
+      <article class="report-item">
+        <strong><span>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></strong>
+        <span class="muted">${formatDate(item.dueDate)} · ${personName(item.personId)} · ${statusLabel(item.status)}</span>
+      </article>`).join("")
+    : emptyMessage("Todas as contas a receber do período têm NF vinculada.");
+}
+
+function groupInvoicesBy(invoices, keyField, nameFn) {
+  const map = new Map();
+  invoices.forEach((item) => {
+    const key = item[keyField] || "";
+    const row = map.get(key) || { key, total: 0, count: 0 };
+    row.total += accountingValueOf(item);
+    row.count += 1;
+    map.set(key, row);
+  });
+  return [...map.values()].sort((a, b) => b.total - a.total).map((row) => ({ ...row, name: nameFn(row.key) }));
+}
+
+function renderInvoiceByProjectReport(invoices) {
+  const rows = groupInvoicesBy(invoices, "projectId", (key) => (key ? projectName(key) : "Sem projeto"));
+  document.querySelector("#invoiceByProjectReport").innerHTML = rows.length
+    ? rows.map((row) => `
+      <article class="report-item">
+        <strong><span>${escapeHtml(row.name)}</span><span>${money(row.total)}</span></strong>
+        <span class="muted">${row.count} NF</span>
+      </article>`).join("")
+    : emptyMessage("Sem dados para este relatório.");
+}
+
+function renderInvoiceByClientReport(invoices) {
+  const rows = groupInvoicesBy(invoices, "personId", personName);
+  document.querySelector("#invoiceByClientReport").innerHTML = rows.length
+    ? rows.map((row) => `
+      <article class="report-item">
+        <strong><span>${escapeHtml(row.name)}</span><span>${money(row.total)}</span></strong>
+        <span class="muted">${row.count} NF</span>
+      </article>`).join("")
+    : emptyMessage("Sem dados para este relatório.");
+}
+
+function renderInvoiceBySupplierReport(despesa) {
+  const rows = groupInvoicesBy(despesa, "personId", personName);
+  document.querySelector("#invoiceBySupplierReport").innerHTML = rows.length
+    ? rows.map((row) => `
+      <article class="report-item">
+        <strong><span>${escapeHtml(row.name)}</span><span>${money(row.total)}</span></strong>
+        <span class="muted">${row.count} NF</span>
+      </article>`).join("")
+    : emptyMessage("Sem dados para este relatório.");
+}
+
+function renderInvoiceDivergenceReport() {
+  const rows = state.invoices
+    .filter((invoice) => invoice.status !== "cancelada")
+    .map((invoice) => {
+      const linked = linkedTransactionsForInvoice(invoice.id);
+      const financialTotal = sum(linked);
+      return { invoice, financialTotal, linkedCount: linked.length, diff: roundCurrency(invoice.accountingValue - financialTotal) };
+    })
+    .filter((row) => row.linkedCount > 0);
+
+  document.querySelector("#invoiceDivergenceReport").innerHTML = rows.length
+    ? rows.map((row) => `
+      <tr class="invoice-divergence-row ${Math.abs(row.diff) > 0.01 ? "mismatch" : ""}">
+        <td>NF ${escapeHtml(row.invoice.number)} · ${escapeHtml(personName(row.invoice.personId))}</td>
+        <td>${row.linkedCount} parcela(s)</td>
+        <td class="money">${money(row.invoice.accountingValue)}</td>
+        <td class="money">${money(row.financialTotal)}</td>
+        <td class="money">${money(row.diff)}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="5">${emptyMessage("Nenhuma NF vinculada a lançamentos para comparar.")}</td></tr>`;
 }
 
 function renderDreReport(dre) {
@@ -2502,6 +3043,7 @@ function importBackup(event) {
     state.bankAccounts = data.bankAccounts;
     state.bankMovements = data.bankMovements;
     state.transactions = data.transactions;
+    state.invoices = data.invoices;
     persist();
     renderAll();
     toast("Backup importado.");

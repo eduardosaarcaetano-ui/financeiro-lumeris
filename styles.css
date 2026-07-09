@@ -714,6 +714,37 @@ tr:last-child td {
   background: #fdeaea;
 }
 
+.status.neutro {
+  color: var(--muted);
+  background: var(--surface-soft);
+}
+
+.invoice-kind-tabs {
+  margin-bottom: 18px;
+}
+
+.chip-tab {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.chip-tab.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.invoice-divergence-row.mismatch td {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .row-actions {
   display: flex;
   gap: 7px;
