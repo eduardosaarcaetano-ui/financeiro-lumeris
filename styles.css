@@ -576,6 +576,166 @@ td strong {
   width: min(360px, 100%);
 }
 
+.crm-toolbar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(150px, 1fr)) auto auto;
+  gap: 10px;
+  align-items: end;
+  padding: 14px;
+  margin-bottom: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.crm-toolbar label {
+  min-width: 0;
+}
+
+.crm-check {
+  align-self: center;
+  padding-top: 20px;
+}
+
+.crm-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.kanban-board {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(280px, 320px);
+  gap: 14px;
+  min-height: 620px;
+  overflow-x: auto;
+  padding-bottom: 12px;
+}
+
+.kanban-column {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 600px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fbfa;
+  box-shadow: var(--shadow);
+}
+
+.kanban-head {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-top: 4px solid var(--stage-color);
+  border-bottom: 1px solid var(--line);
+  border-radius: 8px 8px 0 0;
+  background: #ffffff;
+}
+
+.kanban-head strong {
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.kanban-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.kanban-cards {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 520px;
+  padding: 10px;
+  overflow-y: auto;
+}
+
+.kanban-cards.drop-active {
+  outline: 2px dashed var(--primary);
+  outline-offset: -7px;
+  background: #eef6f3;
+}
+
+.opportunity-card {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: grab;
+}
+
+.opportunity-card.dragging {
+  opacity: 0.55;
+}
+
+.opportunity-card strong,
+.opportunity-card span {
+  overflow-wrap: anywhere;
+}
+
+.opportunity-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.tag-row,
+.attention-row {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.tag-row span,
+.attention-row span {
+  min-height: 24px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tag-row span {
+  background: #edf3ef;
+  color: var(--primary-strong);
+}
+
+.attention-row span {
+  background: #fff3dd;
+  color: var(--warn);
+}
+
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.card-actions button {
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  font-size: 12px;
+}
+
+.large-modal {
+  width: min(1080px, calc(100vw - 24px));
+}
+
+.embedded-panel {
+  box-shadow: none;
+}
+
 input,
 select,
 textarea {
@@ -1007,8 +1167,13 @@ dialog::backdrop {
   .report-grid,
   .split,
   .project-layout,
-  .project-report-grid {
+  .project-report-grid,
+  .crm-summary {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .crm-toolbar {
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
   }
 }
 
@@ -1033,8 +1198,14 @@ dialog::backdrop {
   .split,
   .project-layout,
   .project-report-grid,
+  .crm-summary,
+  .crm-toolbar,
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .kanban-board {
+    grid-auto-columns: minmax(260px, 86vw);
   }
 
   .allocation-row {

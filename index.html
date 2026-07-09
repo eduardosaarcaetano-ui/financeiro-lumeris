@@ -40,6 +40,7 @@
 
         <nav class="nav-list">
           <button class="nav-item active" data-view="dashboard" type="button">Painel</button>
+          <button class="nav-item" data-view="crm" type="button">CRM</button>
           <button class="nav-item" data-view="receber" type="button">A Receber</button>
           <button class="nav-item" data-view="pagar" type="button">A Pagar</button>
           <button class="nav-item" data-view="vendas" type="button">Vendas</button>
@@ -165,6 +166,65 @@
               <div class="mini-list" id="upcomingList"></div>
             </section>
           </div>
+        </section>
+
+        <section class="view" id="crm">
+          <div class="crm-toolbar">
+            <label>Unidade
+              <select id="crmUnitFilter"></select>
+            </label>
+            <label>Pipeline
+              <select id="crmPipelineFilter"></select>
+            </label>
+            <label>Responsável
+              <select id="crmOwnerFilter"></select>
+            </label>
+            <label>Etapa
+              <select id="crmStageFilter"></select>
+            </label>
+            <label>Projeto
+              <select id="crmProjectFilter"></select>
+            </label>
+            <label>Busca rápida
+              <input id="crmSearch" type="search" placeholder="Cliente, empresa, telefone, oportunidade" />
+            </label>
+            <label>Valor mínimo
+              <input id="crmMinValue" type="number" min="0" step="0.01" />
+            </label>
+            <label>Valor máximo
+              <input id="crmMaxValue" type="number" min="0" step="0.01" />
+            </label>
+            <label class="checkbox-line crm-check">
+              <input id="crmPendingOnly" type="checkbox" />
+              Atividade pendente
+            </label>
+            <label class="checkbox-line crm-check">
+              <input id="crmStaleOnly" type="checkbox" />
+              Sem movimento
+            </label>
+            <button class="secondary-btn" id="clearCrmFilters" type="button">Limpar filtros</button>
+            <button class="primary-btn" id="newOpportunityBtn" type="button">Nova oportunidade</button>
+          </div>
+
+          <div class="crm-summary">
+            <article class="kpi">
+              <span>Oportunidades visíveis</span>
+              <strong id="crmVisibleCount">0</strong>
+              <small id="crmVisibleValue">R$ 0,00 no pipeline</small>
+            </article>
+            <article class="kpi">
+              <span>Atividades pendentes</span>
+              <strong id="crmPendingCount">0</strong>
+              <small>Cards com atenção</small>
+            </article>
+            <article class="kpi">
+              <span>Sem movimentação</span>
+              <strong id="crmStaleCount">0</strong>
+              <small>Mais de 15 dias</small>
+            </article>
+          </div>
+
+          <div class="kanban-board" id="kanbanBoard" aria-label="Pipeline comercial"></div>
         </section>
 
         <section class="view" id="receber">
@@ -1169,6 +1229,74 @@
         <menu class="modal-actions">
           <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
           <button class="primary-btn" id="saveTransactionBtn" value="default" type="submit">Salvar</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="opportunityDialog">
+      <form method="dialog" class="modal large-modal" id="opportunityForm">
+        <div class="modal-head">
+          <h2 id="opportunityTitle">Nova oportunidade</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <input type="hidden" id="opportunityId" />
+        <div class="form-grid">
+          <label>Cliente
+            <select id="opportunityPerson" required></select>
+          </label>
+          <label>Empresa
+            <input id="opportunityCompany" maxlength="120" />
+          </label>
+          <label>Número da oportunidade
+            <input id="opportunityNumber" maxlength="40" placeholder="OP-0001" />
+          </label>
+          <label>Valor
+            <input id="opportunityValue" type="number" min="0" step="0.01" value="0" />
+          </label>
+          <label>Unidade
+            <select id="opportunityUnit"></select>
+          </label>
+          <label>Pipeline
+            <select id="opportunityPipeline"></select>
+          </label>
+          <label>Etapa
+            <select id="opportunityStage"></select>
+          </label>
+          <label>Responsável
+            <input id="opportunityOwner" maxlength="80" placeholder="Comercial responsável" />
+          </label>
+          <label>Telefone
+            <input id="opportunityPhone" maxlength="40" />
+          </label>
+          <label>E-mail
+            <input id="opportunityEmail" type="email" maxlength="120" />
+          </label>
+          <label>Projeto vinculado
+            <select id="opportunityProject"></select>
+          </label>
+          <label>Tags
+            <input id="opportunityTags" maxlength="160" placeholder="PROPOSTA, INSTALAÇÃO" />
+          </label>
+          <label>Próxima atividade
+            <input id="opportunityNextActivity" type="date" />
+          </label>
+          <label class="checkbox-line">
+            <input id="opportunityPendingActivity" type="checkbox" />
+            Possui atividade pendente
+          </label>
+          <label class="full">Observações
+            <textarea id="opportunityNotes" rows="3" maxlength="600"></textarea>
+          </label>
+        </div>
+        <section class="panel embedded-panel">
+          <div class="panel-head">
+            <h2>Histórico</h2>
+          </div>
+          <div id="opportunityHistory" class="report-list"></div>
+        </section>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Salvar oportunidade</button>
         </menu>
       </form>
     </dialog>

@@ -296,6 +296,37 @@ const els = {
   crmSellerRankingTable: document.querySelector("#crmSellerRankingTable"),
   navItems: document.querySelectorAll(".nav-item"),
   views: document.querySelectorAll(".view"),
+  crmUnitFilter: document.querySelector("#crmUnitFilter"),
+  crmPipelineFilter: document.querySelector("#crmPipelineFilter"),
+  crmOwnerFilter: document.querySelector("#crmOwnerFilter"),
+  crmStageFilter: document.querySelector("#crmStageFilter"),
+  crmProjectFilter: document.querySelector("#crmProjectFilter"),
+  crmSearch: document.querySelector("#crmSearch"),
+  crmMinValue: document.querySelector("#crmMinValue"),
+  crmMaxValue: document.querySelector("#crmMaxValue"),
+  crmPendingOnly: document.querySelector("#crmPendingOnly"),
+  crmStaleOnly: document.querySelector("#crmStaleOnly"),
+  kanbanBoard: document.querySelector("#kanbanBoard"),
+  opportunityDialog: document.querySelector("#opportunityDialog"),
+  opportunityForm: document.querySelector("#opportunityForm"),
+  opportunityTitle: document.querySelector("#opportunityTitle"),
+  opportunityId: document.querySelector("#opportunityId"),
+  opportunityPerson: document.querySelector("#opportunityPerson"),
+  opportunityCompany: document.querySelector("#opportunityCompany"),
+  opportunityNumber: document.querySelector("#opportunityNumber"),
+  opportunityValue: document.querySelector("#opportunityValue"),
+  opportunityUnit: document.querySelector("#opportunityUnit"),
+  opportunityPipeline: document.querySelector("#opportunityPipeline"),
+  opportunityStage: document.querySelector("#opportunityStage"),
+  opportunityOwner: document.querySelector("#opportunityOwner"),
+  opportunityPhone: document.querySelector("#opportunityPhone"),
+  opportunityEmail: document.querySelector("#opportunityEmail"),
+  opportunityProject: document.querySelector("#opportunityProject"),
+  opportunityTags: document.querySelector("#opportunityTags"),
+  opportunityNextActivity: document.querySelector("#opportunityNextActivity"),
+  opportunityPendingActivity: document.querySelector("#opportunityPendingActivity"),
+  opportunityNotes: document.querySelector("#opportunityNotes"),
+  opportunityHistory: document.querySelector("#opportunityHistory"),
   transactionDialog: document.querySelector("#transactionDialog"),
   transactionForm: document.querySelector("#transactionForm"),
   transactionTitle: document.querySelector("#transactionTitle"),
@@ -384,6 +415,7 @@ const els = {
 
 const viewNames = {
   dashboard: "Painel financeiro",
+  crm: "Pipeline comercial",
   receber: "Contas a receber",
   pagar: "Contas a pagar",
   vendas: "Vendas parceladas",
@@ -396,6 +428,16 @@ const viewNames = {
   relatorios: "Relatórios financeiros",
   usuarios: "Usuários",
 };
+
+const defaultCrmStages = [
+  { id: "triagem", name: "Triagem", color: "#3f6f8f", order: 1 },
+  { id: "contato", name: "Destinados / Contato Inicial", color: "#5d7f3f", order: 2 },
+  { id: "diagnostico", name: "Diagnóstico", color: "#a06418", order: 3 },
+  { id: "proposta", name: "Proposta", color: "#146c5f", order: 4 },
+  { id: "negociacao", name: "Negociação", color: "#8757a2", order: 5 },
+  { id: "ganho", name: "Fechado - Ganho", color: "#25744f", order: 6 },
+  { id: "perdido", name: "Fechado - Perdido", color: "#aa2f2f", order: 7 },
+];
 
 const dreGroups = [
   { key: "receita_bruta", label: "Receita bruta", sign: 1 },
@@ -575,6 +617,8 @@ function bindEvents() {
   document.querySelector("#newTransactionBtn").addEventListener("click", () => openTransactionDialog());
   document.querySelector("#newSaleBtn").addEventListener("click", openSaleDialog);
   document.querySelector("#newSaleInlineBtn").addEventListener("click", openSaleDialog);
+  document.querySelector("#newOpportunityBtn").addEventListener("click", () => openOpportunityDialog());
+  document.querySelector("#clearCrmFilters").addEventListener("click", clearCrmFilters);
   document.querySelector("#printBtn").addEventListener("click", () => window.print());
   document.querySelector("#exportJson").addEventListener("click", exportBackup);
   document.querySelector("#importJson").addEventListener("change", importBackup);
@@ -587,6 +631,16 @@ function bindEvents() {
 
   [
     "#receberSearch",
+    "#crmUnitFilter",
+    "#crmPipelineFilter",
+    "#crmOwnerFilter",
+    "#crmStageFilter",
+    "#crmProjectFilter",
+    "#crmSearch",
+    "#crmMinValue",
+    "#crmMaxValue",
+    "#crmPendingOnly",
+    "#crmStaleOnly",
     "#receberStatus",
     "#pagarSearch",
     "#pagarStatus",
@@ -599,6 +653,15 @@ function bindEvents() {
     "#reportEnd",
     "#dreBasis",
   ].forEach((selector) => document.querySelector(selector).addEventListener("input", renderAll));
+
+  els.opportunityForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.opportunityDialog.close();
+      return;
+    }
+    saveOpportunity();
+  });
 
   document.querySelectorAll("[data-export-csv]").forEach((button) => {
     button.addEventListener("click", () => exportCsv(button.dataset.exportCsv));
@@ -698,6 +761,11 @@ function loadState() {
       { id: crypto.randomUUID(), type: "fornecedor", name: "Fornecedor Exemplo", document: "", contact: "(11) 99999-0000" },
     ],
     sales: [],
+    crmUnits: [],
+    crmPipelines: [],
+    opportunityStages: [],
+    opportunities: [],
+    opportunityHistory: [],
     projects: [],
     costCenters: [],
     bankAccounts: [],
@@ -719,6 +787,11 @@ function normalizeState(data) {
   const normalized = {
     people: Array.isArray(data.people) ? data.people : [],
     sales: Array.isArray(data.sales) ? data.sales : [],
+    crmUnits: Array.isArray(data.crmUnits) ? data.crmUnits : [],
+    crmPipelines: Array.isArray(data.crmPipelines) ? data.crmPipelines : [],
+    opportunityStages: Array.isArray(data.opportunityStages) ? data.opportunityStages : [],
+    opportunities: Array.isArray(data.opportunities) ? data.opportunities : [],
+    opportunityHistory: Array.isArray(data.opportunityHistory) ? data.opportunityHistory : [],
     projects: Array.isArray(data.projects) ? data.projects : [],
     costCenters: Array.isArray(data.costCenters) ? data.costCenters : [],
     bankAccounts: Array.isArray(data.bankAccounts) ? data.bankAccounts : [],
@@ -885,6 +958,62 @@ function normalizeState(data) {
     role: "usuario",
     active: true,
     createdAt: "",
+    ...item,
+  }));
+
+  if (!normalized.crmUnits.length) {
+    normalized.crmUnits = [
+      { id: "sorocaba-sp", name: "Sorocaba - SP" },
+      { id: "maringa-pr", name: "Maringá - PR" },
+    ];
+  }
+
+  if (!normalized.crmPipelines.length) {
+    normalized.crmPipelines = [
+      { id: "vendas", name: "Vendas" },
+      { id: "manutencao", name: "Manutenção preventiva" },
+      { id: "pos-venda", name: "Pós-venda" },
+      { id: "projetos", name: "Projetos" },
+    ];
+  }
+
+  if (!normalized.opportunityStages.length) {
+    normalized.opportunityStages = defaultCrmStages;
+  }
+
+  normalized.opportunities = normalized.opportunities.map((item) => ({
+    id: crypto.randomUUID(),
+    personId: "",
+    company: "",
+    number: "",
+    value: 0,
+    unitId: normalized.crmUnits[0]?.id || "",
+    pipelineId: normalized.crmPipelines[0]?.id || "",
+    stageId: normalized.opportunityStages[0]?.id || "triagem",
+    owner: "",
+    phone: "",
+    email: "",
+    projectId: "",
+    tags: [],
+    pendingActivity: false,
+    nextActivityDate: "",
+    notes: "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    lastMovedAt: "",
+    lastContactAt: "",
+    ...item,
+  }));
+
+  normalized.opportunityHistory = normalized.opportunityHistory.map((item) => ({
+    id: crypto.randomUUID(),
+    opportunityId: "",
+    action: "registro",
+    fromStageId: "",
+    toStageId: "",
+    user: currentCrmUser(),
+    createdAt: new Date().toISOString(),
+    notes: "",
     ...item,
   }));
 
@@ -1452,6 +1581,8 @@ function setView(view) {
 
 function renderAll() {
   els.currentPeriod.textContent = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(today);
+  hydrateCrmOptions();
+  renderCrm();
   renderDashboard();
   renderTransactionTables();
   renderSales();
@@ -1468,6 +1599,286 @@ function renderAll() {
   hydrateProjectOptions();
   hydrateInvoicePersonOptions();
   hydrateStatusOptions();
+}
+
+function hydrateCrmOptions() {
+  const unitOptions = state.crmUnits.map((unit) => `<option value="${unit.id}">${escapeHtml(unit.name)}</option>`).join("");
+  const pipelineOptions = state.crmPipelines.map((pipeline) => `<option value="${pipeline.id}">${escapeHtml(pipeline.name)}</option>`).join("");
+  const stageOptions = state.opportunityStages
+    .sort((a, b) => a.order - b.order)
+    .map((stage) => `<option value="${stage.id}">${escapeHtml(stage.name)}</option>`)
+    .join("");
+  const ownerOptions = [...new Set(state.opportunities.map((item) => item.owner).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b))
+    .map((owner) => `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`)
+    .join("");
+  const projectOptions = state.projects.map((project) => `<option value="${project.id}">${escapeHtml(projectLabel(project))}</option>`).join("");
+  const peopleOptions = state.people
+    .filter((person) => person.type === "cliente" || person.type === "ambos")
+    .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
+    .join("");
+
+  setSelectOptions(els.crmUnitFilter, `<option value="todos">Todas</option>${unitOptions}`);
+  setSelectOptions(els.crmPipelineFilter, pipelineOptions);
+  setSelectOptions(els.crmOwnerFilter, `<option value="todos">Todos</option>${ownerOptions}`);
+  setSelectOptions(els.crmStageFilter, `<option value="todos">Todas</option>${stageOptions}`);
+  setSelectOptions(els.crmProjectFilter, `<option value="todos">Todos</option><option value="">Sem projeto</option>${projectOptions}`);
+  setSelectOptions(els.opportunityUnit, unitOptions);
+  setSelectOptions(els.opportunityPipeline, pipelineOptions);
+  setSelectOptions(els.opportunityStage, stageOptions);
+  setSelectOptions(els.opportunityProject, `<option value="">Sem projeto</option>${projectOptions}`);
+  setSelectOptions(els.opportunityPerson, peopleOptions || `<option value="">Cadastre um cliente primeiro</option>`);
+}
+
+function setSelectOptions(select, html) {
+  const current = select.value;
+  select.innerHTML = html;
+  if ([...select.options].some((option) => option.value === current)) select.value = current;
+}
+
+function renderCrm() {
+  const opportunities = filteredOpportunities();
+  document.querySelector("#crmVisibleCount").textContent = String(opportunities.length);
+  document.querySelector("#crmVisibleValue").textContent = `${money(sum(opportunities.map((item) => item.value)))} no pipeline`;
+  document.querySelector("#crmPendingCount").textContent = String(opportunities.filter((item) => item.pendingActivity || isActivityDue(item)).length);
+  document.querySelector("#crmStaleCount").textContent = String(opportunities.filter(isOpportunityStale).length);
+
+  els.kanbanBoard.innerHTML = state.opportunityStages
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((stage) => kanbanColumn(stage, opportunities))
+    .join("");
+  bindKanbanEvents();
+}
+
+function filteredOpportunities() {
+  const search = els.crmSearch.value.toLowerCase().trim();
+  const minValue = Number(els.crmMinValue.value || 0);
+  const maxValue = Number(els.crmMaxValue.value || 0);
+
+  return state.opportunities.filter((item) => {
+    const haystack = [personName(item.personId), item.company, item.phone, item.number, projectName(item.projectId), item.owner, normalizeTags(item.tags).join(" ")].join(" ").toLowerCase();
+    return (els.crmUnitFilter.value === "todos" || !els.crmUnitFilter.value || item.unitId === els.crmUnitFilter.value)
+      && (!els.crmPipelineFilter.value || item.pipelineId === els.crmPipelineFilter.value)
+      && (els.crmOwnerFilter.value === "todos" || !els.crmOwnerFilter.value || item.owner === els.crmOwnerFilter.value)
+      && (els.crmStageFilter.value === "todos" || !els.crmStageFilter.value || item.stageId === els.crmStageFilter.value)
+      && (els.crmProjectFilter.value === "todos" || item.projectId === els.crmProjectFilter.value)
+      && (!search || haystack.includes(search))
+      && (!minValue || Number(item.value || 0) >= minValue)
+      && (!maxValue || Number(item.value || 0) <= maxValue)
+      && (!els.crmPendingOnly.checked || item.pendingActivity || isActivityDue(item))
+      && (!els.crmStaleOnly.checked || isOpportunityStale(item));
+  });
+}
+
+function kanbanColumn(stage, opportunities) {
+  const items = opportunities.filter((item) => item.stageId === stage.id);
+  return `
+    <section class="kanban-column" data-stage-id="${stage.id}">
+      <header class="kanban-head" style="--stage-color:${stage.color}">
+        <strong>${escapeHtml(stage.name)}</strong>
+        <span>${items.length} oportunidade(s)</span>
+        <span>${money(sum(items.map((item) => item.value)))}</span>
+      </header>
+      <div class="kanban-cards" data-drop-stage="${stage.id}">
+        ${items.slice(0, 80).map(opportunityCard).join("")}
+        ${items.length > 80 ? `<div class="muted kanban-limit">Mostrando 80 de ${items.length}</div>` : ""}
+      </div>
+    </section>`;
+}
+
+function opportunityCard(item) {
+  const flags = [item.pendingActivity ? "Pendente" : "", isActivityDue(item) ? "Hoje/atrasada" : "", isOpportunityStale(item) ? "Sem movimento" : ""].filter(Boolean);
+  return `
+    <article class="opportunity-card" draggable="true" data-opportunity-id="${item.id}">
+      <div class="card-actions"><button type="button" data-opportunity-action="edit" data-id="${item.id}">Editar</button></div>
+      <strong>${escapeHtml(personName(item.personId))}</strong>
+      <span class="muted">${escapeHtml(item.company || "Sem empresa")}</span>
+      <div class="opportunity-meta"><span>${escapeHtml(item.number || "Sem número")}</span><strong>${money(item.value)}</strong></div>
+      <span class="muted">${formatDate(item.lastMovedAt?.slice(0, 10) || item.updatedAt?.slice(0, 10) || todayIso)} · ${escapeHtml(item.owner || "Sem responsável")}</span>
+      <span class="muted">${escapeHtml(unitName(item.unitId))}</span>
+      <div class="tag-row">${normalizeTags(item.tags).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
+      <div class="attention-row">${flags.map((flag) => `<span>${escapeHtml(flag)}</span>`).join("")}</div>
+    </article>`;
+}
+
+function bindKanbanEvents() {
+  document.querySelectorAll(".opportunity-card").forEach((card) => {
+    card.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("text/plain", card.dataset.opportunityId);
+      card.classList.add("dragging");
+    });
+    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("button")) return;
+      openOpportunityDialog(state.opportunities.find((item) => item.id === card.dataset.opportunityId));
+    });
+  });
+  document.querySelectorAll("[data-opportunity-action='edit']").forEach((button) => {
+    button.addEventListener("click", () => openOpportunityDialog(state.opportunities.find((item) => item.id === button.dataset.id)));
+  });
+  document.querySelectorAll("[data-drop-stage]").forEach((dropZone) => {
+    dropZone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      dropZone.classList.add("drop-active");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drop-active"));
+    dropZone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      dropZone.classList.remove("drop-active");
+      moveOpportunity(event.dataTransfer.getData("text/plain"), dropZone.dataset.dropStage);
+    });
+  });
+}
+
+function openOpportunityDialog(item = null) {
+  els.opportunityForm.reset();
+  hydrateCrmOptions();
+  els.opportunityId.value = item?.id || "";
+  els.opportunityPerson.value = item?.personId || els.opportunityPerson.value;
+  els.opportunityCompany.value = item?.company || "";
+  els.opportunityNumber.value = item?.number || nextOpportunityNumber();
+  els.opportunityValue.value = item?.value || 0;
+  els.opportunityUnit.value = item?.unitId || state.crmUnits[0]?.id || "";
+  els.opportunityPipeline.value = item?.pipelineId || els.crmPipelineFilter.value || state.crmPipelines[0]?.id || "";
+  els.opportunityStage.value = item?.stageId || state.opportunityStages[0]?.id || "";
+  els.opportunityOwner.value = item?.owner || "";
+  els.opportunityPhone.value = item?.phone || "";
+  els.opportunityEmail.value = item?.email || "";
+  els.opportunityProject.value = item?.projectId || "";
+  els.opportunityTags.value = normalizeTags(item?.tags).join(", ");
+  els.opportunityNextActivity.value = item?.nextActivityDate || "";
+  els.opportunityPendingActivity.checked = Boolean(item?.pendingActivity);
+  els.opportunityNotes.value = item?.notes || "";
+  els.opportunityTitle.textContent = item ? "Editar oportunidade" : "Nova oportunidade";
+  renderOpportunityHistory(item?.id || "");
+  els.opportunityDialog.showModal();
+}
+
+function saveOpportunity() {
+  const now = new Date().toISOString();
+  const id = els.opportunityId.value || crypto.randomUUID();
+  const existing = state.opportunities.find((item) => item.id === id);
+  const data = {
+    id,
+    personId: els.opportunityPerson.value,
+    company: els.opportunityCompany.value.trim(),
+    number: els.opportunityNumber.value.trim() || nextOpportunityNumber(),
+    value: Number(els.opportunityValue.value || 0),
+    unitId: els.opportunityUnit.value,
+    pipelineId: els.opportunityPipeline.value,
+    stageId: els.opportunityStage.value,
+    owner: els.opportunityOwner.value.trim(),
+    phone: els.opportunityPhone.value.trim(),
+    email: els.opportunityEmail.value.trim(),
+    projectId: els.opportunityProject.value,
+    tags: normalizeTags(els.opportunityTags.value),
+    pendingActivity: els.opportunityPendingActivity.checked,
+    nextActivityDate: els.opportunityNextActivity.value,
+    notes: els.opportunityNotes.value.trim(),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    lastMovedAt: existing?.lastMovedAt || now,
+    lastContactAt: existing?.lastContactAt || "",
+  };
+
+  const index = state.opportunities.findIndex((item) => item.id === id);
+  if (index >= 0) {
+    if (existing.stageId !== data.stageId) {
+      addOpportunityHistory(id, "mudança de etapa", existing.stageId, data.stageId);
+      data.lastMovedAt = now;
+    }
+    state.opportunities[index] = data;
+  } else {
+    state.opportunities.push(data);
+    addOpportunityHistory(id, "criação", "", data.stageId);
+  }
+
+  persist();
+  renderAll();
+  els.opportunityDialog.close();
+  toast("Oportunidade salva.");
+}
+
+function moveOpportunity(id, newStageId) {
+  const item = state.opportunities.find((opportunity) => opportunity.id === id);
+  if (!item || item.stageId === newStageId) return;
+  const previousStage = item.stageId;
+  item.stageId = newStageId;
+  item.updatedAt = new Date().toISOString();
+  item.lastMovedAt = item.updatedAt;
+  addOpportunityHistory(id, "mudança de etapa", previousStage, newStageId);
+  persist();
+  renderCrm();
+}
+
+function renderOpportunityHistory(opportunityId) {
+  const rows = state.opportunityHistory
+    .filter((item) => item.opportunityId === opportunityId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  els.opportunityHistory.innerHTML = rows.length
+    ? rows.map((row) => `
+      <article class="report-item">
+        <strong><span>${escapeHtml(row.action)}</span><span>${formatDate(row.createdAt.slice(0, 10))}</span></strong>
+        <span class="muted">${escapeHtml(stageName(row.fromStageId) || "-")} → ${escapeHtml(stageName(row.toStageId) || "-")} · ${escapeHtml(row.user)}</span>
+      </article>`).join("")
+    : emptyMessage("Sem histórico registrado.");
+}
+
+function addOpportunityHistory(opportunityId, action, fromStageId, toStageId, notes = "") {
+  state.opportunityHistory.push({
+    id: crypto.randomUUID(),
+    opportunityId,
+    action,
+    fromStageId,
+    toStageId,
+    user: currentCrmUser(),
+    createdAt: new Date().toISOString(),
+    notes,
+  });
+}
+
+function clearCrmFilters() {
+  els.crmUnitFilter.value = "todos";
+  els.crmOwnerFilter.value = "todos";
+  els.crmStageFilter.value = "todos";
+  els.crmProjectFilter.value = "todos";
+  els.crmSearch.value = "";
+  els.crmMinValue.value = "";
+  els.crmMaxValue.value = "";
+  els.crmPendingOnly.checked = false;
+  els.crmStaleOnly.checked = false;
+  renderAll();
+}
+
+function normalizeTags(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).map((tag) => String(tag).trim()).filter(Boolean);
+  return String(value || "").split(/[|,;]/).map((tag) => tag.trim()).filter(Boolean);
+}
+
+function nextOpportunityNumber() {
+  return `OP-${String(state.opportunities.length + 1).padStart(4, "0")}-${todayIso.slice(5, 7)}-${todayIso.slice(2, 4)}`;
+}
+
+function stageName(stageId) {
+  return state.opportunityStages.find((stage) => stage.id === stageId)?.name || "";
+}
+
+function unitName(unitId) {
+  return state.crmUnits.find((unit) => unit.id === unitId)?.name || "Sem unidade";
+}
+
+function isActivityDue(item) {
+  return Boolean(item.nextActivityDate && item.nextActivityDate <= todayIso);
+}
+
+function isOpportunityStale(item) {
+  const ref = item.lastMovedAt?.slice(0, 10) || item.updatedAt?.slice(0, 10) || item.createdAt?.slice(0, 10);
+  return ref ? daysBetween(todayIso, ref) > 15 : false;
+}
+
+function currentCrmUser() {
+  return localStorage.getItem("financeiro-lumeris-user") || "Usuário local";
 }
 
 function renderDashboard() {
@@ -4493,6 +4904,11 @@ function importBackup(event) {
 
     state.people = data.people;
     state.sales = data.sales;
+    state.crmUnits = data.crmUnits;
+    state.crmPipelines = data.crmPipelines;
+    state.opportunityStages = data.opportunityStages;
+    state.opportunities = data.opportunities;
+    state.opportunityHistory = data.opportunityHistory;
     state.projects = data.projects;
     state.costCenters = data.costCenters;
     state.bankAccounts = data.bankAccounts;
