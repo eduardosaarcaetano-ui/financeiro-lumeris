@@ -461,13 +461,21 @@ async function boot() {
     bindEvents();
     setDefaultReportPeriod();
     renderAll();
-    // Busca os dados remotos ANTES de semear o usuário master: initRemoteSync substitui
-    // state.users por inteiro, então criar o master antes disso arriscaria ele ser
-    // sobrescrito pela resposta remota antes do persist() (debounced) conseguir enviá-lo.
-    await initRemoteSync();
     await ensureMasterUser();
     renderUsers();
     restoreSessionOrShowLogin();
+    initRemoteSync()
+      .then(async () => {
+        await ensureMasterUser();
+        renderUsers();
+        if (!currentSessionUser()) {
+          restoreSessionOrShowLogin();
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+        setSyncStatus("Sem conexão com o Sheets - usando dados locais", "error");
+      });
   } finally {
     els.loginSubmit.disabled = false;
     els.loginSubmit.textContent = "Entrar";
