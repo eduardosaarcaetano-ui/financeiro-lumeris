@@ -161,6 +161,7 @@ function bindEvents() {
   els.loginForm.addEventListener("submit", handleLogin);
   els.logoutBtn.addEventListener("click", handleLogout);
   els.userForm.addEventListener("submit", saveUser);
+  enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente…" });
   els.navItems.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   document.querySelector("#newTransactionBtn").addEventListener("click", () => openTransactionDialog());
   document.querySelector("#newSaleBtn").addEventListener("click", openSaleDialog);
@@ -683,6 +684,110 @@ function handleUserAction(action, id) {
   toast("Usuário excluído.");
 }
 
+const SEARCH_ICON_SVG = '<svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>';
+
+function enhanceSearchableSelect(selectEl, { placeholder = "Buscar…" } = {}) {
+  if (!selectEl || selectEl.dataset.searchEnhanced) return;
+  selectEl.dataset.searchEnhanced = "1";
+  selectEl.classList.add("hidden");
+
+  const wrap = document.createElement("div");
+  wrap.className = "searchable-select";
+
+  const inputWrap = document.createElement("div");
+  inputWrap.className = "searchable-select-input-wrap";
+  inputWrap.innerHTML = SEARCH_ICON_SVG;
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "searchable-select-input";
+  input.placeholder = placeholder;
+  input.autocomplete = "off";
+  inputWrap.appendChild(input);
+
+  const optionsBox = document.createElement("div");
+  optionsBox.className = "searchable-select-options hidden";
+
+  selectEl.parentNode.insertBefore(wrap, selectEl);
+  wrap.appendChild(inputWrap);
+  wrap.appendChild(optionsBox);
+  wrap.appendChild(selectEl);
+
+  function getOptions() {
+    return Array.from(selectEl.options).map((option) => ({ value: option.value, label: option.textContent }));
+  }
+
+  function syncInputFromSelect() {
+    const selected = selectEl.options[selectEl.selectedIndex];
+    input.value = selected ? selected.textContent : "";
+  }
+
+  function renderOptions(filterText) {
+    const filter = filterText.trim().toLowerCase();
+    const items = getOptions().filter((option) => option.label.toLowerCase().includes(filter));
+    optionsBox.innerHTML = items.length
+      ? items.map((option) => `<div class="searchable-select-option" data-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</div>`).join("")
+      : `<div class="searchable-select-empty">Nenhum resultado</div>`;
+  }
+
+  function openOptions() {
+    renderOptions(input.value);
+    optionsBox.classList.remove("hidden");
+  }
+
+  function closeOptions() {
+    optionsBox.classList.add("hidden");
+  }
+
+  input.addEventListener("focus", () => {
+    input.select();
+    openOptions();
+  });
+
+  input.addEventListener("input", () => {
+    openOptions();
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      closeOptions();
+      syncInputFromSelect();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const first = optionsBox.querySelector("[data-value]");
+      if (first) selectOption(first.dataset.value);
+    }
+  });
+
+  optionsBox.addEventListener("mousedown", (event) => {
+    const target = event.target.closest("[data-value]");
+    if (!target) return;
+    event.preventDefault();
+    selectOption(target.dataset.value);
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!wrap.contains(event.target)) {
+      closeOptions();
+      syncInputFromSelect();
+    }
+  });
+
+  function selectOption(value) {
+    selectEl.value = value;
+    syncInputFromSelect();
+    closeOptions();
+    selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  syncInputFromSelect();
+  selectEl._searchableRefresh = syncInputFromSelect;
+}
+
+function refreshSearchableSelect(selectEl) {
+  selectEl?._searchableRefresh?.();
+}
+
 function normalizeAllocations(transaction, projects = state.projects) {
   const projectIds = new Set(projects.map((project) => project.id));
   const raw = Array.isArray(transaction.allocations) ? transaction.allocations : [];
@@ -1125,6 +1230,7 @@ function saveProject() {
   upsertCostCenter(project);
   els.projectForm.reset();
   els.projectId.value = "";
+  refreshSearchableSelect(els.projectCustomer);
   persist();
   renderAll();
   els.projectReportSelect.value = project.id;
@@ -1153,6 +1259,7 @@ function handleProjectAction(action, id) {
     els.projectId.value = project.id;
     els.projectName.value = project.name;
     els.projectCustomer.value = project.customerId;
+    refreshSearchableSelect(els.projectCustomer);
     els.projectStatus.value = project.status;
     els.projectStartDate.value = project.startDate;
     els.projectEndDate.value = project.endDate;
@@ -1181,6 +1288,7 @@ function hydrateProjectOptions() {
     .filter((person) => person.type === "cliente" || person.type === "ambos")
     .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
     .join("")}`;
+  refreshSearchableSelect(els.projectCustomer);
 }
 
 function projectLabel(project) {

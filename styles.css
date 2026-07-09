@@ -563,6 +563,62 @@ textarea {
   color: var(--ink);
 }
 
+.searchable-select {
+  position: relative;
+}
+
+.searchable-select-input-wrap {
+  position: relative;
+}
+
+.searchable-select-input-wrap .search-icon {
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.searchable-select-input {
+  padding-left: 34px;
+}
+
+.searchable-select-options {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 4px;
+}
+
+.searchable-select-option {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.searchable-select-option:hover,
+.searchable-select-option.active {
+  background: var(--surface-soft);
+}
+
+.searchable-select-empty {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .toolbar input {
   max-width: 430px;
 }
