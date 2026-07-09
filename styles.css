@@ -130,6 +130,108 @@ button {
   color: var(--ink);
 }
 
+.session-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.session-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.session-info strong {
+  color: #f5faf7;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-info small {
+  color: #b8c8c1;
+  text-transform: capitalize;
+}
+
+.login-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(160deg, #18251f, var(--bg) 65%);
+  padding: 24px;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 32px;
+  display: grid;
+  gap: 16px;
+}
+
+.login-brand {
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.login-brand .brand-mark {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.login-brand strong,
+.login-brand small {
+  color: var(--ink);
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 22px;
+  text-align: center;
+}
+
+.login-card label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.login-card input {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.login-error {
+  margin: 0;
+  min-height: 18px;
+  color: var(--danger);
+  font-size: 13px;
+  text-align: center;
+}
+
+.login-submit {
+  width: 100%;
+}
+
+.login-submit:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .main {
   padding: 28px;
   overflow-x: hidden;

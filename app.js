@@ -8,6 +8,10 @@ const SYNC_DEBOUNCE_MS = 1200;
 let remoteUpdatedAt = "";
 let syncTimer = null;
 
+const AUTH_STORAGE_KEY = "financeiro-lumeris-session";
+const MASTER_USERNAME = "adm";
+const MASTER_INITIAL_PASSWORD = "7695988";
+
 const today = new Date();
 const todayIso = toIso(today);
 const currentMonthStart = toIso(startOfMonth(today));
@@ -19,6 +23,25 @@ const els = {
   viewTitle: document.querySelector("#viewTitle"),
   currentPeriod: document.querySelector("#currentPeriod"),
   syncStatus: document.querySelector("#syncStatus"),
+  loginScreen: document.querySelector("#loginScreen"),
+  loginForm: document.querySelector("#loginForm"),
+  loginUsername: document.querySelector("#loginUsername"),
+  loginPassword: document.querySelector("#loginPassword"),
+  loginError: document.querySelector("#loginError"),
+  loginSubmit: document.querySelector("#loginSubmit"),
+  appShell: document.querySelector("#appShell"),
+  navUsuarios: document.querySelector("#navUsuarios"),
+  sessionUserName: document.querySelector("#sessionUserName"),
+  sessionUserRole: document.querySelector("#sessionUserRole"),
+  logoutBtn: document.querySelector("#logoutBtn"),
+  userForm: document.querySelector("#userForm"),
+  userId: document.querySelector("#userId"),
+  userName: document.querySelector("#userName"),
+  userUsername: document.querySelector("#userUsername"),
+  userPassword: document.querySelector("#userPassword"),
+  userRole: document.querySelector("#userRole"),
+  userActive: document.querySelector("#userActive"),
+  usersList: document.querySelector("#usersList"),
   navItems: document.querySelectorAll(".nav-item"),
   views: document.querySelectorAll(".view"),
   transactionDialog: document.querySelector("#transactionDialog"),
@@ -104,6 +127,7 @@ const viewNames = {
   banco: "Conciliação bancária",
   pessoas: "Clientes e fornecedores",
   relatorios: "Relatórios financeiros",
+  usuarios: "Usuários",
 };
 
 const dreGroups = [
@@ -116,12 +140,27 @@ const dreGroups = [
   { key: "outros", label: "Outros", sign: 1 },
 ];
 
-bindEvents();
-setDefaultReportPeriod();
-renderAll();
-initRemoteSync();
+boot();
+
+async function boot() {
+  bindEvents();
+  setDefaultReportPeriod();
+  renderAll();
+  // Busca os dados remotos ANTES de semear o usuário master: initRemoteSync substitui
+  // state.users por inteiro, então criar o master antes disso arriscaria ele ser
+  // sobrescrito pela resposta remota antes do persist() (debounced) conseguir enviá-lo.
+  await initRemoteSync();
+  await ensureMasterUser();
+  renderUsers();
+  restoreSessionOrShowLogin();
+  els.loginSubmit.disabled = false;
+  els.loginSubmit.textContent = "Entrar";
+}
 
 function bindEvents() {
+  els.loginForm.addEventListener("submit", handleLogin);
+  els.logoutBtn.addEventListener("click", handleLogout);
+  els.userForm.addEventListener("submit", saveUser);
   els.navItems.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   document.querySelector("#newTransactionBtn").addEventListener("click", () => openTransactionDialog());
   document.querySelector("#newSaleBtn").addEventListener("click", openSaleDialog);
@@ -244,6 +283,7 @@ function loadState() {
     bankAccounts: [],
     bankMovements: [],
     transactions: [],
+    users: [],
   });
 }
 
@@ -256,7 +296,20 @@ function normalizeState(data) {
     bankAccounts: Array.isArray(data.bankAccounts) ? data.bankAccounts : [],
     bankMovements: Array.isArray(data.bankMovements) ? data.bankMovements : [],
     transactions: Array.isArray(data.transactions) ? data.transactions : [],
+    users: Array.isArray(data.users) ? data.users : [],
   };
+
+  normalized.users = normalized.users.map((item) => ({
+    id: crypto.randomUUID(),
+    name: "",
+    username: "",
+    passwordHash: "",
+    salt: "",
+    role: "usuario",
+    active: true,
+    createdAt: "",
+    ...item,
+  }));
 
   normalized.projects = normalized.projects.map((item) => ({
     id: crypto.randomUUID(),
@@ -352,30 +405,29 @@ function persist() {
   scheduleRemoteSync();
 }
 
-function initRemoteSync() {
+async function initRemoteSync() {
   if (!SHEETS_ENDPOINT) {
     setSyncStatus("Somente neste navegador (Sheets não configurado)", "offline");
     return;
   }
 
   setSyncStatus("Carregando dados compartilhados…", "syncing");
-  fetch(SHEETS_ENDPOINT)
-    .then((response) => response.json())
-    .then((result) => {
-      if (!result.ok) throw new Error(result.error || "Falha ao carregar");
-      remoteUpdatedAt = result.updatedAt || "";
-      if (result.data) {
-        const remoteState = normalizeState(result.data);
-        Object.assign(state, remoteState);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        renderAll();
-      }
-      setSyncStatus("Sincronizado com o Google Sheets", "ok");
-    })
-    .catch((error) => {
-      console.error(error);
-      setSyncStatus("Sem conexão com o Sheets — usando dados locais", "error");
-    });
+  try {
+    const response = await fetch(SHEETS_ENDPOINT);
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.error || "Falha ao carregar");
+    remoteUpdatedAt = result.updatedAt || "";
+    if (result.data) {
+      const remoteState = normalizeState(result.data);
+      Object.assign(state, remoteState);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      renderAll();
+    }
+    setSyncStatus("Sincronizado com o Google Sheets", "ok");
+  } catch (error) {
+    console.error(error);
+    setSyncStatus("Sem conexão com o Sheets — usando dados locais", "error");
+  }
 }
 
 function scheduleRemoteSync() {
@@ -413,6 +465,222 @@ function setSyncStatus(text, kind) {
   if (!els.syncStatus) return;
   els.syncStatus.textContent = text;
   els.syncStatus.dataset.state = kind;
+}
+
+function randomSalt() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashPassword(password, salt) {
+  const encoder = new TextEncoder();
+  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(`${salt}:${password}`));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function ensureMasterUser() {
+  if (state.users.length) return;
+  const salt = randomSalt();
+  const passwordHash = await hashPassword(MASTER_INITIAL_PASSWORD, salt);
+  state.users.push({
+    id: crypto.randomUUID(),
+    name: "Administrador",
+    username: MASTER_USERNAME,
+    passwordHash,
+    salt,
+    role: "administrador",
+    active: true,
+    createdAt: new Date().toISOString(),
+  });
+  persist();
+}
+
+function getSession() {
+  try {
+    return JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
+function setSession(user) {
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ userId: user.id, username: user.username }));
+}
+
+function clearSession() {
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+}
+
+function currentSessionUser() {
+  const session = getSession();
+  if (!session) return null;
+  const user = state.users.find((item) => item.id === session.userId && item.username === session.username);
+  return user && user.active ? user : null;
+}
+
+function isAdmin() {
+  return currentSessionUser()?.role === "administrador";
+}
+
+function roleLabel(role) {
+  return role === "administrador" ? "Administrador" : "Usuário";
+}
+
+function restoreSessionOrShowLogin() {
+  if (currentSessionUser()) {
+    showApp();
+  } else {
+    clearSession();
+    showLogin();
+  }
+}
+
+function showApp() {
+  els.loginScreen.classList.add("hidden");
+  els.appShell.classList.remove("hidden");
+  updateSessionUi();
+  setView("dashboard");
+}
+
+function showLogin() {
+  els.appShell.classList.add("hidden");
+  els.loginScreen.classList.remove("hidden");
+  els.loginPassword.value = "";
+  els.loginError.textContent = "";
+  els.loginUsername.focus();
+}
+
+function updateSessionUi() {
+  const user = currentSessionUser();
+  if (!user) return;
+  els.sessionUserName.textContent = user.name || user.username;
+  els.sessionUserRole.textContent = roleLabel(user.role);
+  els.navUsuarios.classList.toggle("hidden", user.role !== "administrador");
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const username = els.loginUsername.value.trim();
+  const password = els.loginPassword.value;
+  const user = state.users.find((item) => item.username.toLowerCase() === username.toLowerCase());
+
+  if (!user || !user.active) {
+    els.loginError.textContent = "Usuário ou senha inválidos.";
+    return;
+  }
+
+  const hash = await hashPassword(password, user.salt);
+  if (hash !== user.passwordHash) {
+    els.loginError.textContent = "Usuário ou senha inválidos.";
+    return;
+  }
+
+  els.loginError.textContent = "";
+  setSession(user);
+  showApp();
+}
+
+function handleLogout() {
+  clearSession();
+  showLogin();
+}
+
+function renderUsers() {
+  const users = [...state.users].sort((a, b) => a.username.localeCompare(b.username));
+  els.usersList.innerHTML = users.length
+    ? users.map((user) => `
+      <article class="person-item">
+        <strong><span>${escapeHtml(user.name || user.username)}</span><span>${roleLabel(user.role)}</span></strong>
+        <span class="muted">@${escapeHtml(user.username)} · ${user.active ? "Ativo" : "Inativo"}</span>
+        <div class="row-actions">
+          <button type="button" data-user-action="edit" data-id="${user.id}">Editar</button>
+          <button type="button" data-user-action="delete" data-id="${user.id}">Excluir</button>
+        </div>
+      </article>`).join("")
+    : emptyMessage("Nenhum usuário cadastrado.");
+
+  document.querySelectorAll("[data-user-action]").forEach((button) => {
+    button.addEventListener("click", () => handleUserAction(button.dataset.userAction, button.dataset.id));
+  });
+}
+
+async function saveUser(event) {
+  event.preventDefault();
+  const id = els.userId.value || crypto.randomUUID();
+  const username = els.userUsername.value.trim();
+  const password = els.userPassword.value;
+  const existing = state.users.find((item) => item.id === id);
+
+  const usernameTaken = state.users.some((item) => item.id !== id && item.username.toLowerCase() === username.toLowerCase());
+  if (usernameTaken) {
+    toast("Já existe um usuário com esse login.");
+    return;
+  }
+
+  if (!existing && !password) {
+    toast("Informe uma senha para o novo usuário.");
+    return;
+  }
+
+  let passwordHash = existing?.passwordHash || "";
+  let salt = existing?.salt || "";
+  if (password) {
+    salt = randomSalt();
+    passwordHash = await hashPassword(password, salt);
+  }
+
+  const data = {
+    id,
+    name: els.userName.value.trim(),
+    username,
+    passwordHash,
+    salt,
+    role: els.userRole.value,
+    active: els.userActive.checked,
+    createdAt: existing?.createdAt || new Date().toISOString(),
+  };
+
+  const index = state.users.findIndex((item) => item.id === id);
+  if (index >= 0) state.users[index] = data;
+  else state.users.push(data);
+
+  els.userForm.reset();
+  els.userId.value = "";
+  els.userActive.checked = true;
+  persist();
+  renderUsers();
+  updateSessionUi();
+  toast("Usuário salvo.");
+}
+
+function handleUserAction(action, id) {
+  const user = state.users.find((item) => item.id === id);
+  if (!user) return;
+
+  if (action === "edit") {
+    els.userId.value = user.id;
+    els.userName.value = user.name;
+    els.userUsername.value = user.username;
+    els.userPassword.value = "";
+    els.userRole.value = user.role;
+    els.userActive.checked = user.active;
+    return;
+  }
+
+  if (user.username === MASTER_USERNAME) {
+    toast("O usuário master não pode ser excluído.");
+    return;
+  }
+
+  if (getSession()?.userId === id) {
+    toast("Você não pode excluir o próprio usuário logado.");
+    return;
+  }
+
+  state.users = state.users.filter((item) => item.id !== id);
+  persist();
+  renderUsers();
+  toast("Usuário excluído.");
 }
 
 function normalizeAllocations(transaction, projects = state.projects) {
@@ -456,6 +724,10 @@ function setDefaultReportPeriod() {
 }
 
 function setView(view) {
+  if (view === "usuarios" && !isAdmin()) {
+    toast("Acesso restrito a administradores.");
+    view = "dashboard";
+  }
   els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
   els.views.forEach((section) => section.classList.toggle("active", section.id === view));
   els.viewTitle.textContent = viewNames[view];

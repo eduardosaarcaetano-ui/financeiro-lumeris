@@ -7,7 +7,28 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <div class="login-screen" id="loginScreen">
+      <form class="login-card" id="loginForm">
+        <div class="brand login-brand">
+          <span class="brand-mark">FL</span>
+          <div>
+            <strong>Financeiro Lumeris</strong>
+            <small>Gestão financeira operacional</small>
+          </div>
+        </div>
+        <h1>Entrar</h1>
+        <label>Usuário
+          <input id="loginUsername" required maxlength="60" autocomplete="username" />
+        </label>
+        <label>Senha
+          <input id="loginPassword" type="password" required maxlength="120" autocomplete="current-password" />
+        </label>
+        <p class="login-error" id="loginError" role="alert"></p>
+        <button class="primary-btn login-submit" id="loginSubmit" type="submit" disabled>Carregando…</button>
+      </form>
+    </div>
+
+    <div class="app-shell hidden" id="appShell">
       <aside class="sidebar" aria-label="Navegação principal">
         <div class="brand">
           <span class="brand-mark">FL</span>
@@ -26,12 +47,21 @@
           <button class="nav-item" data-view="banco" type="button">Banco</button>
           <button class="nav-item" data-view="pessoas" type="button">Cadastros</button>
           <button class="nav-item" data-view="relatorios" type="button">Relatórios</button>
+          <button class="nav-item hidden" data-view="usuarios" id="navUsuarios" type="button">Usuários</button>
         </nav>
 
         <div class="sidebar-actions">
           <button class="ghost-btn" id="exportJson" type="button">Exportar backup</button>
           <label class="ghost-btn file-btn" for="importJson">Importar backup</label>
           <input id="importJson" type="file" accept="application/json" />
+        </div>
+
+        <div class="session-box" id="sessionBox">
+          <div class="session-info">
+            <strong id="sessionUserName"></strong>
+            <small id="sessionUserRole"></small>
+          </div>
+          <button class="ghost-btn" id="logoutBtn" type="button">Sair</button>
         </div>
       </aside>
 
@@ -399,6 +429,42 @@
                 <input id="peopleSearch" type="search" placeholder="Buscar nome, documento ou contato" />
               </div>
               <div class="people-list" id="peopleList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="usuarios">
+          <div class="split">
+            <form class="panel form-panel" id="userForm">
+              <h2>Novo usuário</h2>
+              <input type="hidden" id="userId" />
+              <label>Nome
+                <input id="userName" required maxlength="80" />
+              </label>
+              <label>Usuário/login
+                <input id="userUsername" required maxlength="40" autocomplete="off" />
+              </label>
+              <label>Senha
+                <input id="userPassword" type="password" maxlength="120" autocomplete="new-password" placeholder="Deixe em branco para manter a atual" />
+              </label>
+              <label>Perfil
+                <select id="userRole">
+                  <option value="usuario">Usuário</option>
+                  <option value="administrador">Administrador</option>
+                </select>
+              </label>
+              <label class="checkbox-line">
+                <input id="userActive" type="checkbox" checked />
+                Ativo
+              </label>
+              <button class="primary-btn" type="submit">Salvar usuário</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Usuários cadastrados</h2>
+              </div>
+              <div class="people-list" id="usersList"></div>
             </section>
           </div>
         </section>
