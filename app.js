@@ -12,6 +12,31 @@ const AUTH_STORAGE_KEY = "financeiro-lumeris-session";
 const MASTER_USERNAME = "adm";
 const MASTER_INITIAL_PASSWORD = "7695988";
 
+const SEARCH_ICON_SVG = '<svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>';
+
+// Camada de integração bancária: cada provedor implementa fetchStatement(account, {start, end})
+// e devolve movimentos no MESMO formato produzido por parseOfx, para reaproveitar dedupe/conciliação.
+// "inter" e "santander" nunca chamam o banco direto do navegador (impossível: exigem mTLS/segredos que
+// não podem existir num site estático) — eles chamam um backend próprio que você hospeda e que guarda
+// as credenciais reais. Enquanto esse backend não existir, use o provedor "mock".
+// (Referencia funções declaradas mais abaixo — seguro porque function declarations são hoisted.)
+const BANK_PROVIDERS = {
+  mock: { label: "Simulado (dados de teste)", requiresEndpoint: false, fetchStatement: (account, range) => mockFetchStatement(account, range) },
+  inter: { label: "Banco Inter (API real via backend)", requiresEndpoint: true, fetchStatement: (account, range) => fetchStatementViaBackend("inter", account, range) },
+  santander: { label: "Santander (API real via backend)", requiresEndpoint: true, fetchStatement: (account, range) => fetchStatementViaBackend("santander", account, range) },
+};
+
+const MOCK_DESCRIPTIONS = {
+  "077": {
+    entrada: ["Pix recebido - Cliente Simulado", "Transferência recebida", "Rendimento de aplicação"],
+    saida: ["Pix enviado - Fornecedor Simulado", "Pagamento de boleto", "Tarifa de manutenção"],
+  },
+  "033": {
+    entrada: ["TED recebida", "Depósito identificado", "Rendimento CDB"],
+    saida: ["Débito automático", "Compra no débito", "Pagamento de convênio"],
+  },
+};
+
 const today = new Date();
 const todayIso = toIso(today);
 const currentMonthStart = toIso(startOfMonth(today));
@@ -152,7 +177,12 @@ const dreGroups = [
   { key: "outros", label: "Outros", sign: 1 },
 ];
 
-boot();
+boot().catch((error) => {
+  console.error("Falha ao iniciar o sistema:", error);
+  els.loginError.textContent = "Erro ao carregar o sistema. Atualize a página e tente novamente.";
+  els.loginSubmit.disabled = false;
+  els.loginSubmit.textContent = "Entrar";
+});
 
 async function boot() {
   bindEvents();
@@ -708,8 +738,6 @@ function handleUserAction(action, id) {
   renderUsers();
   toast("Usuário excluído.");
 }
-
-const SEARCH_ICON_SVG = '<svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>';
 
 function enhanceSearchableSelect(selectEl, { placeholder = "Buscar…" } = {}) {
   if (!selectEl || selectEl.dataset.searchEnhanced) return;
@@ -1655,17 +1683,6 @@ function mergeBankMovements(newMovements) {
   return { added: fresh.length, duplicates: newMovements.length - fresh.length };
 }
 
-// Camada de integração bancária: cada provedor implementa fetchStatement(account, {start, end})
-// e devolve movimentos no MESMO formato produzido por parseOfx, para reaproveitar dedupe/conciliação.
-// "inter" e "santander" nunca chamam o banco direto do navegador (impossível: exigem mTLS/segredos que
-// não podem existir num site estático) — eles chamam um backend próprio que você hospeda e que guarda
-// as credenciais reais. Enquanto esse backend não existir, use o provedor "mock".
-const BANK_PROVIDERS = {
-  mock: { label: "Simulado (dados de teste)", requiresEndpoint: false, fetchStatement: mockFetchStatement },
-  inter: { label: "Banco Inter (API real via backend)", requiresEndpoint: true, fetchStatement: (account, range) => fetchStatementViaBackend("inter", account, range) },
-  santander: { label: "Santander (API real via backend)", requiresEndpoint: true, fetchStatement: (account, range) => fetchStatementViaBackend("santander", account, range) },
-};
-
 async function fetchStatementViaBackend(bankKey, account, { start, end }) {
   const endpoint = (account.syncEndpoint || "").trim().replace(/\/$/, "");
   if (!endpoint) {
@@ -1711,17 +1728,6 @@ function normalizeProviderMovement(raw, account, accountKey) {
     importedAt: new Date().toISOString(),
   };
 }
-
-const MOCK_DESCRIPTIONS = {
-  "077": {
-    entrada: ["Pix recebido - Cliente Simulado", "Transferência recebida", "Rendimento de aplicação"],
-    saida: ["Pix enviado - Fornecedor Simulado", "Pagamento de boleto", "Tarifa de manutenção"],
-  },
-  "033": {
-    entrada: ["TED recebida", "Depósito identificado", "Rendimento CDB"],
-    saida: ["Débito automático", "Compra no débito", "Pagamento de convênio"],
-  },
-};
 
 function seededRandom(seed) {
   let h = 1779033703 ^ seed.length;
