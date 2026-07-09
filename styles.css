@@ -166,6 +166,39 @@ button {
   flex-wrap: wrap;
 }
 
+.sync-status {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+}
+
+.sync-status[data-state="ok"] {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.sync-status[data-state="syncing"] {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.sync-status[data-state="error"] {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.sync-status[data-state="offline"] {
+  color: var(--muted);
+}
+
+.sync-status:empty {
+  display: none;
+}
+
 .primary-btn {
   background: var(--primary);
   color: #ffffff;

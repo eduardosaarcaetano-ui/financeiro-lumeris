@@ -1,6 +1,13 @@
 const STORAGE_KEY = "financeiro-lumeris-v3";
 const LEGACY_STORAGE_KEYS = ["financeiro-lumeris-v2", "financeiro-lumeris-v1"];
 
+// URL de implantação do Google Apps Script (Web App). Preencha depois de publicar o Code.gs
+// na sua planilha para que todos os usuários passem a compartilhar os mesmos dados.
+const SHEETS_ENDPOINT = "https://script.google.com/macros/s/AKfycbw6UqQ8YH0jMLdvDfSumh6h8zZfBSh91NIOd6oqJo_DP5bgP88N8lLl25daHvwCUWSq/exec";
+const SYNC_DEBOUNCE_MS = 1200;
+let remoteUpdatedAt = "";
+let syncTimer = null;
+
 const today = new Date();
 const todayIso = toIso(today);
 const currentMonthStart = toIso(startOfMonth(today));
@@ -11,6 +18,7 @@ const state = loadState();
 const els = {
   viewTitle: document.querySelector("#viewTitle"),
   currentPeriod: document.querySelector("#currentPeriod"),
+  syncStatus: document.querySelector("#syncStatus"),
   navItems: document.querySelectorAll(".nav-item"),
   views: document.querySelectorAll(".view"),
   transactionDialog: document.querySelector("#transactionDialog"),
@@ -111,6 +119,7 @@ const dreGroups = [
 bindEvents();
 setDefaultReportPeriod();
 renderAll();
+initRemoteSync();
 
 function bindEvents() {
   els.navItems.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
@@ -340,6 +349,70 @@ function normalizeState(data) {
 
 function persist() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleRemoteSync();
+}
+
+function initRemoteSync() {
+  if (!SHEETS_ENDPOINT) {
+    setSyncStatus("Somente neste navegador (Sheets não configurado)", "offline");
+    return;
+  }
+
+  setSyncStatus("Carregando dados compartilhados…", "syncing");
+  fetch(SHEETS_ENDPOINT)
+    .then((response) => response.json())
+    .then((result) => {
+      if (!result.ok) throw new Error(result.error || "Falha ao carregar");
+      remoteUpdatedAt = result.updatedAt || "";
+      if (result.data) {
+        const remoteState = normalizeState(result.data);
+        Object.assign(state, remoteState);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        renderAll();
+      }
+      setSyncStatus("Sincronizado com o Google Sheets", "ok");
+    })
+    .catch((error) => {
+      console.error(error);
+      setSyncStatus("Sem conexão com o Sheets — usando dados locais", "error");
+    });
+}
+
+function scheduleRemoteSync() {
+  if (!SHEETS_ENDPOINT) return;
+  window.clearTimeout(syncTimer);
+  setSyncStatus("Salvando alterações…", "syncing");
+  syncTimer = window.setTimeout(pushToSheets, SYNC_DEBOUNCE_MS);
+}
+
+function pushToSheets() {
+  fetch(SHEETS_ENDPOINT, {
+    method: "POST",
+    body: JSON.stringify({ data: state, baseUpdatedAt: remoteUpdatedAt }),
+  })
+    .then((response) => response.json())
+    .then((result) => {
+      if (!result.ok) {
+        if (result.error === "conflict") {
+          toast("Outra pessoa salvou dados mais novos. Recarregue a página antes de continuar.");
+          setSyncStatus("Conflito — recarregue a página", "error");
+          return;
+        }
+        throw new Error(result.error || "Falha ao salvar");
+      }
+      remoteUpdatedAt = result.updatedAt || "";
+      setSyncStatus("Sincronizado com o Google Sheets", "ok");
+    })
+    .catch((error) => {
+      console.error(error);
+      setSyncStatus("Erro ao salvar no Sheets — dados mantidos localmente", "error");
+    });
+}
+
+function setSyncStatus(text, kind) {
+  if (!els.syncStatus) return;
+  els.syncStatus.textContent = text;
+  els.syncStatus.dataset.state = kind;
 }
 
 function normalizeAllocations(transaction, projects = state.projects) {
