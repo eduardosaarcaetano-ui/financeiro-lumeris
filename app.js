@@ -429,7 +429,8 @@ const viewNames = {
   usuarios: "Usuários",
 };
 
-const defaultCrmStages = [
+function getDefaultCrmStages() {
+  return [
   { id: "triagem", name: "Triagem", color: "#3f6f8f", order: 1 },
   { id: "contato", name: "Destinados / Contato Inicial", color: "#5d7f3f", order: 2 },
   { id: "diagnostico", name: "Diagnóstico", color: "#a06418", order: 3 },
@@ -437,7 +438,8 @@ const defaultCrmStages = [
   { id: "negociacao", name: "Negociação", color: "#8757a2", order: 5 },
   { id: "ganho", name: "Fechado - Ganho", color: "#25744f", order: 6 },
   { id: "perdido", name: "Fechado - Perdido", color: "#aa2f2f", order: 7 },
-];
+  ];
+}
 
 const dreGroups = [
   { key: "receita_bruta", label: "Receita bruta", sign: 1 },
@@ -989,7 +991,7 @@ function normalizeState(data) {
   }
 
   if (!normalized.opportunityStages.length) {
-    normalized.opportunityStages = defaultCrmStages;
+    normalized.opportunityStages = getDefaultCrmStages();
   }
 
   normalized.opportunities = normalized.opportunities.map((item) => ({
@@ -1207,20 +1209,44 @@ async function hashPassword(password, salt) {
 }
 
 async function ensureMasterUser() {
-  if (state.users.length) return;
-  const salt = randomSalt();
-  const passwordHash = await hashPassword(MASTER_INITIAL_PASSWORD, salt);
-  state.users.push({
-    id: crypto.randomUUID(),
-    name: "Administrador",
-    username: MASTER_USERNAME,
-    passwordHash,
-    salt,
-    role: "administrador",
-    active: true,
-    createdAt: new Date().toISOString(),
-  });
-  persist();
+  let master = state.users.find((user) => user.username?.toLowerCase() === MASTER_USERNAME);
+  let changed = false;
+
+  if (!master) {
+    master = {
+      id: crypto.randomUUID(),
+      name: "Administrador",
+      username: MASTER_USERNAME,
+      createdAt: new Date().toISOString(),
+    };
+    state.users.push(master);
+    changed = true;
+  }
+
+  const storedPasswordHash = master.salt ? await hashPassword(MASTER_INITIAL_PASSWORD, master.salt) : "";
+  const passwordNeedsReset = master.passwordHash !== storedPasswordHash;
+  const salt = passwordNeedsReset ? randomSalt() : master.salt;
+  const passwordHash = passwordNeedsReset ? await hashPassword(MASTER_INITIAL_PASSWORD, salt) : master.passwordHash;
+
+  if (
+    master.name !== "Administrador" ||
+    master.username !== MASTER_USERNAME ||
+    passwordNeedsReset ||
+    master.role !== "administrador" ||
+    master.active !== true
+  ) {
+    Object.assign(master, {
+      name: "Administrador",
+      username: MASTER_USERNAME,
+      passwordHash,
+      salt,
+      role: "administrador",
+      active: true,
+    });
+    changed = true;
+  }
+
+  if (changed) persist();
 }
 
 function getSession() {
@@ -1242,7 +1268,10 @@ function clearSession() {
 function currentSessionUser() {
   const session = getSession();
   if (!session) return null;
-  const user = state.users.find((item) => item.id === session.userId && item.username === session.username);
+  const sessionUsername = session.username?.toLowerCase();
+  const user =
+    state.users.find((item) => item.id === session.userId && item.username === session.username) ||
+    state.users.find((item) => item.username?.toLowerCase() === sessionUsername);
   return user && user.active ? user : null;
 }
 
@@ -1311,26 +1340,46 @@ function updateSessionUi() {
   });
 }
 
+function isMasterCredentials(username, password) {
+  return username.toLowerCase() === MASTER_USERNAME && password === MASTER_INITIAL_PASSWORD;
+}
+
 async function handleLogin(event) {
   event.preventDefault();
   const username = els.loginUsername.value.trim();
   const password = els.loginPassword.value;
-  const user = state.users.find((item) => item.username.toLowerCase() === username.toLowerCase());
+  const normalizedUsername = username.toLowerCase();
 
-  if (!user || !user.active) {
-    els.loginError.textContent = "Usuário ou senha inválidos.";
-    return;
+  try {
+    if (isMasterCredentials(username, password)) {
+      await ensureMasterUser();
+      const master = state.users.find((item) => item.username?.toLowerCase() === MASTER_USERNAME);
+      els.loginError.textContent = "";
+      setSession(master);
+      showApp();
+      return;
+    }
+
+    const user = state.users.find((item) => item.username?.toLowerCase() === normalizedUsername);
+
+    if (!user || !user.active || !user.salt || !user.passwordHash) {
+      els.loginError.textContent = "Usuário ou senha inválidos.";
+      return;
+    }
+
+    const hash = await hashPassword(password, user.salt);
+    if (hash !== user.passwordHash) {
+      els.loginError.textContent = "Usuário ou senha inválidos.";
+      return;
+    }
+
+    els.loginError.textContent = "";
+    setSession(user);
+    showApp();
+  } catch (error) {
+    console.error(error);
+    els.loginError.textContent = "Não foi possível entrar. Recarregue a página e tente novamente.";
   }
-
-  const hash = await hashPassword(password, user.salt);
-  if (hash !== user.passwordHash) {
-    els.loginError.textContent = "Usuário ou senha inválidos.";
-    return;
-  }
-
-  els.loginError.textContent = "";
-  setSession(user);
-  showApp();
 }
 
 function handleLogout() {
