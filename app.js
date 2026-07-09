@@ -457,18 +457,21 @@ boot().catch((error) => {
 });
 
 async function boot() {
-  bindEvents();
-  setDefaultReportPeriod();
-  renderAll();
-  // Busca os dados remotos ANTES de semear o usuário master: initRemoteSync substitui
-  // state.users por inteiro, então criar o master antes disso arriscaria ele ser
-  // sobrescrito pela resposta remota antes do persist() (debounced) conseguir enviá-lo.
-  await initRemoteSync();
-  await ensureMasterUser();
-  renderUsers();
-  restoreSessionOrShowLogin();
-  els.loginSubmit.disabled = false;
-  els.loginSubmit.textContent = "Entrar";
+  try {
+    bindEvents();
+    setDefaultReportPeriod();
+    renderAll();
+    // Busca os dados remotos ANTES de semear o usuário master: initRemoteSync substitui
+    // state.users por inteiro, então criar o master antes disso arriscaria ele ser
+    // sobrescrito pela resposta remota antes do persist() (debounced) conseguir enviá-lo.
+    await initRemoteSync();
+    await ensureMasterUser();
+    renderUsers();
+    restoreSessionOrShowLogin();
+  } finally {
+    els.loginSubmit.disabled = false;
+    els.loginSubmit.textContent = "Entrar";
+  }
 }
 
 function bindEvents() {
@@ -1124,7 +1127,7 @@ async function initRemoteSync() {
 
   setSyncStatus("Carregando dados compartilhados…", "syncing");
   try {
-    const response = await fetch(SHEETS_ENDPOINT);
+    const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, 8000);
     const result = await response.json();
     if (!result.ok) throw new Error(result.error || "Falha ao carregar");
     remoteUpdatedAt = result.updatedAt || "";
@@ -1139,6 +1142,12 @@ async function initRemoteSync() {
     console.error(error);
     setSyncStatus("Sem conexão com o Sheets — usando dados locais", "error");
   }
+}
+
+function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => window.clearTimeout(timeout));
 }
 
 function scheduleRemoteSync() {
