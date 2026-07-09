@@ -578,7 +578,7 @@ td strong {
 
 .crm-toolbar {
   display: grid;
-  grid-template-columns: repeat(6, minmax(150px, 1fr)) auto auto;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
   align-items: end;
   padding: 14px;
@@ -591,6 +591,20 @@ td strong {
 
 .crm-toolbar label {
   min-width: 0;
+}
+
+.crm-toolbar input,
+.crm-toolbar select,
+.crm-toolbar button {
+  width: 100%;
+  min-width: 0;
+}
+
+.crm-toolbar .secondary-btn,
+.crm-toolbar .primary-btn {
+  min-height: 42px;
+  white-space: normal;
+  line-height: 1.15;
 }
 
 .crm-check {
@@ -729,7 +743,8 @@ td strong {
 }
 
 .large-modal {
-  width: min(1080px, calc(100vw - 24px));
+  width: 100%;
+  max-width: 760px;
 }
 
 .embedded-panel {
@@ -932,11 +947,13 @@ label {
 }
 
 dialog {
-  width: min(860px, calc(100vw - 24px));
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
   border: 0;
   border-radius: 8px;
   padding: 0;
   box-shadow: 0 26px 80px rgba(0, 0, 0, 0.26);
+  overflow: hidden;
 }
 
 dialog::backdrop {
@@ -944,7 +961,11 @@ dialog::backdrop {
 }
 
 .modal {
-  padding: 20px;
+  box-sizing: border-box;
+  width: 100%;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 18px;
 }
 
 .modal-head {
