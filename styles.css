@@ -857,6 +857,15 @@ dialog::backdrop {
   display: none;
 }
 
+.stock-alert-zero td:first-child,
+.stock-alert-below-min td:first-child {
+  border-left: 3px solid var(--danger);
+}
+
+.stock-alert-above-max td:first-child {
+  border-left: 3px solid var(--warn);
+}
+
 .installment-preview {
   display: grid;
   gap: 10px;

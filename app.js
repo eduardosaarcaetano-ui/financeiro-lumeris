@@ -61,6 +61,48 @@ const MOCK_DESCRIPTIONS = {
   },
 };
 
+// Controle de acesso por papel. "administrador" (null) enxerga tudo; os demais papéis
+// só acessam as views listadas aqui. Este é o único lugar que decide isso — setView() e
+// updateSessionUi() (menu) consultam a mesma função canAccessView(), então não existe
+// como uma tela ficar acessível por engano num lugar e bloqueada em outro.
+const ROLE_ALLOWED_VIEWS = {
+  administrador: null,
+  usuario: ["dashboard", "receber", "pagar", "vendas", "projetos", "banco", "notasfiscais", "pessoas", "relatorios", "estoque"],
+  estoque: ["estoque"],
+};
+
+const ROLE_LABELS = {
+  administrador: "Administrador",
+  estoque: "Estoque",
+  usuario: "Usuário",
+};
+
+let currentStockTab = "itens";
+
+const STOCK_UNIT_LABELS = {
+  unidade: "Unidade",
+  peca: "Peça",
+  metro: "Metro",
+  metro_quadrado: "Metro quadrado",
+  metro_cubico: "Metro cúbico",
+  quilo: "Quilo",
+  litro: "Litro",
+  caixa: "Caixa",
+  pacote: "Pacote",
+  rolo: "Rolo",
+};
+
+const STOCK_EXIT_TYPE_LABELS = {
+  consumo_projeto: "Consumo em projeto",
+  uso_interno: "Uso interno",
+  transferencia: "Transferência",
+  perda: "Perda",
+  avaria: "Avaria",
+  descarte: "Descarte",
+  emprestimo: "Empréstimo",
+  outro: "Outro",
+};
+
 const today = new Date();
 const todayIso = toIso(today);
 const currentMonthStart = toIso(startOfMonth(today));
@@ -79,7 +121,6 @@ const els = {
   loginError: document.querySelector("#loginError"),
   loginSubmit: document.querySelector("#loginSubmit"),
   appShell: document.querySelector("#appShell"),
-  navUsuarios: document.querySelector("#navUsuarios"),
   sessionUserName: document.querySelector("#sessionUserName"),
   sessionUserRole: document.querySelector("#sessionUserRole"),
   logoutBtn: document.querySelector("#logoutBtn"),
@@ -123,6 +164,54 @@ const els = {
   invoiceLinkSummary: document.querySelector("#invoiceLinkSummary"),
   invoiceLinkList: document.querySelector("#invoiceLinkList"),
   bankMatchInvoice: document.querySelector("#bankMatchInvoice"),
+  stockAlertBelowMin: document.querySelector("#stockAlertBelowMin"),
+  stockAlertZero: document.querySelector("#stockAlertZero"),
+  stockAlertAboveMax: document.querySelector("#stockAlertAboveMax"),
+  stockItemForm: document.querySelector("#stockItemForm"),
+  stockItemFormTitle: document.querySelector("#stockItemFormTitle"),
+  stockItemId: document.querySelector("#stockItemId"),
+  stockInternalCode: document.querySelector("#stockInternalCode"),
+  stockBarcode: document.querySelector("#stockBarcode"),
+  stockName: document.querySelector("#stockName"),
+  stockDescription: document.querySelector("#stockDescription"),
+  stockCategory: document.querySelector("#stockCategory"),
+  stockSubcategory: document.querySelector("#stockSubcategory"),
+  stockBrand: document.querySelector("#stockBrand"),
+  stockModel: document.querySelector("#stockModel"),
+  stockUnit: document.querySelector("#stockUnit"),
+  stockSupplier: document.querySelector("#stockSupplier"),
+  stockLocation: document.querySelector("#stockLocation"),
+  stockMinQuantity: document.querySelector("#stockMinQuantity"),
+  stockMaxQuantity: document.querySelector("#stockMaxQuantity"),
+  stockActive: document.querySelector("#stockActive"),
+  stockNotes: document.querySelector("#stockNotes"),
+  stockItemSearch: document.querySelector("#stockItemSearch"),
+  stockItemTable: document.querySelector("#stockItemTable"),
+  stockEntryForm: document.querySelector("#stockEntryForm"),
+  stockEntryDate: document.querySelector("#stockEntryDate"),
+  stockEntrySupplier: document.querySelector("#stockEntrySupplier"),
+  stockEntryItem: document.querySelector("#stockEntryItem"),
+  stockEntryQuantity: document.querySelector("#stockEntryQuantity"),
+  stockEntryUnitCost: document.querySelector("#stockEntryUnitCost"),
+  stockEntryTotalCost: document.querySelector("#stockEntryTotalCost"),
+  stockEntryInvoiceNumber: document.querySelector("#stockEntryInvoiceNumber"),
+  stockEntryInvoice: document.querySelector("#stockEntryInvoice"),
+  stockEntryTransaction: document.querySelector("#stockEntryTransaction"),
+  stockEntryProject: document.querySelector("#stockEntryProject"),
+  stockEntryNotes: document.querySelector("#stockEntryNotes"),
+  stockEntryList: document.querySelector("#stockEntryList"),
+  stockExitForm: document.querySelector("#stockExitForm"),
+  stockExitDate: document.querySelector("#stockExitDate"),
+  stockExitItem: document.querySelector("#stockExitItem"),
+  stockExitQuantity: document.querySelector("#stockExitQuantity"),
+  stockExitType: document.querySelector("#stockExitType"),
+  stockExitProjectWrap: document.querySelector("#stockExitProjectWrap"),
+  stockExitProject: document.querySelector("#stockExitProject"),
+  stockExitRecipient: document.querySelector("#stockExitRecipient"),
+  stockExitReason: document.querySelector("#stockExitReason"),
+  stockExitNotes: document.querySelector("#stockExitNotes"),
+  stockExitList: document.querySelector("#stockExitList"),
+  stockPurchaseNeedTable: document.querySelector("#stockPurchaseNeedTable"),
   navItems: document.querySelectorAll(".nav-item"),
   views: document.querySelectorAll(".view"),
   transactionDialog: document.querySelector("#transactionDialog"),
@@ -219,6 +308,7 @@ const viewNames = {
   projetos: "Projetos e centros de custo",
   banco: "Conciliação bancária",
   notasfiscais: "Notas Fiscais",
+  estoque: "Estoque",
   pessoas: "Clientes e fornecedores",
   relatorios: "Relatórios financeiros",
   usuarios: "Usuários",
@@ -282,6 +372,23 @@ function bindEvents() {
   });
   updateInvoiceFormForKind(currentInvoiceKind);
   els.invoiceIssueDate.value = todayIso;
+
+  document.querySelectorAll("[data-stock-tab]").forEach((button) => {
+    button.addEventListener("click", () => setStockTab(button.dataset.stockTab));
+  });
+  els.stockItemForm.addEventListener("submit", saveStockItem);
+  els.stockItemSearch.addEventListener("input", renderStockItems);
+  els.stockEntryForm.addEventListener("submit", saveStockEntry);
+  els.stockEntryQuantity.addEventListener("input", updateStockEntryTotalCost);
+  els.stockEntryUnitCost.addEventListener("input", updateStockEntryTotalCost);
+  els.stockExitForm.addEventListener("submit", saveStockExit);
+  els.stockExitType.addEventListener("change", updateStockExitTypeUi);
+  enhanceSearchableSelect(els.stockEntryItem, { placeholder: "Buscar item…" });
+  enhanceSearchableSelect(els.stockExitItem, { placeholder: "Buscar item…" });
+  els.stockEntryDate.value = todayIso;
+  els.stockExitDate.value = todayIso;
+  updateStockExitTypeUi();
+
   els.navItems.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   document.querySelector("#newTransactionBtn").addEventListener("click", () => openTransactionDialog());
   document.querySelector("#newSaleBtn").addEventListener("click", openSaleDialog);
@@ -416,6 +523,9 @@ function loadState() {
     transactions: [],
     users: [],
     invoices: [],
+    stockItems: [],
+    stockMovements: [],
+    stockLocations: [],
   });
 }
 
@@ -430,7 +540,73 @@ function normalizeState(data) {
     transactions: Array.isArray(data.transactions) ? data.transactions : [],
     users: Array.isArray(data.users) ? data.users : [],
     invoices: Array.isArray(data.invoices) ? data.invoices : [],
+    stockItems: Array.isArray(data.stockItems) ? data.stockItems : [],
+    stockMovements: Array.isArray(data.stockMovements) ? data.stockMovements : [],
+    stockLocations: Array.isArray(data.stockLocations) ? data.stockLocations : [],
   };
+
+  normalized.stockLocations = normalized.stockLocations.map((item) => ({
+    id: crypto.randomUUID(),
+    name: "",
+    type: "estoque",
+    active: true,
+    ...item,
+  }));
+  if (!normalized.stockLocations.length) {
+    normalized.stockLocations.push({ id: crypto.randomUUID(), name: "Estoque Principal", type: "estoque", active: true });
+  }
+
+  normalized.stockItems = normalized.stockItems.map((item) => ({
+    id: crypto.randomUUID(),
+    internalCode: "",
+    barcode: "",
+    name: "",
+    description: "",
+    category: "",
+    subcategory: "",
+    brand: "",
+    model: "",
+    unit: "unidade",
+    primarySupplierId: "",
+    locationId: normalized.stockLocations[0]?.id || "",
+    quantity: 0,
+    minQuantity: 0,
+    maxQuantity: 0,
+    averageCost: 0,
+    lastPurchaseCost: 0,
+    active: true,
+    notes: "",
+    createdAt: "",
+    updatedAt: "",
+    ...item,
+  }));
+
+  normalized.stockMovements = normalized.stockMovements.map((item) => ({
+    id: crypto.randomUUID(),
+    itemId: "",
+    type: "entrada",
+    date: "",
+    timestamp: "",
+    quantity: 0,
+    unitCost: 0,
+    totalCost: 0,
+    balanceBefore: 0,
+    balanceAfter: 0,
+    projectId: "",
+    supplierId: "",
+    invoiceId: "",
+    invoiceNumber: "",
+    transactionId: "",
+    exitType: "",
+    reason: "",
+    responsibleUserId: "",
+    recipientName: "",
+    fromLocationId: "",
+    toLocationId: "",
+    notes: "",
+    createdAt: "",
+    ...item,
+  }));
 
   normalized.invoices = normalized.invoices.map((item) => ({
     id: crypto.randomUUID(),
@@ -683,8 +859,31 @@ function isAdmin() {
   return currentSessionUser()?.role === "administrador";
 }
 
+function currentRole() {
+  return currentSessionUser()?.role || "usuario";
+}
+
+function canAccessView(view) {
+  const allowed = ROLE_ALLOWED_VIEWS[currentRole()];
+  if (allowed === null) return true;
+  return (allowed || ROLE_ALLOWED_VIEWS.usuario).includes(view);
+}
+
+function defaultViewForRole() {
+  return currentRole() === "estoque" ? "estoque" : "dashboard";
+}
+
+// Segunda camada de proteção: além de bloquear a navegação em setView(), as funções que
+// gravam dados financeiros/administrativos também se recusam a rodar se chamadas direto
+// (ex.: pelo console do navegador), não só quando acionadas pela tela.
+function guardViewAccess(view) {
+  if (canAccessView(view)) return true;
+  toast("Acesso restrito para o seu perfil.");
+  return false;
+}
+
 function roleLabel(role) {
-  return role === "administrador" ? "Administrador" : "Usuário";
+  return ROLE_LABELS[role] || "Usuário";
 }
 
 function restoreSessionOrShowLogin() {
@@ -700,7 +899,7 @@ function showApp() {
   els.loginScreen.classList.add("hidden");
   els.appShell.classList.remove("hidden");
   updateSessionUi();
-  setView("dashboard");
+  setView(defaultViewForRole());
 }
 
 function showLogin() {
@@ -716,7 +915,9 @@ function updateSessionUi() {
   if (!user) return;
   els.sessionUserName.textContent = user.name || user.username;
   els.sessionUserRole.textContent = roleLabel(user.role);
-  els.navUsuarios.classList.toggle("hidden", user.role !== "administrador");
+  els.navItems.forEach((item) => {
+    item.classList.toggle("hidden", !canAccessView(item.dataset.view));
+  });
 }
 
 async function handleLogin(event) {
@@ -767,6 +968,10 @@ function renderUsers() {
 
 async function saveUser(event) {
   event.preventDefault();
+  if (!isAdmin()) {
+    toast("Apenas administradores podem cadastrar usuários.");
+    return;
+  }
   const id = els.userId.value || crypto.randomUUID();
   const username = els.userUsername.value.trim();
   const password = els.userPassword.value;
@@ -815,6 +1020,10 @@ async function saveUser(event) {
 }
 
 function handleUserAction(action, id) {
+  if (!isAdmin()) {
+    toast("Apenas administradores podem gerenciar usuários.");
+    return;
+  }
   const user = state.users.find((item) => item.id === id);
   if (!user) return;
 
@@ -987,9 +1196,9 @@ function setDefaultReportPeriod() {
 }
 
 function setView(view) {
-  if (view === "usuarios" && !isAdmin()) {
-    toast("Acesso restrito a administradores.");
-    view = "dashboard";
+  if (!canAccessView(view)) {
+    toast("Acesso restrito para o seu perfil.");
+    view = defaultViewForRole();
   }
   els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
   els.views.forEach((section) => section.classList.toggle("active", section.id === view));
@@ -1006,6 +1215,7 @@ function renderAll() {
   renderBank();
   renderPeople();
   renderInvoices();
+  renderStock();
   renderReports();
   hydratePersonOptions();
   hydrateSalePeople();
@@ -1467,6 +1677,8 @@ function hydrateProjectOptions() {
   els.bankProject.innerHTML = optionalProjectOptions;
   els.projectReportSelect.innerHTML = optionalProjectOptions;
   els.invoiceProject.innerHTML = optionalProjectOptions;
+  els.stockEntryProject.innerHTML = optionalProjectOptions;
+  els.stockExitProject.innerHTML = optionalProjectOptions;
   els.projectCustomer.innerHTML = `<option value="">Sem cliente vinculado</option>${state.people
     .filter((person) => person.type === "cliente" || person.type === "ambos")
     .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
@@ -2024,6 +2236,7 @@ function updateBankSyncHint() {
 }
 
 async function handleBankSyncSubmit() {
+  if (!guardViewAccess("banco")) return;
   const accountKey = els.bankSyncAccountKey.value;
   const account = state.bankAccounts.find((item) => (item.accountKey || `${item.bankId}-${item.accountId}`) === accountKey);
   if (!account) return;
@@ -2217,6 +2430,7 @@ function matchScore(movement, transaction) {
 }
 
 function saveBankClassification() {
+  if (!guardViewAccess("banco")) return;
   const movement = state.bankMovements.find((item) => item.id === els.bankMovementId.value);
   if (!movement) return;
 
@@ -2299,6 +2513,458 @@ function exportBankCsv() {
   downloadCsv(`movimentos-bancarios-${todayIso}.csv`, [["data", "tipo", "historico", "banco", "conta", "documento", "categoria", "projeto", "grupo_dre", "status", "valor", "conciliado", "observacoes"], ...rows]);
 }
 
+// ---- Estoque ----
+
+function formatQuantity(value) {
+  return Number(value || 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
+
+function stockItemLabel(item) {
+  return item.internalCode ? `${item.internalCode} - ${item.name}` : item.name;
+}
+
+function stockAlertLevel(item) {
+  if (item.quantity <= 0) return "zero";
+  if (item.quantity < item.minQuantity) return "below-min";
+  if (item.maxQuantity > 0 && item.quantity > item.maxQuantity) return "above-max";
+  return "";
+}
+
+function stockUserName(id) {
+  const user = state.users.find((entry) => entry.id === id);
+  return user ? user.name || user.username : "—";
+}
+
+function appendStockMovement(entry) {
+  state.stockMovements.push({
+    id: crypto.randomUUID(),
+    itemId: "",
+    type: "entrada",
+    date: todayIso,
+    timestamp: new Date().toISOString(),
+    quantity: 0,
+    unitCost: 0,
+    totalCost: 0,
+    balanceBefore: 0,
+    balanceAfter: 0,
+    projectId: "",
+    supplierId: "",
+    invoiceId: "",
+    invoiceNumber: "",
+    transactionId: "",
+    exitType: "",
+    reason: "",
+    responsibleUserId: currentSessionUser()?.id || "",
+    recipientName: "",
+    fromLocationId: "",
+    toLocationId: "",
+    notes: "",
+    createdAt: new Date().toISOString(),
+    ...entry,
+  });
+}
+
+function setStockTab(tab) {
+  currentStockTab = tab;
+  document.querySelectorAll("[data-stock-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.stockTab === tab);
+  });
+  document.querySelectorAll("[data-stock-panel]").forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.stockPanel !== tab);
+  });
+}
+
+function hydrateStockCatalogOptions() {
+  const suppliers = state.people.filter((person) => person.type === "fornecedor" || person.type === "ambos");
+  const supplierOptions = suppliers.length
+    ? suppliers.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")
+    : `<option value="">Cadastre um fornecedor primeiro</option>`;
+  els.stockSupplier.innerHTML = `<option value="">Sem fornecedor principal</option>${supplierOptions}`;
+  els.stockEntrySupplier.innerHTML = `<option value="">Sem fornecedor</option>${supplierOptions}`;
+
+  els.stockLocation.innerHTML = state.stockLocations
+    .filter((location) => location.active)
+    .map((location) => `<option value="${location.id}">${escapeHtml(location.name)}</option>`)
+    .join("");
+
+  const activeItems = state.stockItems.filter((item) => item.active);
+  const itemOptions = activeItems.length
+    ? activeItems.map((item) => `<option value="${item.id}">${escapeHtml(stockItemLabel(item))}</option>`).join("")
+    : `<option value="">Cadastre um item primeiro</option>`;
+  els.stockEntryItem.innerHTML = itemOptions;
+  els.stockExitItem.innerHTML = itemOptions;
+  refreshSearchableSelect(els.stockEntryItem);
+  refreshSearchableSelect(els.stockExitItem);
+
+  const openInvoices = state.invoices.filter((item) => item.kind === "despesa" && item.status !== "cancelada");
+  els.stockEntryInvoice.innerHTML = [
+    `<option value="">Sem NF vinculada</option>`,
+    ...openInvoices.map((item) => `<option value="${item.id}">NF ${escapeHtml(item.number)} · ${escapeHtml(personName(item.personId))}</option>`),
+  ].join("");
+
+  const payables = state.transactions
+    .filter((item) => item.type === "pagar")
+    .sort((a, b) => b.dueDate.localeCompare(a.dueDate))
+    .slice(0, 40);
+  els.stockEntryTransaction.innerHTML = [
+    `<option value="">Sem conta a pagar vinculada</option>`,
+    ...payables.map((item) => `<option value="${item.id}">${formatDate(item.dueDate)} · ${escapeHtml(item.description)} · ${money(item.amount)}</option>`),
+  ].join("");
+}
+
+function resetStockItemForm() {
+  els.stockItemForm.reset();
+  els.stockItemId.value = "";
+  els.stockItemFormTitle.textContent = "Novo item";
+  els.stockActive.checked = true;
+}
+
+function saveStockItem(event) {
+  event.preventDefault();
+  const id = els.stockItemId.value || crypto.randomUUID();
+  const existing = state.stockItems.find((item) => item.id === id);
+
+  const item = {
+    id,
+    internalCode: els.stockInternalCode.value.trim(),
+    barcode: els.stockBarcode.value.trim(),
+    name: els.stockName.value.trim(),
+    description: els.stockDescription.value.trim(),
+    category: els.stockCategory.value.trim(),
+    subcategory: els.stockSubcategory.value.trim(),
+    brand: els.stockBrand.value.trim(),
+    model: els.stockModel.value.trim(),
+    unit: els.stockUnit.value,
+    primarySupplierId: els.stockSupplier.value,
+    locationId: els.stockLocation.value,
+    quantity: existing?.quantity || 0,
+    minQuantity: Number(els.stockMinQuantity.value || 0),
+    maxQuantity: Number(els.stockMaxQuantity.value || 0),
+    averageCost: existing?.averageCost || 0,
+    lastPurchaseCost: existing?.lastPurchaseCost || 0,
+    active: els.stockActive.checked,
+    notes: els.stockNotes.value.trim(),
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const index = state.stockItems.findIndex((entry) => entry.id === id);
+  if (index >= 0) state.stockItems[index] = item;
+  else state.stockItems.push(item);
+
+  persist();
+  renderAll();
+  resetStockItemForm();
+  toast("Item de estoque salvo.");
+}
+
+function renderStockItems() {
+  const search = els.stockItemSearch.value.toLowerCase().trim();
+  const items = state.stockItems
+    .filter((item) => `${item.internalCode} ${item.name} ${item.category} ${item.barcode}`.toLowerCase().includes(search))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  els.stockItemTable.innerHTML = items.length
+    ? items.map(stockItemRow).join("")
+    : `<tr><td colspan="7">${emptyMessage("Nenhum item cadastrado.")}</td></tr>`;
+
+  document.querySelectorAll("[data-stock-item-action]").forEach((button) => {
+    button.addEventListener("click", () => handleStockItemAction(button.dataset.stockItemAction, button.dataset.id));
+  });
+}
+
+function stockItemRow(item) {
+  const totalValue = item.quantity * item.averageCost;
+  const alertLevel = stockAlertLevel(item);
+  return `
+    <tr class="${alertLevel ? `stock-alert-${alertLevel}` : ""}">
+      <td>
+        <strong>${escapeHtml(item.name)}</strong>
+        <span class="muted block">${escapeHtml(item.internalCode || "sem código")} · ${STOCK_UNIT_LABELS[item.unit] || item.unit}</span>
+      </td>
+      <td>${escapeHtml(item.category || "-")}</td>
+      <td class="money">${formatQuantity(item.quantity)}</td>
+      <td class="money">${money(item.averageCost)}</td>
+      <td class="money">${money(totalValue)}</td>
+      <td>${item.active ? `<span class="status baixado">Ativo</span>` : `<span class="status vencido">Inativo</span>`}</td>
+      <td>
+        <div class="row-actions">
+          <button type="button" data-stock-item-action="edit" data-id="${item.id}">Editar</button>
+          <button type="button" data-stock-item-action="toggle-active" data-id="${item.id}">${item.active ? "Inativar" : "Ativar"}</button>
+          <button type="button" data-stock-item-action="delete" data-id="${item.id}">Excluir</button>
+        </div>
+      </td>
+    </tr>`;
+}
+
+function handleStockItemAction(action, id) {
+  const item = state.stockItems.find((entry) => entry.id === id);
+  if (!item) return;
+
+  if (action === "edit") {
+    els.stockItemId.value = item.id;
+    els.stockInternalCode.value = item.internalCode;
+    els.stockBarcode.value = item.barcode;
+    els.stockName.value = item.name;
+    els.stockDescription.value = item.description;
+    els.stockCategory.value = item.category;
+    els.stockSubcategory.value = item.subcategory;
+    els.stockBrand.value = item.brand;
+    els.stockModel.value = item.model;
+    els.stockUnit.value = item.unit;
+    els.stockSupplier.value = item.primarySupplierId;
+    els.stockLocation.value = item.locationId;
+    els.stockMinQuantity.value = item.minQuantity;
+    els.stockMaxQuantity.value = item.maxQuantity;
+    els.stockActive.checked = item.active;
+    els.stockNotes.value = item.notes;
+    els.stockItemFormTitle.textContent = `Editar item · ${item.name}`;
+    return;
+  }
+
+  if (action === "toggle-active") {
+    item.active = !item.active;
+    persist();
+    renderAll();
+    toast(item.active ? "Item ativado." : "Item inativado.");
+    return;
+  }
+
+  if (action === "delete") {
+    const hasMovements = state.stockMovements.some((movement) => movement.itemId === id);
+    if (hasMovements || item.quantity) {
+      toast("Não é possível excluir: item tem movimentações ou saldo em estoque. Inative-o em vez disso.");
+      return;
+    }
+    state.stockItems = state.stockItems.filter((entry) => entry.id !== id);
+    persist();
+    renderAll();
+    toast("Item excluído.");
+  }
+}
+
+function updateStockEntryTotalCost() {
+  const quantity = Number(els.stockEntryQuantity.value || 0);
+  const unitCost = Number(els.stockEntryUnitCost.value || 0);
+  els.stockEntryTotalCost.value = roundCurrency(quantity * unitCost);
+}
+
+function resetStockEntryForm() {
+  els.stockEntryForm.reset();
+  els.stockEntryDate.value = todayIso;
+  els.stockEntryTotalCost.value = "";
+}
+
+function saveStockEntry(event) {
+  event.preventDefault();
+  const item = state.stockItems.find((entry) => entry.id === els.stockEntryItem.value);
+  if (!item) {
+    toast("Selecione um item.");
+    return;
+  }
+
+  const quantity = Number(els.stockEntryQuantity.value || 0);
+  const unitCost = Number(els.stockEntryUnitCost.value || 0);
+  if (quantity <= 0) {
+    toast("Informe uma quantidade válida.");
+    return;
+  }
+
+  const balanceBefore = item.quantity;
+  const newQuantity = roundCurrency(balanceBefore + quantity);
+  const newAverageCost = newQuantity > 0 ? roundCurrency((balanceBefore * item.averageCost + quantity * unitCost) / newQuantity) : 0;
+
+  item.quantity = newQuantity;
+  item.averageCost = newAverageCost;
+  item.lastPurchaseCost = unitCost;
+  item.updatedAt = new Date().toISOString();
+
+  appendStockMovement({
+    itemId: item.id,
+    type: "entrada",
+    date: els.stockEntryDate.value || todayIso,
+    quantity,
+    unitCost,
+    totalCost: roundCurrency(quantity * unitCost),
+    balanceBefore,
+    balanceAfter: newQuantity,
+    projectId: els.stockEntryProject.value,
+    supplierId: els.stockEntrySupplier.value,
+    invoiceId: els.stockEntryInvoice.value,
+    invoiceNumber: els.stockEntryInvoiceNumber.value.trim(),
+    transactionId: els.stockEntryTransaction.value,
+    notes: els.stockEntryNotes.value.trim(),
+  });
+
+  persist();
+  renderAll();
+  resetStockEntryForm();
+  toast("Entrada de material registrada. Custo médio recalculado.");
+}
+
+function renderStockEntryList() {
+  const rows = state.stockMovements
+    .filter((movement) => movement.type === "entrada")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 20);
+
+  els.stockEntryList.innerHTML = rows.length
+    ? rows.map((movement) => {
+        const item = state.stockItems.find((entry) => entry.id === movement.itemId);
+        return `
+      <article class="report-item">
+        <strong><span>${escapeHtml(item ? stockItemLabel(item) : "Item removido")}</span><span>${money(movement.totalCost)}</span></strong>
+        <span class="muted">${formatDate(movement.date)} · ${formatQuantity(movement.quantity)} ${item ? STOCK_UNIT_LABELS[item.unit] || item.unit : ""} · ${money(movement.unitCost)}/un · ${movement.supplierId ? personName(movement.supplierId) : "sem fornecedor"} · ${stockUserName(movement.responsibleUserId)}</span>
+      </article>`;
+      }).join("")
+    : emptyMessage("Nenhuma entrada registrada.");
+}
+
+function updateStockExitTypeUi() {
+  els.stockExitProjectWrap.classList.toggle("hidden", els.stockExitType.value !== "consumo_projeto");
+}
+
+function resetStockExitForm() {
+  els.stockExitForm.reset();
+  els.stockExitDate.value = todayIso;
+  updateStockExitTypeUi();
+}
+
+function saveStockExit(event) {
+  event.preventDefault();
+  const item = state.stockItems.find((entry) => entry.id === els.stockExitItem.value);
+  if (!item) {
+    toast("Selecione um item.");
+    return;
+  }
+
+  const quantity = Number(els.stockExitQuantity.value || 0);
+  if (quantity <= 0) {
+    toast("Informe uma quantidade válida.");
+    return;
+  }
+  if (quantity > item.quantity) {
+    toast(`Estoque insuficiente: disponível ${formatQuantity(item.quantity)} ${STOCK_UNIT_LABELS[item.unit] || item.unit}.`);
+    return;
+  }
+
+  const exitType = els.stockExitType.value;
+  const projectId = exitType === "consumo_projeto" ? els.stockExitProject.value : "";
+  const balanceBefore = item.quantity;
+  const unitCost = item.averageCost;
+  const totalCost = roundCurrency(quantity * unitCost);
+  const exitDate = els.stockExitDate.value || todayIso;
+
+  item.quantity = roundCurrency(balanceBefore - quantity);
+  item.updatedAt = new Date().toISOString();
+
+  let transactionId = "";
+  if (exitType === "consumo_projeto" && projectId) {
+    // status "pago" sem paidDate de propósito: o caixa já saiu na compra original do material
+    // (entrada de estoque). Isso faz o custo entrar no resultado do projeto (que soma todo
+    // "pagar" alocado, pago ou não) sem duplicar o KPI de "Resultado do mês" da empresa
+    // (que só conta transações com data de pagamento no mês).
+    const transaction = {
+      id: crypto.randomUUID(),
+      type: "pagar",
+      personId: "",
+      description: `Consumo de estoque: ${stockItemLabel(item)} (${formatQuantity(quantity)} ${STOCK_UNIT_LABELS[item.unit] || item.unit})`,
+      category: item.category || "Material de estoque",
+      dreGroup: defaultDreGroup("pagar"),
+      dueDate: exitDate,
+      amount: totalCost,
+      status: "pago",
+      paidDate: "",
+      notes: "Gerado automaticamente pela saída de estoque para projeto.",
+      directProjectCost: true,
+      projectId,
+      allocations: [{ projectId, amount: totalCost }],
+      saleId: "",
+      installmentNumber: "",
+      installmentTotal: "",
+      bankMovementId: "",
+      invoiceId: "",
+      updatedAt: new Date().toISOString(),
+    };
+    state.transactions.push(transaction);
+    transactionId = transaction.id;
+  }
+
+  appendStockMovement({
+    itemId: item.id,
+    type: "saida",
+    date: exitDate,
+    quantity,
+    unitCost,
+    totalCost,
+    balanceBefore,
+    balanceAfter: item.quantity,
+    projectId,
+    exitType,
+    reason: els.stockExitReason.value.trim(),
+    recipientName: els.stockExitRecipient.value.trim(),
+    transactionId,
+    notes: els.stockExitNotes.value.trim(),
+  });
+
+  persist();
+  renderAll();
+  resetStockExitForm();
+  toast("Saída de material registrada.");
+}
+
+function renderStockExitList() {
+  const rows = state.stockMovements
+    .filter((movement) => movement.type === "saida")
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 20);
+
+  els.stockExitList.innerHTML = rows.length
+    ? rows.map((movement) => {
+        const item = state.stockItems.find((entry) => entry.id === movement.itemId);
+        return `
+      <article class="report-item">
+        <strong><span>${escapeHtml(item ? stockItemLabel(item) : "Item removido")}</span><span>${money(movement.totalCost)}</span></strong>
+        <span class="muted">${formatDate(movement.date)} · ${formatQuantity(movement.quantity)} ${item ? STOCK_UNIT_LABELS[item.unit] || item.unit : ""} · ${STOCK_EXIT_TYPE_LABELS[movement.exitType] || movement.exitType} · ${movement.projectId ? projectName(movement.projectId) : "Sem projeto"} · ${stockUserName(movement.responsibleUserId)}</span>
+      </article>`;
+      }).join("")
+    : emptyMessage("Nenhuma saída registrada.");
+}
+
+function renderStockAlerts() {
+  const items = state.stockItems.filter((item) => item.active);
+  els.stockAlertBelowMin.textContent = String(items.filter((item) => item.quantity > 0 && item.quantity < item.minQuantity).length);
+  els.stockAlertZero.textContent = String(items.filter((item) => item.quantity <= 0).length);
+  els.stockAlertAboveMax.textContent = String(items.filter((item) => item.maxQuantity > 0 && item.quantity > item.maxQuantity).length);
+}
+
+function renderStockPurchaseNeed() {
+  const rows = state.stockItems
+    .filter((item) => item.active && item.quantity < item.minQuantity)
+    .map((item) => ({ item, suggestion: Math.max(0, (item.maxQuantity || item.minQuantity) - item.quantity) }))
+    .sort((a, b) => b.suggestion - a.suggestion);
+
+  els.stockPurchaseNeedTable.innerHTML = rows.length
+    ? rows.map(({ item, suggestion }) => `
+      <tr>
+        <td>${escapeHtml(stockItemLabel(item))}</td>
+        <td class="money">${formatQuantity(item.quantity)}</td>
+        <td class="money">${formatQuantity(item.minQuantity)}</td>
+        <td class="money">${formatQuantity(item.maxQuantity)}</td>
+        <td class="money">${formatQuantity(suggestion)}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="5">${emptyMessage("Nenhum item abaixo do estoque mínimo.")}</td></tr>`;
+}
+
+function renderStock() {
+  hydrateStockCatalogOptions();
+  renderStockItems();
+  renderStockEntryList();
+  renderStockExitList();
+  renderStockAlerts();
+  renderStockPurchaseNeed();
+}
+
 // ---- Notas Fiscais ----
 
 function setInvoiceKind(kind) {
@@ -2359,6 +3025,7 @@ function invoiceStatusLabel(invoice) {
 }
 
 function saveInvoice() {
+  if (!guardViewAccess("notasfiscais")) return;
   const kind = els.invoiceKind.value;
   const meta = INVOICE_KIND_META[kind] || INVOICE_KIND_META.servico;
   const id = els.invoiceId.value || crypto.randomUUID();
@@ -2507,6 +3174,7 @@ function openInvoiceLinkDialog(invoice) {
 }
 
 function saveInvoiceLink() {
+  if (!guardViewAccess("notasfiscais")) return;
   const invoiceId = els.invoiceLinkId.value;
   const checkboxes = els.invoiceLinkList.querySelectorAll("[data-link-transaction]");
 
@@ -2622,6 +3290,7 @@ function openTransactionDialog(item = null) {
 
 function saveTransaction() {
   const type = els.transactionType.value;
+  if (!guardViewAccess(type === "receber" ? "receber" : "pagar")) return;
   const status = els.transactionStatus.value;
   const existing = state.transactions.find((item) => item.id === els.transactionId.value);
   const allocations = getTransactionAllocations();
