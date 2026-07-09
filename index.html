@@ -357,6 +357,14 @@
             <button class="secondary-btn" id="exportBankCsv" type="button">Exportar CSV</button>
           </div>
 
+          <section class="panel bank-sync-panel">
+            <div class="panel-head">
+              <h2>Contas conectadas</h2>
+              <small class="muted">Sincronize o extrato de cada conta (simulado por enquanto — veja detalhes ao clicar em Sincronizar)</small>
+            </div>
+            <div class="bank-sync-list" id="bankSyncList"></div>
+          </section>
+
           <div class="kpi-grid bank-kpis">
             <article class="kpi">
               <span>Entradas importadas</span>
@@ -726,6 +734,39 @@
         <menu class="modal-actions">
           <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Salvar conciliacao</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="bankSyncDialog">
+      <form method="dialog" class="modal" id="bankSyncForm">
+        <div class="modal-head">
+          <h2 id="bankSyncTitle">Sincronizar extrato</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <input type="hidden" id="bankSyncAccountKey" />
+        <div class="form-grid">
+          <label>Provedor
+            <select id="bankSyncProvider">
+              <option value="mock">Simulado (dados de teste)</option>
+              <option value="inter">Banco Inter (API real via backend)</option>
+              <option value="santander">Santander (API real via backend)</option>
+            </select>
+          </label>
+          <label>Data inicial
+            <input id="bankSyncStart" type="date" required />
+          </label>
+          <label>Data final
+            <input id="bankSyncEnd" type="date" required />
+          </label>
+          <label class="full hidden" id="bankSyncEndpointWrap">URL do backend de integração
+            <input id="bankSyncEndpoint" placeholder="https://seu-backend.exemplo.com" maxlength="200" />
+          </label>
+        </div>
+        <p class="muted bank-sync-hint" id="bankSyncHint"></p>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-btn" id="bankSyncSubmit" value="default" type="submit">Buscar extrato</button>
         </menu>
       </form>
     </dialog>

@@ -94,6 +94,18 @@ const els = {
   bankMatchTransaction: document.querySelector("#bankMatchTransaction"),
   bankNotes: document.querySelector("#bankNotes"),
   bankBalanceList: document.querySelector("#bankBalanceList"),
+  bankSyncList: document.querySelector("#bankSyncList"),
+  bankSyncDialog: document.querySelector("#bankSyncDialog"),
+  bankSyncForm: document.querySelector("#bankSyncForm"),
+  bankSyncTitle: document.querySelector("#bankSyncTitle"),
+  bankSyncAccountKey: document.querySelector("#bankSyncAccountKey"),
+  bankSyncProvider: document.querySelector("#bankSyncProvider"),
+  bankSyncStart: document.querySelector("#bankSyncStart"),
+  bankSyncEnd: document.querySelector("#bankSyncEnd"),
+  bankSyncEndpointWrap: document.querySelector("#bankSyncEndpointWrap"),
+  bankSyncEndpoint: document.querySelector("#bankSyncEndpoint"),
+  bankSyncHint: document.querySelector("#bankSyncHint"),
+  bankSyncSubmit: document.querySelector("#bankSyncSubmit"),
   projectForm: document.querySelector("#projectForm"),
   projectId: document.querySelector("#projectId"),
   projectName: document.querySelector("#projectName"),
@@ -252,6 +264,16 @@ function bindEvents() {
     saveBankClassification();
   });
 
+  els.bankSyncProvider.addEventListener("change", updateBankSyncHint);
+  els.bankSyncForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.bankSyncDialog.close();
+      return;
+    }
+    handleBankSyncSubmit();
+  });
+
   els.projectForm.addEventListener("submit", (event) => {
     event.preventDefault();
     saveProject();
@@ -372,6 +394,9 @@ function normalizeState(data) {
     balanceDate: item.balanceDate || "",
     source: item.source || "ofx",
     updatedAt: item.updatedAt || "",
+    syncProvider: item.syncProvider || "mock",
+    syncEndpoint: item.syncEndpoint || "",
+    lastSyncedAt: item.lastSyncedAt || "",
     ...item,
   }));
 
@@ -1519,13 +1544,11 @@ function importOfx(event) {
     try {
       const parsed = parseOfx(String(reader.result), file.name);
       upsertBankAccount(parsed.account);
-      const existingKeys = new Set(state.bankMovements.flatMap((item) => [item.importKey, item.naturalKey].filter(Boolean)));
-      const fresh = parsed.movements.filter((item) => !existingKeys.has(item.importKey) && !existingKeys.has(item.naturalKey));
-      state.bankMovements.push(...fresh);
+      const { added, duplicates } = mergeBankMovements(parsed.movements);
       persist();
       renderAll();
       setView("banco");
-      toast(`${fresh.length} movimento(s) importado(s). ${parsed.movements.length - fresh.length} duplicado(s) ignorado(s).`);
+      toast(`${added} movimento(s) importado(s). ${duplicates} duplicado(s) ignorado(s).`);
     } catch {
       toast("Não foi possível ler o arquivo OFX.");
     }
@@ -1625,6 +1648,141 @@ function latestOfxTransactionDate(content) {
   return dates.sort().at(-1) || "";
 }
 
+function mergeBankMovements(newMovements) {
+  const existingKeys = new Set(state.bankMovements.flatMap((item) => [item.importKey, item.naturalKey].filter(Boolean)));
+  const fresh = newMovements.filter((item) => !existingKeys.has(item.importKey) && !existingKeys.has(item.naturalKey));
+  state.bankMovements.push(...fresh);
+  return { added: fresh.length, duplicates: newMovements.length - fresh.length };
+}
+
+// Camada de integração bancária: cada provedor implementa fetchStatement(account, {start, end})
+// e devolve movimentos no MESMO formato produzido por parseOfx, para reaproveitar dedupe/conciliação.
+// "inter" e "santander" nunca chamam o banco direto do navegador (impossível: exigem mTLS/segredos que
+// não podem existir num site estático) — eles chamam um backend próprio que você hospeda e que guarda
+// as credenciais reais. Enquanto esse backend não existir, use o provedor "mock".
+const BANK_PROVIDERS = {
+  mock: { label: "Simulado (dados de teste)", requiresEndpoint: false, fetchStatement: mockFetchStatement },
+  inter: { label: "Banco Inter (API real via backend)", requiresEndpoint: true, fetchStatement: (account, range) => fetchStatementViaBackend("inter", account, range) },
+  santander: { label: "Santander (API real via backend)", requiresEndpoint: true, fetchStatement: (account, range) => fetchStatementViaBackend("santander", account, range) },
+};
+
+async function fetchStatementViaBackend(bankKey, account, { start, end }) {
+  const endpoint = (account.syncEndpoint || "").trim().replace(/\/$/, "");
+  if (!endpoint) {
+    throw new Error(`Informe a URL do backend de integração do ${bankKey === "inter" ? "Inter" : "Santander"} para essa conta.`);
+  }
+
+  const response = await fetch(`${endpoint}/${bankKey}/extrato`, {
+    method: "POST",
+    body: JSON.stringify({ accountId: account.accountId, bankId: account.bankId, start, end }),
+  });
+  const result = await response.json();
+  if (!result.ok) throw new Error(result.error || "Falha ao buscar extrato no backend.");
+
+  const accountKey = account.accountKey || `${account.bankId}-${account.accountId}`;
+  const movements = (result.movements || []).map((raw) => normalizeProviderMovement(raw, account, accountKey));
+  hydrateBankMovementNaturalKeys(movements);
+  movements.forEach((movement) => {
+    movement.importKey = movement.importKey || movement.naturalKey;
+  });
+  return movements;
+}
+
+function normalizeProviderMovement(raw, account, accountKey) {
+  const signedAmount = Number(raw.signedAmount ?? (raw.type === "saida" ? -Math.abs(raw.amount) : Math.abs(raw.amount)));
+  return {
+    id: crypto.randomUUID(),
+    importKey: raw.fitid ? `${accountKey}-${raw.fitid}` : "",
+    naturalKey: "",
+    fitid: raw.fitid || "",
+    accountId: account.accountId,
+    bankId: account.bankId,
+    filename: `api-${account.syncProvider}`,
+    date: raw.date,
+    type: signedAmount >= 0 ? "entrada" : "saida",
+    documentNumber: raw.documentNumber || raw.fitid || "",
+    description: cleanText(raw.description || "Movimento bancário"),
+    amount: Math.abs(signedAmount),
+    signedAmount,
+    category: "",
+    dreGroup: signedAmount >= 0 ? "receita_bruta" : "despesas_operacionais",
+    notes: "",
+    transactionId: "",
+    importedAt: new Date().toISOString(),
+  };
+}
+
+const MOCK_DESCRIPTIONS = {
+  "077": {
+    entrada: ["Pix recebido - Cliente Simulado", "Transferência recebida", "Rendimento de aplicação"],
+    saida: ["Pix enviado - Fornecedor Simulado", "Pagamento de boleto", "Tarifa de manutenção"],
+  },
+  "033": {
+    entrada: ["TED recebida", "Depósito identificado", "Rendimento CDB"],
+    saida: ["Débito automático", "Compra no débito", "Pagamento de convênio"],
+  },
+};
+
+function seededRandom(seed) {
+  let h = 1779033703 ^ seed.length;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+    h = (h << 13) | (h >>> 19);
+  }
+  return function next() {
+    h = Math.imul(h ^ (h >>> 16), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    h ^= h >>> 16;
+    return (h >>> 0) / 4294967296;
+  };
+}
+
+async function mockFetchStatement(account, { start, end }) {
+  const descriptions = MOCK_DESCRIPTIONS[account.bankId] || MOCK_DESCRIPTIONS["077"];
+  const accountKey = account.accountKey || `${account.bankId}-${account.accountId}`;
+  const movements = [];
+  const endDate = parseDate(end);
+  let cursor = parseDate(start);
+
+  while (cursor <= endDate) {
+    const dateStr = toIso(cursor);
+    const rand = seededRandom(`${accountKey}-${dateStr}`);
+    const count = Math.floor(rand() * 3);
+    for (let i = 0; i < count; i++) {
+      const type = rand() > 0.55 ? "entrada" : "saida";
+      const pool = descriptions[type];
+      const description = pool[Math.floor(rand() * pool.length)];
+      const amount = Math.round((20 + rand() * 3000) * 100) / 100;
+      const documentNumber = `MOCK${dateStr.replace(/-/g, "")}${i}`;
+      const signedAmount = type === "entrada" ? amount : -amount;
+      const naturalBaseKey = buildBankMovementNaturalKey(accountKey, { date: dateStr, amount: signedAmount, documentNumber, description, fitid: documentNumber });
+      movements.push({
+        id: crypto.randomUUID(),
+        importKey: `${naturalBaseKey}-1`,
+        naturalKey: `${naturalBaseKey}-1`,
+        fitid: documentNumber,
+        accountId: account.accountId,
+        bankId: account.bankId,
+        filename: "sincronizacao-simulada",
+        date: dateStr,
+        type,
+        documentNumber,
+        description,
+        amount,
+        signedAmount,
+        category: "",
+        dreGroup: type === "entrada" ? "receita_bruta" : "despesas_operacionais",
+        notes: "",
+        transactionId: "",
+        importedAt: new Date().toISOString(),
+      });
+    }
+    cursor = addDays(cursor, 1);
+  }
+
+  return movements;
+}
+
 function buildBankMovementNaturalKey(accountKey, movement) {
   const amountInCents = Math.round(Number(movement.amount || 0) * 100);
   const parts = [
@@ -1684,7 +1842,89 @@ function cleanText(value) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function renderBankSyncList() {
+  const accounts = latestBankAccounts();
+  els.bankSyncList.innerHTML = accounts.length
+    ? accounts.map((account) => {
+        const provider = BANK_PROVIDERS[account.syncProvider] || BANK_PROVIDERS.mock;
+        const lastSync = account.lastSyncedAt ? `Última sincronização: ${new Date(account.lastSyncedAt).toLocaleString("pt-BR")}` : "Nunca sincronizado por API";
+        return `
+      <article class="bank-sync-item">
+        <div>
+          <strong>${escapeHtml(account.bankId)} · Conta ${escapeHtml(account.accountId || "não identificada")}</strong>
+          <span class="muted">${escapeHtml(provider.label)} · ${lastSync}</span>
+        </div>
+        <button class="secondary-btn" type="button" data-sync-account="${escapeHtml(account.accountKey || `${account.bankId}-${account.accountId}`)}">Sincronizar extrato</button>
+      </article>`;
+      }).join("")
+    : emptyMessage("Importe um OFX ao menos uma vez para cadastrar uma conta antes de sincronizar por API.");
+
+  document.querySelectorAll("[data-sync-account]").forEach((button) => {
+    button.addEventListener("click", () => openBankSyncDialog(button.dataset.syncAccount));
+  });
+}
+
+function openBankSyncDialog(accountKey) {
+  const account = state.bankAccounts.find((item) => (item.accountKey || `${item.bankId}-${item.accountId}`) === accountKey);
+  if (!account) return;
+
+  els.bankSyncForm.reset();
+  els.bankSyncAccountKey.value = accountKey;
+  els.bankSyncTitle.textContent = `Sincronizar extrato · ${account.bankId} · Conta ${account.accountId || ""}`;
+  els.bankSyncProvider.value = account.syncProvider || "mock";
+  els.bankSyncEndpoint.value = account.syncEndpoint || "";
+  els.bankSyncEnd.value = todayIso;
+  els.bankSyncStart.value = toIso(addDays(today, -30));
+  updateBankSyncHint();
+  els.bankSyncDialog.showModal();
+}
+
+function updateBankSyncHint() {
+  const provider = BANK_PROVIDERS[els.bankSyncProvider.value] || BANK_PROVIDERS.mock;
+  els.bankSyncEndpointWrap.classList.toggle("hidden", !provider.requiresEndpoint);
+  els.bankSyncHint.textContent = provider.requiresEndpoint
+    ? "Esse provedor chama um backend próprio (que você hospeda) responsável por conversar com o banco de verdade — o site não guarda nem envia credenciais."
+    : "Gera movimentos de teste determinísticos para o período escolhido, útil para validar deduplicação e conciliação antes de conectar a API real.";
+}
+
+async function handleBankSyncSubmit() {
+  const accountKey = els.bankSyncAccountKey.value;
+  const account = state.bankAccounts.find((item) => (item.accountKey || `${item.bankId}-${item.accountId}`) === accountKey);
+  if (!account) return;
+
+  const providerKey = els.bankSyncProvider.value;
+  const provider = BANK_PROVIDERS[providerKey] || BANK_PROVIDERS.mock;
+  const start = els.bankSyncStart.value;
+  const end = els.bankSyncEnd.value;
+  if (!start || !end || start > end) {
+    toast("Informe um período válido para sincronizar.");
+    return;
+  }
+
+  account.syncProvider = providerKey;
+  account.syncEndpoint = els.bankSyncEndpoint.value.trim();
+
+  els.bankSyncSubmit.disabled = true;
+  els.bankSyncSubmit.textContent = "Buscando…";
+  try {
+    const movements = await provider.fetchStatement(account, { start, end });
+    const { added, duplicates } = mergeBankMovements(movements);
+    account.lastSyncedAt = new Date().toISOString();
+    persist();
+    renderAll();
+    els.bankSyncDialog.close();
+    toast(`${added} movimento(s) importado(s). ${duplicates} duplicado(s) ignorado(s).`);
+  } catch (error) {
+    console.error(error);
+    toast(error.message || "Não foi possível sincronizar o extrato.");
+  } finally {
+    els.bankSyncSubmit.disabled = false;
+    els.bankSyncSubmit.textContent = "Buscar extrato";
+  }
+}
+
 function renderBank() {
+  renderBankSyncList();
   const movements = filteredBankMovements();
   const all = state.bankMovements;
   const totalIn = sum(all.filter((item) => item.type === "entrada"));

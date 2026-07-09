@@ -500,6 +500,31 @@ td strong {
   margin-bottom: 4px;
 }
 
+.bank-sync-list {
+  display: grid;
+  gap: 10px;
+}
+
+.bank-sync-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.bank-sync-item strong {
+  display: block;
+}
+
+.bank-sync-hint {
+  margin: 0;
+  font-size: 13px;
+}
+
 .muted {
   color: var(--muted);
 }

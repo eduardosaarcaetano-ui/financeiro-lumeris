@@ -1,0 +1,5 @@
+backend-integration/.env
+backend-integration/node_modules/
+backend-integration/*.crt
+backend-integration/*.key
+backend-integration/*.pem
