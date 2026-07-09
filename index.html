@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Financeiro Lumeris</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Navegação principal">
+        <div class="brand">
+          <span class="brand-mark">FL</span>
+          <div>
+            <strong>Financeiro Lumeris</strong>
+            <small>Gestão financeira operacional</small>
+          </div>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item active" data-view="dashboard" type="button">Painel</button>
+          <button class="nav-item" data-view="receber" type="button">A Receber</button>
+          <button class="nav-item" data-view="pagar" type="button">A Pagar</button>
+          <button class="nav-item" data-view="vendas" type="button">Vendas</button>
+          <button class="nav-item" data-view="projetos" type="button">Projetos</button>
+          <button class="nav-item" data-view="banco" type="button">Banco</button>
+          <button class="nav-item" data-view="pessoas" type="button">Cadastros</button>
+          <button class="nav-item" data-view="relatorios" type="button">Relatórios</button>
+        </nav>
+
+        <div class="sidebar-actions">
+          <button class="ghost-btn" id="exportJson" type="button">Exportar backup</button>
+          <label class="ghost-btn file-btn" for="importJson">Importar backup</label>
+          <input id="importJson" type="file" accept="application/json" />
+        </div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="currentPeriod"></p>
+            <h1 id="viewTitle">Painel financeiro</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="secondary-btn" id="printBtn" type="button">Imprimir</button>
+            <button class="secondary-btn" id="newSaleBtn" type="button">Venda parcelada</button>
+            <button class="primary-btn" id="newTransactionBtn" type="button">Novo lançamento</button>
+          </div>
+        </header>
+
+        <section class="view active" id="dashboard">
+          <div class="kpi-grid">
+            <article class="kpi">
+              <span>A receber em aberto</span>
+              <strong id="kpiReceberAberto">R$ 0,00</strong>
+              <small id="kpiReceberVencido">R$ 0,00 vencido</small>
+            </article>
+            <article class="kpi">
+              <span>A pagar em aberto</span>
+              <strong id="kpiPagarAberto">R$ 0,00</strong>
+              <small id="kpiPagarVencido">R$ 0,00 vencido</small>
+            </article>
+            <article class="kpi">
+              <span>Saldo previsto</span>
+              <strong id="kpiSaldoPrevisto">R$ 0,00</strong>
+              <small>Recebimentos menos pagamentos abertos</small>
+            </article>
+            <article class="kpi">
+              <span>Resultado do mês</span>
+              <strong id="kpiRealizadoMes">R$ 0,00</strong>
+              <small>Entradas menos saídas baixadas</small>
+            </article>
+          </div>
+
+          <section class="panel bank-balances-panel">
+            <div class="panel-head">
+              <h2>Saldos bancários</h2>
+              <small class="muted">Saldo mais atual conforme OFX importado</small>
+            </div>
+            <div class="bank-balance-list" id="bankBalanceList"></div>
+          </section>
+
+          <div class="dashboard-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Fluxo dos próximos 6 meses</h2>
+              </div>
+              <div class="bars" id="cashflowBars"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Próximos vencimentos</h2>
+              </div>
+              <div class="mini-list" id="upcomingList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="receber">
+          <div class="toolbar">
+            <input id="receberSearch" type="search" placeholder="Buscar cliente, descrição, categoria" />
+            <select id="receberStatus">
+              <option value="todos">Todos os status</option>
+              <option value="aberto">Em aberto</option>
+              <option value="recebido">Recebido</option>
+              <option value="vencido">Vencido</option>
+            </select>
+            <button class="secondary-btn" data-export-csv="receber" type="button">Exportar CSV</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Vencimento</th>
+                  <th>Cliente</th>
+                  <th>Descrição</th>
+                  <th>Parcela</th>
+                  <th>Categoria</th>
+                  <th>Status</th>
+                  <th class="money">Valor</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="receberTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="pagar">
+          <div class="toolbar">
+            <input id="pagarSearch" type="search" placeholder="Buscar fornecedor, descrição, categoria" />
+            <select id="pagarStatus">
+              <option value="todos">Todos os status</option>
+              <option value="aberto">Em aberto</option>
+              <option value="pago">Pago</option>
+              <option value="vencido">Vencido</option>
+            </select>
+            <button class="secondary-btn" data-export-csv="pagar" type="button">Exportar CSV</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Vencimento</th>
+                  <th>Fornecedor</th>
+                  <th>Descrição</th>
+                  <th>Categoria</th>
+                  <th>Status</th>
+                  <th class="money">Valor</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="pagarTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="vendas">
+          <div class="toolbar">
+            <input id="salesSearch" type="search" placeholder="Buscar venda, cliente ou categoria" />
+            <button class="primary-btn" id="newSaleInlineBtn" type="button">Cadastrar venda parcelada</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Cliente</th>
+                  <th>Descrição</th>
+                  <th>Parcelas</th>
+                  <th>Categoria</th>
+                  <th class="money">Total</th>
+                  <th class="money">Recebido</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="salesTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="projetos">
+          <div class="project-layout">
+            <form class="panel form-panel" id="projectForm">
+              <h2>Novo projeto</h2>
+              <input type="hidden" id="projectId" />
+              <label>Nome do projeto
+                <input id="projectName" required maxlength="200" />
+              </label>
+              <label>Cliente
+                <select id="projectCustomer"></select>
+              </label>
+              <label>Status
+                <select id="projectStatus">
+                  <option value="ativo">Ativo</option>
+                  <option value="orcamento">Orçamento</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="pausado">Pausado</option>
+                </select>
+              </label>
+              <label>Início
+                <input id="projectStartDate" type="date" />
+              </label>
+              <label>Fim previsto
+                <input id="projectEndDate" type="date" />
+              </label>
+              <label>Receita contratada
+                <input id="projectContractValue" type="number" min="0" step="0.01" value="0" />
+              </label>
+              <label>Custos previstos
+                <input id="projectExpectedCosts" type="number" min="0" step="0.01" value="0" />
+              </label>
+              <label>Margem mínima (%)
+                <input id="projectTargetMargin" type="number" min="-100" max="100" step="0.1" value="20" />
+              </label>
+              <label class="full">Observações
+                <textarea id="projectNotes" rows="3" maxlength="300"></textarea>
+              </label>
+              <button class="primary-btn" type="submit">Salvar projeto</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Projetos</h2>
+                <input id="projectSearch" type="search" placeholder="Buscar projeto ou cliente" />
+              </div>
+              <div class="people-list" id="projectList"></div>
+            </section>
+          </div>
+
+          <div class="toolbar project-toolbar">
+            <label>Projeto analisado
+              <select id="projectReportSelect"></select>
+            </label>
+            <button class="secondary-btn" id="exportProjectCsv" type="button">Exportar projetos</button>
+          </div>
+
+          <div class="kpi-grid project-kpis">
+            <article class="kpi">
+              <span>Receita contratada</span>
+              <strong id="projectContracted">R$ 0,00</strong>
+              <small>Valor previsto do contrato</small>
+            </article>
+            <article class="kpi">
+              <span>Receita faturada</span>
+              <strong id="projectInvoiced">R$ 0,00</strong>
+              <small id="projectReceivedSmall">R$ 0,00 recebido</small>
+            </article>
+            <article class="kpi">
+              <span>Custos realizados</span>
+              <strong id="projectCosts">R$ 0,00</strong>
+              <small id="projectPaidSmall">R$ 0,00 pago</small>
+            </article>
+            <article class="kpi">
+              <span>Resultado bruto</span>
+              <strong id="projectGrossResult">R$ 0,00</strong>
+              <small id="projectMarginSmall">0,0% de margem</small>
+            </article>
+          </div>
+
+          <div class="project-report-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Resultado do projeto</h2>
+              </div>
+              <div id="projectResultReport" class="dre-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Custos por categoria</h2>
+              </div>
+              <div id="projectCategoryCosts" class="report-list"></div>
+            </section>
+            <section class="panel full-panel">
+              <div class="panel-head">
+                <h2>Comparação entre projetos</h2>
+              </div>
+              <div class="table-wrap compact-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Projeto</th>
+                      <th class="money">Receita</th>
+                      <th class="money">Custos</th>
+                      <th class="money">Resultado</th>
+                      <th>Margem</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="projectComparisonTable"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Projetos mais lucrativos</h2>
+              </div>
+              <div id="profitableProjects" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Margem abaixo do esperado</h2>
+              </div>
+              <div id="lowMarginProjects" class="report-list"></div>
+            </section>
+            <section class="panel full-panel">
+              <div class="panel-head">
+                <h2>Despesas sem projeto</h2>
+              </div>
+              <div id="unallocatedExpenses" class="report-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="banco">
+          <div class="toolbar bank-toolbar">
+            <label class="secondary-btn file-btn light-file" for="ofxFile">Importar OFX</label>
+            <input id="ofxFile" type="file" accept=".ofx,application/x-ofx,text/plain" />
+            <input id="bankSearch" type="search" placeholder="Buscar historico, banco, documento" />
+            <select id="bankStatus">
+              <option value="todos">Todos</option>
+              <option value="pendente">Pendentes</option>
+              <option value="conciliado">Conciliados</option>
+              <option value="classificado">Classificados</option>
+            </select>
+            <button class="secondary-btn" id="exportBankCsv" type="button">Exportar CSV</button>
+          </div>
+
+          <div class="kpi-grid bank-kpis">
+            <article class="kpi">
+              <span>Entradas importadas</span>
+              <strong id="bankInTotal">R$ 0,00</strong>
+              <small id="bankInCount">0 movimentos</small>
+            </article>
+            <article class="kpi">
+              <span>Saidas importadas</span>
+              <strong id="bankOutTotal">R$ 0,00</strong>
+              <small id="bankOutCount">0 movimentos</small>
+            </article>
+            <article class="kpi">
+              <span>Saldo movimentado</span>
+              <strong id="bankNetTotal">R$ 0,00</strong>
+              <small>No extrato importado</small>
+            </article>
+            <article class="kpi">
+              <span>Pendentes</span>
+              <strong id="bankPendingCount">0</strong>
+              <small>Movimentos sem conciliacao</small>
+            </article>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Tipo</th>
+                  <th>Historico</th>
+                  <th>Categoria</th>
+                  <th>Grupo DRE</th>
+                  <th>Status</th>
+                  <th class="money">Valor</th>
+                  <th>Acoes</th>
+                </tr>
+              </thead>
+              <tbody id="bankTable"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="view" id="pessoas">
+          <div class="split">
+            <form class="panel form-panel" id="personForm">
+              <h2>Novo cadastro</h2>
+              <input type="hidden" id="personId" />
+              <label>Tipo
+                <select id="personType" required>
+                  <option value="cliente">Cliente</option>
+                  <option value="fornecedor">Fornecedor</option>
+                  <option value="ambos">Cliente e fornecedor</option>
+                </select>
+              </label>
+              <label>Nome
+                <input id="personName" required maxlength="80" />
+              </label>
+              <label>Documento
+                <input id="personDocument" maxlength="30" placeholder="CPF, CNPJ ou identificação" />
+              </label>
+              <label>Contato
+                <input id="personContact" maxlength="80" placeholder="Telefone ou e-mail" />
+              </label>
+              <button class="primary-btn" type="submit">Salvar cadastro</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Cadastros</h2>
+                <input id="peopleSearch" type="search" placeholder="Buscar nome, documento ou contato" />
+              </div>
+              <div class="people-list" id="peopleList"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="relatorios">
+          <div class="toolbar report-toolbar">
+            <label>Data inicial
+              <input id="reportStart" type="date" />
+            </label>
+            <label>Data final
+              <input id="reportEnd" type="date" />
+            </label>
+            <label>Base do DRE
+              <select id="dreBasis">
+                <option value="competencia">Competência</option>
+                <option value="caixa">Caixa</option>
+              </select>
+            </label>
+            <button class="secondary-btn" id="applyCurrentMonth" type="button">Mês atual</button>
+          </div>
+
+          <div class="kpi-grid report-kpis">
+            <article class="kpi">
+              <span>Receitas no período</span>
+              <strong id="reportReceitas">R$ 0,00</strong>
+              <small>Contas a receber no filtro</small>
+            </article>
+            <article class="kpi">
+              <span>Despesas no período</span>
+              <strong id="reportDespesas">R$ 0,00</strong>
+              <small>Contas a pagar no filtro</small>
+            </article>
+            <article class="kpi">
+              <span>Resultado DRE</span>
+              <strong id="dreResultado">R$ 0,00</strong>
+              <small>Receitas menos despesas</small>
+            </article>
+            <article class="kpi">
+              <span>Margem líquida</span>
+              <strong id="dreMargem">0,0%</strong>
+              <small>Resultado sobre receitas</small>
+            </article>
+          </div>
+
+          <div class="report-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>DRE gerencial</h2>
+                <button class="secondary-btn" data-export-report="dre" type="button">Exportar DRE</button>
+              </div>
+              <div id="dreReport" class="dre-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Receber por período</h2>
+                <button class="secondary-btn" data-export-report="receber-periodo" type="button">Exportar CSV</button>
+              </div>
+              <div id="receberPeriodReport" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Pagar por período</h2>
+                <button class="secondary-btn" data-export-report="pagar-periodo" type="button">Exportar CSV</button>
+              </div>
+              <div id="pagarPeriodReport" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Resumo por categoria</h2>
+                <select id="categoryReportType">
+                  <option value="receber">Receitas</option>
+                  <option value="pagar">Despesas</option>
+                </select>
+              </div>
+              <div id="categoryReport" class="report-list"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Inadimplência e vencidos</h2>
+              </div>
+              <div id="overdueReport" class="report-list"></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="transactionDialog">
+      <form method="dialog" class="modal" id="transactionForm">
+        <div class="modal-head">
+          <h2 id="transactionTitle">Novo lançamento</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <input type="hidden" id="transactionId" />
+        <div class="form-grid">
+          <label>Tipo
+            <select id="transactionType" required>
+              <option value="receber">Conta a receber</option>
+              <option value="pagar">Conta a pagar</option>
+            </select>
+          </label>
+          <label>Cliente/Fornecedor
+            <select id="transactionPerson" required></select>
+          </label>
+          <label>Descrição
+            <input id="transactionDescription" required maxlength="120" />
+          </label>
+          <label>Categoria
+            <input id="transactionCategory" required maxlength="60" list="categorySuggestions" />
+          </label>
+          <label>Grupo DRE
+            <select id="transactionDreGroup" required>
+              <option value="receita_bruta">Receita bruta</option>
+              <option value="deducoes">Deduções</option>
+              <option value="custos">Custos</option>
+              <option value="despesas_operacionais">Despesas operacionais</option>
+              <option value="despesas_financeiras">Despesas financeiras</option>
+              <option value="impostos">Impostos</option>
+              <option value="outros">Outros</option>
+            </select>
+          </label>
+          <label>Vencimento
+            <input id="transactionDueDate" type="date" required />
+          </label>
+          <label>Valor
+            <input id="transactionAmount" type="number" min="0.01" step="0.01" required />
+          </label>
+          <label>Status
+            <select id="transactionStatus" required></select>
+          </label>
+          <label>Data da baixa
+            <input id="transactionPaidDate" type="date" />
+          </label>
+          <label>Vínculo com projeto
+            <select id="transactionProjectMode">
+              <option value="none">Sem projeto</option>
+              <option value="single">Projeto único</option>
+              <option value="split">Ratear entre projetos</option>
+            </select>
+          </label>
+          <label id="transactionProjectWrap">Projeto / centro de custo
+            <select id="transactionProject"></select>
+          </label>
+          <label class="checkbox-line">
+            <input id="transactionDirectProjectCost" type="checkbox" />
+            Custo direto do projeto
+          </label>
+          <div class="allocation-box full" id="allocationBox">
+            <div class="panel-head compact-head">
+              <h2>Rateio por projeto</h2>
+              <button class="secondary-btn" id="addAllocationBtn" type="button">Adicionar projeto</button>
+            </div>
+            <div id="allocationRows" class="allocation-rows"></div>
+            <div class="allocation-total" id="allocationTotal">Total rateado: R$ 0,00</div>
+          </div>
+          <label class="full">Observações
+            <textarea id="transactionNotes" rows="3" maxlength="300"></textarea>
+          </label>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-btn" id="saveTransactionBtn" value="default" type="submit">Salvar</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="saleDialog">
+      <form method="dialog" class="modal" id="saleForm">
+        <div class="modal-head">
+          <h2>Cadastrar venda parcelada</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <div class="form-grid">
+          <label>Cliente
+            <select id="salePerson" required></select>
+          </label>
+          <label>Data da venda
+            <input id="saleDate" type="date" required />
+          </label>
+          <label>Descrição
+            <input id="saleDescription" required maxlength="120" />
+          </label>
+          <label>Categoria
+            <input id="saleCategory" required maxlength="60" list="categorySuggestions" value="Vendas" />
+          </label>
+          <label>Projeto / centro de custo
+            <select id="saleProject"></select>
+          </label>
+          <label>Valor total
+            <input id="saleTotal" type="number" min="0.01" step="0.01" required />
+          </label>
+          <label>Quantidade de parcelas
+            <input id="saleInstallments" type="number" min="1" max="60" step="1" value="1" required />
+          </label>
+          <label>Primeiro vencimento
+            <input id="saleFirstDueDate" type="date" required />
+          </label>
+          <label>Intervalo
+            <select id="saleInterval">
+              <option value="monthly">Mensal</option>
+              <option value="weekly">Semanal</option>
+              <option value="custom">Dias corridos</option>
+            </select>
+          </label>
+          <label id="saleCustomDaysWrap">Dias entre parcelas
+            <input id="saleCustomDays" type="number" min="1" max="365" value="30" />
+          </label>
+          <label>Grupo DRE
+            <select id="saleDreGroup" required>
+              <option value="receita_bruta">Receita bruta</option>
+              <option value="outros">Outros</option>
+            </select>
+          </label>
+          <label class="full">Observações
+            <textarea id="saleNotes" rows="3" maxlength="300"></textarea>
+          </label>
+        </div>
+        <div class="installment-preview" id="installmentPreview"></div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Gerar parcelas</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="bankDialog">
+      <form method="dialog" class="modal" id="bankForm">
+        <div class="modal-head">
+          <h2>Classificar movimento bancario</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <input type="hidden" id="bankMovementId" />
+        <div class="bank-movement-summary" id="bankMovementSummary"></div>
+        <div class="form-grid">
+          <label>Categoria
+            <input id="bankCategory" maxlength="60" list="categorySuggestions" required />
+          </label>
+          <label>Grupo DRE
+            <select id="bankDreGroup" required>
+              <option value="receita_bruta">Receita bruta</option>
+              <option value="deducoes">Deduções</option>
+              <option value="custos">Custos</option>
+              <option value="despesas_operacionais">Despesas operacionais</option>
+              <option value="despesas_financeiras">Despesas financeiras</option>
+              <option value="impostos">Impostos</option>
+              <option value="outros">Outros</option>
+            </select>
+          </label>
+          <label>Projeto / centro de custo
+            <select id="bankProject"></select>
+          </label>
+          <label class="full">Conciliar com conta
+            <select id="bankMatchTransaction"></select>
+          </label>
+          <label class="full">Observacoes
+            <textarea id="bankNotes" rows="3" maxlength="300"></textarea>
+          </label>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Salvar conciliacao</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <datalist id="categorySuggestions">
+      <option value="Vendas"></option>
+      <option value="Serviços"></option>
+      <option value="Mensalidade"></option>
+      <option value="Impostos"></option>
+      <option value="Fornecedores"></option>
+      <option value="Folha"></option>
+      <option value="Marketing"></option>
+      <option value="Operacional"></option>
+      <option value="Financeiro"></option>
+    </datalist>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+  </body>
+</html>
