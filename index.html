@@ -47,6 +47,7 @@
           <button class="nav-item" data-view="banco" type="button">Banco</button>
           <button class="nav-item" data-view="notasfiscais" type="button">Notas Fiscais</button>
           <button class="nav-item" data-view="estoque" type="button">Estoque</button>
+          <button class="nav-item" data-view="crm" type="button">CRM</button>
           <button class="nav-item" data-view="pessoas" type="button">Cadastros</button>
           <button class="nav-item" data-view="relatorios" type="button">Relatórios</button>
           <button class="nav-item hidden" data-view="usuarios" id="navUsuarios" type="button">Usuários</button>
@@ -751,6 +752,123 @@
           </div>
         </section>
 
+        <section class="view" id="crm">
+          <div class="toolbar invoice-kind-tabs" id="crmTabs">
+            <button type="button" class="chip-tab active" data-crm-tab="funil">Funil</button>
+            <button type="button" class="chip-tab" data-crm-tab="followup">Follow-up</button>
+            <button type="button" class="chip-tab" data-crm-tab="agenda">Agenda/Tarefas</button>
+            <button type="button" class="chip-tab" data-crm-tab="relatorios">Relatórios</button>
+          </div>
+
+          <div class="crm-panel" data-crm-panel="funil">
+            <div class="toolbar">
+              <button class="primary-btn" id="newOpportunityBtn" type="button">Nova oportunidade</button>
+              <button class="secondary-btn" id="manageSellersBtn" type="button">Gerenciar vendedores</button>
+            </div>
+            <div class="pipeline-board" id="pipelineBoard"></div>
+          </div>
+
+          <div class="crm-panel hidden" data-crm-panel="followup">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Follow-up</h2>
+                <small class="muted">Ordenado pelo próximo contato agendado — atrasados aparecem em destaque</small>
+              </div>
+              <div class="report-list" id="followUpList"></div>
+            </section>
+          </div>
+
+          <div class="crm-panel hidden" data-crm-panel="agenda">
+            <div class="toolbar">
+              <select id="taskSellerFilter"></select>
+              <select id="taskStatusFilter">
+                <option value="todas">Todas</option>
+                <option value="pendente">Pendentes</option>
+                <option value="concluida">Concluídas</option>
+              </select>
+              <button class="primary-btn" id="newTaskBtn" type="button">Nova tarefa</button>
+            </div>
+            <div class="report-grid">
+              <section class="panel">
+                <div class="panel-head"><h2>Atrasadas</h2></div>
+                <div class="report-list" id="tasksOverdueList"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head"><h2>Hoje</h2></div>
+                <div class="report-list" id="tasksTodayList"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head"><h2>Próximos 7 dias</h2></div>
+                <div class="report-list" id="tasksWeekList"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head"><h2>Depois</h2></div>
+                <div class="report-list" id="tasksLaterList"></div>
+              </section>
+            </div>
+          </div>
+
+          <div class="crm-panel hidden" data-crm-panel="relatorios">
+            <div class="toolbar report-toolbar">
+              <label>Período
+                <select id="crmReportPeriod">
+                  <option value="mes">Mês atual</option>
+                  <option value="trimestre">Trimestre atual</option>
+                  <option value="personalizado">Personalizado</option>
+                </select>
+              </label>
+              <label id="crmReportStartWrap" class="hidden">Data inicial
+                <input id="crmReportStart" type="date" />
+              </label>
+              <label id="crmReportEndWrap" class="hidden">Data final
+                <input id="crmReportEnd" type="date" />
+              </label>
+            </div>
+
+            <div class="kpi-grid">
+              <article class="kpi">
+                <span>Ticket médio (ganhos)</span>
+                <strong id="crmAvgTicket">R$ 0,00</strong>
+              </article>
+              <article class="kpi">
+                <span>Tempo médio de fechamento</span>
+                <strong id="crmAvgCloseTime">0 dias</strong>
+              </article>
+              <article class="kpi">
+                <span>Negócios ganhos</span>
+                <strong id="crmWonCount">0</strong>
+              </article>
+              <article class="kpi">
+                <span>Negócios perdidos</span>
+                <strong id="crmLostCount">0</strong>
+              </article>
+            </div>
+
+            <div class="report-grid">
+              <section class="panel">
+                <div class="panel-head"><h2>Taxa de conversão por estágio</h2></div>
+                <div class="report-list" id="crmStageConversionReport"></div>
+              </section>
+              <section class="panel full-panel">
+                <div class="panel-head"><h2>Ranking de vendedores</h2></div>
+                <div class="table-wrap compact-table">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Vendedor</th>
+                        <th class="money">Total vendido</th>
+                        <th>Negócios fechados</th>
+                        <th>Taxa de conversão</th>
+                      </tr>
+                    </thead>
+                    <tbody id="crmSellerRankingTable"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
+
         <section class="view" id="pessoas">
           <div class="split">
             <form class="panel form-panel" id="personForm">
@@ -1201,6 +1319,171 @@
         <menu class="modal-actions">
           <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Salvar vínculo</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="opportunityDialog">
+      <form method="dialog" class="modal" id="opportunityForm">
+        <div class="modal-head">
+          <h2 id="opportunityFormTitle">Nova oportunidade</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <input type="hidden" id="opportunityId" />
+        <div class="form-grid">
+          <label class="full">Título
+            <input id="opportunityTitle" required maxlength="120" />
+          </label>
+          <label class="full">Cliente/Lead
+            <input id="opportunityPersonName" required maxlength="120" list="opportunityPersonSuggestions" placeholder="Digite um cliente existente ou um novo lead" />
+            <datalist id="opportunityPersonSuggestions"></datalist>
+          </label>
+          <label>Valor estimado
+            <input id="opportunityValue" type="number" min="0" step="0.01" required />
+          </label>
+          <label>Probabilidade (%)
+            <input id="opportunityProbability" type="number" min="0" max="100" step="1" value="20" />
+          </label>
+          <label>Data prevista de fechamento
+            <input id="opportunityExpectedCloseDate" type="date" />
+          </label>
+          <label>Vendedor
+            <select id="opportunitySeller"></select>
+          </label>
+          <label>Estágio
+            <select id="opportunityStage">
+              <option value="prospeccao">Prospecção</option>
+              <option value="contato">Contato</option>
+              <option value="proposta">Proposta</option>
+              <option value="negociacao">Negociação</option>
+              <option value="ganho">Ganho</option>
+              <option value="perdido">Perdido</option>
+            </select>
+          </label>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Salvar oportunidade</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="interactionDialog">
+      <form method="dialog" class="modal" id="interactionForm">
+        <div class="modal-head">
+          <h2 id="interactionDialogTitle">Registrar contato</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <input type="hidden" id="interactionOpportunityId" />
+        <div class="form-grid">
+          <label>Tipo de contato
+            <select id="interactionType">
+              <option value="ligacao">Ligação</option>
+              <option value="email">E-mail</option>
+              <option value="reuniao">Reunião</option>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="outro">Outro</option>
+            </select>
+          </label>
+          <label>Data do contato
+            <input id="interactionDate" type="date" required />
+          </label>
+          <label class="full">Notas
+            <textarea id="interactionNotes" rows="3" maxlength="400"></textarea>
+          </label>
+          <label>Próximo follow-up
+            <input id="interactionNextFollowUpDate" type="date" />
+          </label>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Salvar contato</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="taskDialog">
+      <form method="dialog" class="modal" id="taskForm">
+        <div class="modal-head">
+          <h2>Nova tarefa</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <input type="hidden" id="taskId" />
+        <div class="form-grid">
+          <label class="full">Título
+            <input id="taskTitle" required maxlength="120" />
+          </label>
+          <label class="full">Descrição
+            <textarea id="taskDescription" rows="2" maxlength="300"></textarea>
+          </label>
+          <label>Prazo
+            <input id="taskDueDate" type="date" required />
+          </label>
+          <label>Vendedor responsável
+            <select id="taskSeller"></select>
+          </label>
+          <label>Oportunidade (opcional)
+            <select id="taskOpportunity"></select>
+          </label>
+          <label>Cliente (opcional)
+            <select id="taskPerson"></select>
+          </label>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Salvar tarefa</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="opportunityLostDialog">
+      <form method="dialog" class="modal" id="opportunityLostForm">
+        <div class="modal-head">
+          <h2>Motivo da perda</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <input type="hidden" id="opportunityLostId" />
+        <label class="full">Motivo
+          <textarea id="opportunityLostReason" rows="3" maxlength="300" required></textarea>
+        </label>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Confirmar perda</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="opportunityWonDialog">
+      <form method="dialog" class="modal" id="opportunityWonForm">
+        <div class="modal-head">
+          <h2>Oportunidade ganha 🎉</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <p class="muted" id="opportunityWonSummary"></p>
+        <p>Deseja gerar um lançamento a partir dessa oportunidade?</p>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Não gerar agora</button>
+          <button class="secondary-btn" id="opportunityWonSaleBtn" value="sale" type="submit">Gerar venda parcelada</button>
+          <button class="primary-btn" id="opportunityWonProjectBtn" value="project" type="submit">Gerar projeto</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="sellerDialog">
+      <form method="dialog" class="modal" id="sellerForm">
+        <div class="modal-head">
+          <h2>Vendedores</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+        </div>
+        <div class="form-grid">
+          <label class="full">Nome do vendedor
+            <input id="sellerName" maxlength="80" />
+          </label>
+        </div>
+        <div class="people-list" id="sellerList"></div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit">Fechar</button>
+          <button class="primary-btn" id="addSellerBtn" value="add" type="submit">Adicionar vendedor</button>
         </menu>
       </form>
     </dialog>

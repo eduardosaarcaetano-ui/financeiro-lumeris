@@ -862,6 +862,70 @@ dialog::backdrop {
   border-left: 3px solid var(--danger);
 }
 
+.pipeline-board {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  align-items: flex-start;
+}
+
+.pipeline-column {
+  flex: 0 0 260px;
+  background: var(--surface-soft);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-height: 120px;
+}
+
+.pipeline-column-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-weight: 700;
+}
+
+.pipeline-column-head small {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pipeline-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.pipeline-card strong {
+  font-size: 14px;
+}
+
+.pipeline-card.stalled {
+  border-color: var(--warn);
+}
+
+.pipeline-card select {
+  min-height: 34px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.follow-up-overdue {
+  border-color: var(--danger);
+}
+
+.follow-up-overdue strong {
+  color: var(--danger);
+}
+
 .stock-alert-above-max td:first-child {
   border-left: 3px solid var(--warn);
 }

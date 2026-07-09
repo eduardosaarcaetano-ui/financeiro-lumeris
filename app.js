@@ -67,7 +67,7 @@ const MOCK_DESCRIPTIONS = {
 // como uma tela ficar acessível por engano num lugar e bloqueada em outro.
 const ROLE_ALLOWED_VIEWS = {
   administrador: null,
-  usuario: ["dashboard", "receber", "pagar", "vendas", "projetos", "banco", "notasfiscais", "pessoas", "relatorios", "estoque"],
+  usuario: ["dashboard", "receber", "pagar", "vendas", "projetos", "banco", "notasfiscais", "pessoas", "relatorios", "estoque", "crm"],
   estoque: ["estoque"],
 };
 
@@ -100,6 +100,30 @@ const STOCK_EXIT_TYPE_LABELS = {
   avaria: "Avaria",
   descarte: "Descarte",
   emprestimo: "Empréstimo",
+  outro: "Outro",
+};
+
+let currentCrmTab = "funil";
+let pendingOpportunityConversion = null;
+let pendingWonOpportunity = null;
+
+// Ordem do funil — usada tanto para renderizar as colunas quanto para calcular
+// taxa de conversão por estágio nos relatórios. "ganho"/"perdido" são estágios
+// terminais (não têm "próximo estágio" para fins de conversão sequencial).
+const OPPORTUNITY_STAGES = [
+  { key: "prospeccao", label: "Prospecção" },
+  { key: "contato", label: "Contato" },
+  { key: "proposta", label: "Proposta" },
+  { key: "negociacao", label: "Negociação" },
+  { key: "ganho", label: "Ganho" },
+  { key: "perdido", label: "Perdido" },
+];
+
+const INTERACTION_TYPE_LABELS = {
+  ligacao: "Ligação",
+  email: "E-mail",
+  reuniao: "Reunião",
+  whatsapp: "WhatsApp",
   outro: "Outro",
 };
 
@@ -212,6 +236,64 @@ const els = {
   stockExitNotes: document.querySelector("#stockExitNotes"),
   stockExitList: document.querySelector("#stockExitList"),
   stockPurchaseNeedTable: document.querySelector("#stockPurchaseNeedTable"),
+  pipelineBoard: document.querySelector("#pipelineBoard"),
+  opportunityDialog: document.querySelector("#opportunityDialog"),
+  opportunityForm: document.querySelector("#opportunityForm"),
+  opportunityFormTitle: document.querySelector("#opportunityFormTitle"),
+  opportunityId: document.querySelector("#opportunityId"),
+  opportunityTitle: document.querySelector("#opportunityTitle"),
+  opportunityPersonName: document.querySelector("#opportunityPersonName"),
+  opportunityPersonSuggestions: document.querySelector("#opportunityPersonSuggestions"),
+  opportunityValue: document.querySelector("#opportunityValue"),
+  opportunityProbability: document.querySelector("#opportunityProbability"),
+  opportunityExpectedCloseDate: document.querySelector("#opportunityExpectedCloseDate"),
+  opportunitySeller: document.querySelector("#opportunitySeller"),
+  opportunityStage: document.querySelector("#opportunityStage"),
+  interactionDialog: document.querySelector("#interactionDialog"),
+  interactionForm: document.querySelector("#interactionForm"),
+  interactionOpportunityId: document.querySelector("#interactionOpportunityId"),
+  interactionType: document.querySelector("#interactionType"),
+  interactionDate: document.querySelector("#interactionDate"),
+  interactionNotes: document.querySelector("#interactionNotes"),
+  interactionNextFollowUpDate: document.querySelector("#interactionNextFollowUpDate"),
+  taskDialog: document.querySelector("#taskDialog"),
+  taskForm: document.querySelector("#taskForm"),
+  taskId: document.querySelector("#taskId"),
+  taskTitle: document.querySelector("#taskTitle"),
+  taskDescription: document.querySelector("#taskDescription"),
+  taskDueDate: document.querySelector("#taskDueDate"),
+  taskSeller: document.querySelector("#taskSeller"),
+  taskOpportunity: document.querySelector("#taskOpportunity"),
+  taskPerson: document.querySelector("#taskPerson"),
+  opportunityLostDialog: document.querySelector("#opportunityLostDialog"),
+  opportunityLostForm: document.querySelector("#opportunityLostForm"),
+  opportunityLostId: document.querySelector("#opportunityLostId"),
+  opportunityLostReason: document.querySelector("#opportunityLostReason"),
+  opportunityWonDialog: document.querySelector("#opportunityWonDialog"),
+  opportunityWonForm: document.querySelector("#opportunityWonForm"),
+  opportunityWonSummary: document.querySelector("#opportunityWonSummary"),
+  sellerDialog: document.querySelector("#sellerDialog"),
+  sellerForm: document.querySelector("#sellerForm"),
+  sellerName: document.querySelector("#sellerName"),
+  sellerList: document.querySelector("#sellerList"),
+  followUpList: document.querySelector("#followUpList"),
+  taskSellerFilter: document.querySelector("#taskSellerFilter"),
+  taskStatusFilter: document.querySelector("#taskStatusFilter"),
+  tasksOverdueList: document.querySelector("#tasksOverdueList"),
+  tasksTodayList: document.querySelector("#tasksTodayList"),
+  tasksWeekList: document.querySelector("#tasksWeekList"),
+  tasksLaterList: document.querySelector("#tasksLaterList"),
+  crmReportPeriod: document.querySelector("#crmReportPeriod"),
+  crmReportStartWrap: document.querySelector("#crmReportStartWrap"),
+  crmReportStart: document.querySelector("#crmReportStart"),
+  crmReportEndWrap: document.querySelector("#crmReportEndWrap"),
+  crmReportEnd: document.querySelector("#crmReportEnd"),
+  crmAvgTicket: document.querySelector("#crmAvgTicket"),
+  crmAvgCloseTime: document.querySelector("#crmAvgCloseTime"),
+  crmWonCount: document.querySelector("#crmWonCount"),
+  crmLostCount: document.querySelector("#crmLostCount"),
+  crmStageConversionReport: document.querySelector("#crmStageConversionReport"),
+  crmSellerRankingTable: document.querySelector("#crmSellerRankingTable"),
   navItems: document.querySelectorAll(".nav-item"),
   views: document.querySelectorAll(".view"),
   transactionDialog: document.querySelector("#transactionDialog"),
@@ -309,6 +391,7 @@ const viewNames = {
   banco: "Conciliação bancária",
   notasfiscais: "Notas Fiscais",
   estoque: "Estoque",
+  crm: "CRM",
   pessoas: "Clientes e fornecedores",
   relatorios: "Relatórios financeiros",
   usuarios: "Usuários",
@@ -388,6 +471,105 @@ function bindEvents() {
   els.stockEntryDate.value = todayIso;
   els.stockExitDate.value = todayIso;
   updateStockExitTypeUi();
+
+  document.querySelectorAll("[data-crm-tab]").forEach((button) => {
+    button.addEventListener("click", () => setCrmTab(button.dataset.crmTab));
+  });
+  document.querySelector("#newOpportunityBtn").addEventListener("click", () => openOpportunityDialog(null));
+  document.querySelector("#manageSellersBtn").addEventListener("click", openSellerDialog);
+  document.querySelector("#newTaskBtn").addEventListener("click", openTaskDialog);
+
+  els.opportunityForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.opportunityDialog.close();
+      return;
+    }
+    saveOpportunity();
+  });
+
+  els.sellerForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.sellerDialog.close();
+      return;
+    }
+    addSeller();
+  });
+
+  els.interactionForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.interactionDialog.close();
+      return;
+    }
+    saveInteraction();
+  });
+
+  els.taskForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.taskDialog.close();
+      return;
+    }
+    saveTask();
+  });
+  els.taskSellerFilter.addEventListener("change", renderTasks);
+  els.taskStatusFilter.addEventListener("change", renderTasks);
+
+  els.opportunityLostForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.opportunityLostDialog.close();
+      renderPipelineBoard(); // reverte o <select> que o usuário mudou visualmente, já que nada foi salvo
+      return;
+    }
+    confirmOpportunityLost();
+  });
+
+  els.opportunityWonForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const opportunity = pendingWonOpportunity;
+    pendingWonOpportunity = null;
+    els.opportunityWonDialog.close();
+    if (!opportunity || event.submitter?.value === "cancel") return;
+    if (event.submitter.value === "sale") convertOpportunityToSale(opportunity);
+    if (event.submitter.value === "project") convertOpportunityToProject(opportunity);
+  });
+
+  // Ganchos para vincular a oportunidade de volta à venda/projeto gerado, sem alterar
+  // saveSale()/saveProject() — eles rodam DEPOIS dos handlers originais (mesma ordem de
+  // registro), então checam o resultado real (o que foi de fato criado) em vez de assumir.
+  els.saleDialog.addEventListener("close", () => {
+    if (pendingOpportunityConversion?.kind === "sale") {
+      const created = state.sales.length > pendingOpportunityConversion.saleCountBefore;
+      pendingOpportunityConversion = null;
+      if (created) toast("Venda gerada a partir da oportunidade.");
+    }
+  });
+
+  els.projectForm.addEventListener("submit", () => {
+    if (pendingOpportunityConversion?.kind === "project") {
+      const { opportunityId, projectId } = pendingOpportunityConversion;
+      if (state.projects.some((project) => project.id === projectId)) {
+        const opportunity = state.opportunities.find((item) => item.id === opportunityId);
+        if (opportunity) {
+          opportunity.projectId = projectId;
+          opportunity.updatedAt = new Date().toISOString();
+          persist();
+        }
+        pendingOpportunityConversion = null;
+      }
+    }
+  });
+
+  els.crmReportPeriod.addEventListener("change", () => {
+    updateCrmReportPeriodUi();
+    renderCrmReports();
+  });
+  els.crmReportStart.addEventListener("input", renderCrmReports);
+  els.crmReportEnd.addEventListener("input", renderCrmReports);
+  updateCrmReportPeriodUi();
 
   els.navItems.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
   document.querySelector("#newTransactionBtn").addEventListener("click", () => openTransactionDialog());
@@ -526,6 +708,10 @@ function loadState() {
     stockItems: [],
     stockMovements: [],
     stockLocations: [],
+    opportunities: [],
+    interactions: [],
+    tasks: [],
+    sellers: [],
   });
 }
 
@@ -543,7 +729,66 @@ function normalizeState(data) {
     stockItems: Array.isArray(data.stockItems) ? data.stockItems : [],
     stockMovements: Array.isArray(data.stockMovements) ? data.stockMovements : [],
     stockLocations: Array.isArray(data.stockLocations) ? data.stockLocations : [],
+    opportunities: Array.isArray(data.opportunities) ? data.opportunities : [],
+    interactions: Array.isArray(data.interactions) ? data.interactions : [],
+    tasks: Array.isArray(data.tasks) ? data.tasks : [],
+    sellers: Array.isArray(data.sellers) ? data.sellers : [],
   };
+
+  normalized.sellers = normalized.sellers.map((item) => ({
+    id: crypto.randomUUID(),
+    name: "",
+    active: true,
+    ...item,
+  }));
+
+  normalized.opportunities = normalized.opportunities.map((item) => ({
+    id: crypto.randomUUID(),
+    personId: "",
+    title: "",
+    value: 0,
+    stage: "prospeccao",
+    probability: 20,
+    expectedCloseDate: "",
+    sellerId: "",
+    projectId: "",
+    lostReason: "",
+    stageChangedAt: item.createdAt || new Date().toISOString(),
+    stageHistory: [],
+    wonAt: "",
+    lostAt: "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...item,
+  }));
+  normalized.opportunities.forEach((item) => {
+    if (!item.stageHistory.length) item.stageHistory = [{ stage: item.stage, at: item.createdAt }];
+  });
+
+  normalized.interactions = normalized.interactions.map((item) => ({
+    id: crypto.randomUUID(),
+    opportunityId: "",
+    type: "ligacao",
+    notes: "",
+    date: "",
+    nextFollowUpDate: "",
+    sellerId: "",
+    createdAt: new Date().toISOString(),
+    ...item,
+  }));
+
+  normalized.tasks = normalized.tasks.map((item) => ({
+    id: crypto.randomUUID(),
+    title: "",
+    description: "",
+    dueDate: "",
+    status: "pendente",
+    opportunityId: "",
+    personId: "",
+    sellerId: "",
+    createdAt: new Date().toISOString(),
+    ...item,
+  }));
 
   normalized.stockLocations = normalized.stockLocations.map((item) => ({
     id: crypto.randomUUID(),
@@ -1216,6 +1461,7 @@ function renderAll() {
   renderPeople();
   renderInvoices();
   renderStock();
+  renderCrm();
   renderReports();
   hydratePersonOptions();
   hydrateSalePeople();
@@ -2963,6 +3209,546 @@ function renderStock() {
   renderStockExitList();
   renderStockAlerts();
   renderStockPurchaseNeed();
+}
+
+// ---- CRM ----
+
+function sellerName(id) {
+  return state.sellers.find((seller) => seller.id === id)?.name || "Sem vendedor";
+}
+
+function opportunityLabel(opportunity) {
+  return `${opportunity.title} · ${personName(opportunity.personId)}`;
+}
+
+function daysSince(isoDateOrDateTime) {
+  if (!isoDateOrDateTime) return 0;
+  return Math.max(0, Math.floor((Date.now() - new Date(isoDateOrDateTime).getTime()) / 86400000));
+}
+
+function setCrmTab(tab) {
+  currentCrmTab = tab;
+  document.querySelectorAll("[data-crm-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.crmTab === tab);
+  });
+  document.querySelectorAll("[data-crm-panel]").forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.crmPanel !== tab);
+  });
+}
+
+function hydrateSellerOptions() {
+  const activeSellers = state.sellers.filter((seller) => seller.active);
+  const options = activeSellers.map((seller) => `<option value="${seller.id}">${escapeHtml(seller.name)}</option>`).join("");
+  els.opportunitySeller.innerHTML = `<option value="">Sem vendedor</option>${options}`;
+  els.taskSeller.innerHTML = `<option value="">Sem vendedor</option>${options}`;
+  els.taskSellerFilter.innerHTML = `<option value="todos">Todos os vendedores</option>${options}`;
+}
+
+function openSellerDialog() {
+  els.sellerName.value = "";
+  renderSellerList();
+  els.sellerDialog.showModal();
+}
+
+function renderSellerList() {
+  els.sellerList.innerHTML = state.sellers.length
+    ? state.sellers.map((seller) => `
+      <article class="person-item">
+        <strong><span>${escapeHtml(seller.name)}</span><span>${seller.active ? "Ativo" : "Inativo"}</span></strong>
+        <div class="row-actions">
+          <button type="button" data-seller-action="toggle" data-id="${seller.id}">${seller.active ? "Inativar" : "Ativar"}</button>
+        </div>
+      </article>`).join("")
+    : emptyMessage("Nenhum vendedor cadastrado.");
+
+  document.querySelectorAll("[data-seller-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const seller = state.sellers.find((entry) => entry.id === button.dataset.id);
+      if (!seller) return;
+      seller.active = !seller.active;
+      persist();
+      renderSellerList();
+      renderAll();
+    });
+  });
+}
+
+function addSeller() {
+  const name = els.sellerName.value.trim();
+  if (!name) {
+    toast("Informe o nome do vendedor.");
+    return;
+  }
+  state.sellers.push({ id: crypto.randomUUID(), name, active: true });
+  els.sellerName.value = "";
+  persist();
+  renderSellerList();
+  renderAll();
+  toast("Vendedor adicionado.");
+}
+
+function findOrCreatePersonByName(name, fallbackType = "cliente") {
+  const trimmed = name.trim();
+  const existing = state.people.find((person) => person.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return existing.id;
+  const person = { id: crypto.randomUUID(), type: fallbackType, name: trimmed, document: "", contact: "" };
+  state.people.push(person);
+  return person.id;
+}
+
+function hydrateOpportunityPersonSuggestions() {
+  const clients = state.people.filter((person) => person.type === "cliente" || person.type === "ambos");
+  els.opportunityPersonSuggestions.innerHTML = clients.map((person) => `<option value="${escapeHtml(person.name)}"></option>`).join("");
+}
+
+function openOpportunityDialog(opportunity) {
+  els.opportunityForm.reset();
+  hydrateOpportunityPersonSuggestions();
+  if (opportunity) {
+    els.opportunityFormTitle.textContent = "Editar oportunidade";
+    els.opportunityId.value = opportunity.id;
+    els.opportunityTitle.value = opportunity.title;
+    els.opportunityPersonName.value = personName(opportunity.personId);
+    els.opportunityValue.value = opportunity.value;
+    els.opportunityProbability.value = opportunity.probability;
+    els.opportunityExpectedCloseDate.value = opportunity.expectedCloseDate;
+    els.opportunitySeller.value = opportunity.sellerId;
+    els.opportunityStage.value = opportunity.stage;
+  } else {
+    els.opportunityFormTitle.textContent = "Nova oportunidade";
+    els.opportunityId.value = "";
+    els.opportunityProbability.value = 20;
+    els.opportunityStage.value = "prospeccao";
+  }
+  els.opportunityDialog.showModal();
+}
+
+function saveOpportunity() {
+  const id = els.opportunityId.value || crypto.randomUUID();
+  const existing = state.opportunities.find((item) => item.id === id);
+  const personNameInput = els.opportunityPersonName.value.trim();
+  if (!personNameInput) {
+    toast("Informe o cliente ou lead.");
+    return;
+  }
+
+  const personId = findOrCreatePersonByName(personNameInput);
+  const stage = els.opportunityStage.value;
+  const now = new Date().toISOString();
+  const stageChanged = existing && existing.stage !== stage;
+
+  const opportunity = {
+    id,
+    personId,
+    title: els.opportunityTitle.value.trim(),
+    value: Number(els.opportunityValue.value || 0),
+    stage,
+    probability: Number(els.opportunityProbability.value || 0),
+    expectedCloseDate: els.opportunityExpectedCloseDate.value,
+    sellerId: els.opportunitySeller.value,
+    projectId: existing?.projectId || "",
+    lostReason: existing?.lostReason || "",
+    stageChangedAt: stageChanged || !existing ? now : existing.stageChangedAt,
+    stageHistory: existing ? [...existing.stageHistory] : [{ stage, at: now }],
+    wonAt: existing?.wonAt || (stage === "ganho" ? now : ""),
+    lostAt: existing?.lostAt || (stage === "perdido" ? now : ""),
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+  if (stageChanged) opportunity.stageHistory.push({ stage, at: now });
+
+  const index = state.opportunities.findIndex((item) => item.id === id);
+  if (index >= 0) state.opportunities[index] = opportunity;
+  else state.opportunities.push(opportunity);
+
+  persist();
+  renderAll();
+  els.opportunityDialog.close();
+  toast("Oportunidade salva.");
+}
+
+function renderPipelineBoard() {
+  els.pipelineBoard.innerHTML = OPPORTUNITY_STAGES.map((stageInfo) => {
+    const items = state.opportunities
+      .filter((item) => item.stage === stageInfo.key)
+      .sort((a, b) => (b.stageChangedAt || "").localeCompare(a.stageChangedAt || ""));
+    const total = sum(items.map((item) => item.value));
+    return `
+      <div class="pipeline-column">
+        <div class="pipeline-column-head">
+          <span>${stageInfo.label}</span>
+          <small>${items.length} · ${money(total)}</small>
+        </div>
+        ${items.map(pipelineCard).join("") || emptyMessage("Sem oportunidades.")}
+      </div>`;
+  }).join("");
+
+  document.querySelectorAll("[data-opportunity-edit]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const opportunity = state.opportunities.find((item) => item.id === el.dataset.opportunityEdit);
+      if (opportunity) openOpportunityDialog(opportunity);
+    });
+  });
+  document.querySelectorAll("[data-opportunity-stage-select]").forEach((select) => {
+    select.addEventListener("change", () => handleStageSelect(select.dataset.opportunityStageSelect, select.value));
+  });
+}
+
+function pipelineCard(opportunity) {
+  const daysStalled = daysSince(opportunity.stageChangedAt);
+  const stalled = daysStalled >= 14 && !["ganho", "perdido"].includes(opportunity.stage);
+  return `
+    <article class="pipeline-card ${stalled ? "stalled" : ""}">
+      <strong data-opportunity-edit="${opportunity.id}">${escapeHtml(opportunity.title)}</strong>
+      <span>${escapeHtml(personName(opportunity.personId))}</span>
+      <span class="muted">${money(opportunity.value)} · ${escapeHtml(sellerName(opportunity.sellerId))}</span>
+      <span class="muted">${daysStalled} dia(s) neste estágio</span>
+      <select data-opportunity-stage-select="${opportunity.id}">
+        ${OPPORTUNITY_STAGES.map((stageInfo) => `<option value="${stageInfo.key}" ${stageInfo.key === opportunity.stage ? "selected" : ""}>${stageInfo.label}</option>`).join("")}
+      </select>
+    </article>`;
+}
+
+function handleStageSelect(opportunityId, newStage) {
+  const opportunity = state.opportunities.find((item) => item.id === opportunityId);
+  if (!opportunity || newStage === opportunity.stage) return;
+
+  if (newStage === "perdido") {
+    openOpportunityLostDialog(opportunity);
+    return;
+  }
+
+  changeOpportunityStage(opportunity, newStage);
+  if (newStage === "ganho") openOpportunityWonDialog(opportunity);
+}
+
+function changeOpportunityStage(opportunity, newStage) {
+  const now = new Date().toISOString();
+  opportunity.stage = newStage;
+  opportunity.stageChangedAt = now;
+  opportunity.stageHistory.push({ stage: newStage, at: now });
+  opportunity.updatedAt = now;
+  if (newStage === "ganho" && !opportunity.wonAt) opportunity.wonAt = now;
+  if (newStage === "perdido" && !opportunity.lostAt) opportunity.lostAt = now;
+  persist();
+  renderAll();
+}
+
+function openOpportunityLostDialog(opportunity) {
+  els.opportunityLostId.value = opportunity.id;
+  els.opportunityLostReason.value = "";
+  els.opportunityLostDialog.showModal();
+}
+
+function confirmOpportunityLost() {
+  const opportunity = state.opportunities.find((item) => item.id === els.opportunityLostId.value);
+  if (!opportunity) return;
+  opportunity.lostReason = els.opportunityLostReason.value.trim();
+  changeOpportunityStage(opportunity, "perdido");
+  els.opportunityLostDialog.close();
+  toast("Oportunidade marcada como perdida.");
+}
+
+function openOpportunityWonDialog(opportunity) {
+  pendingWonOpportunity = opportunity;
+  els.opportunityWonSummary.textContent = `${opportunity.title} · ${personName(opportunity.personId)} · ${money(opportunity.value)}`;
+  els.opportunityWonDialog.showModal();
+}
+
+function convertOpportunityToSale(opportunity) {
+  pendingOpportunityConversion = { kind: "sale", opportunityId: opportunity.id, saleCountBefore: state.sales.length };
+  openSaleDialog();
+  els.salePerson.value = opportunity.personId;
+  els.saleDescription.value = opportunity.title;
+  els.saleTotal.value = opportunity.value;
+  renderInstallmentPreview();
+}
+
+function convertOpportunityToProject(opportunity) {
+  const projectId = crypto.randomUUID();
+  pendingOpportunityConversion = { kind: "project", opportunityId: opportunity.id, projectId };
+  setView("projetos");
+  els.projectForm.reset();
+  els.projectId.value = projectId;
+  els.projectName.value = opportunity.title;
+  els.projectCustomer.value = opportunity.personId;
+  refreshSearchableSelect(els.projectCustomer);
+  els.projectContractValue.value = opportunity.value;
+  els.projectStatus.value = "orcamento";
+  toast("Revise os dados do projeto e clique em Salvar projeto para concluir a conversão.");
+}
+
+function latestInteractionFor(opportunityId) {
+  const matches = state.interactions
+    .filter((item) => item.opportunityId === opportunityId)
+    .sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+  return matches[0] || null;
+}
+
+function renderFollowUpList() {
+  const activeOpportunities = state.opportunities.filter((item) => !["ganho", "perdido"].includes(item.stage));
+  const rows = activeOpportunities
+    .map((opportunity) => ({ opportunity, lastInteraction: latestInteractionFor(opportunity.id) }))
+    .map((row) => ({ ...row, nextFollowUp: row.lastInteraction?.nextFollowUpDate || "" }))
+    .sort((a, b) => (a.nextFollowUp || "9999-99-99").localeCompare(b.nextFollowUp || "9999-99-99"));
+
+  els.followUpList.innerHTML = rows.length
+    ? rows.map(({ opportunity, lastInteraction, nextFollowUp }) => {
+        const overdue = nextFollowUp && nextFollowUp < todayIso;
+        const lastContactText = lastInteraction ? ` · Último contato: ${INTERACTION_TYPE_LABELS[lastInteraction.type] || lastInteraction.type} em ${formatDate(lastInteraction.date)}` : "";
+        return `
+      <article class="report-item ${overdue ? "follow-up-overdue" : ""}">
+        <strong><span>${escapeHtml(opportunity.title)} · ${escapeHtml(personName(opportunity.personId))}</span><span>${money(opportunity.value)}</span></strong>
+        <span class="muted">${nextFollowUp ? `Próximo follow-up: ${formatDate(nextFollowUp)}` : "Sem follow-up agendado"} · ${escapeHtml(sellerName(opportunity.sellerId))}${lastContactText}</span>
+        <div class="row-actions">
+          <button type="button" data-register-contact="${opportunity.id}">Registrar contato</button>
+        </div>
+      </article>`;
+      }).join("")
+    : emptyMessage("Nenhuma oportunidade ativa no funil.");
+
+  document.querySelectorAll("[data-register-contact]").forEach((button) => {
+    button.addEventListener("click", () => openInteractionDialog(button.dataset.registerContact));
+  });
+}
+
+function openInteractionDialog(opportunityId) {
+  const opportunity = state.opportunities.find((item) => item.id === opportunityId);
+  els.interactionForm.reset();
+  els.interactionOpportunityId.value = opportunityId;
+  els.interactionDate.value = todayIso;
+  document.querySelector("#interactionDialogTitle").textContent = opportunity ? `Registrar contato · ${opportunity.title}` : "Registrar contato";
+  els.interactionDialog.showModal();
+}
+
+function saveInteraction() {
+  const opportunityId = els.interactionOpportunityId.value;
+  const opportunity = state.opportunities.find((item) => item.id === opportunityId);
+  if (!opportunity) return;
+
+  state.interactions.push({
+    id: crypto.randomUUID(),
+    opportunityId,
+    type: els.interactionType.value,
+    notes: els.interactionNotes.value.trim(),
+    date: els.interactionDate.value || todayIso,
+    nextFollowUpDate: els.interactionNextFollowUpDate.value,
+    sellerId: opportunity.sellerId,
+    createdAt: new Date().toISOString(),
+  });
+
+  persist();
+  renderAll();
+  els.interactionDialog.close();
+  toast("Contato registrado.");
+}
+
+function hydrateTaskOptions() {
+  const activeOpportunities = state.opportunities.filter((item) => !["ganho", "perdido"].includes(item.stage));
+  els.taskOpportunity.innerHTML = [
+    `<option value="">Nenhuma</option>`,
+    ...activeOpportunities.map((item) => `<option value="${item.id}">${escapeHtml(opportunityLabel(item))}</option>`),
+  ].join("");
+
+  const clients = state.people.filter((person) => person.type === "cliente" || person.type === "ambos");
+  els.taskPerson.innerHTML = [
+    `<option value="">Nenhum</option>`,
+    ...clients.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`),
+  ].join("");
+}
+
+function openTaskDialog() {
+  els.taskForm.reset();
+  els.taskId.value = "";
+  els.taskDueDate.value = todayIso;
+  hydrateTaskOptions();
+  els.taskDialog.showModal();
+}
+
+function saveTask() {
+  const id = els.taskId.value || crypto.randomUUID();
+  const existing = state.tasks.find((item) => item.id === id);
+  const task = {
+    id,
+    title: els.taskTitle.value.trim(),
+    description: els.taskDescription.value.trim(),
+    dueDate: els.taskDueDate.value,
+    status: existing?.status || "pendente",
+    opportunityId: els.taskOpportunity.value,
+    personId: els.taskPerson.value,
+    sellerId: els.taskSeller.value,
+    createdAt: existing?.createdAt || new Date().toISOString(),
+  };
+
+  const index = state.tasks.findIndex((item) => item.id === id);
+  if (index >= 0) state.tasks[index] = task;
+  else state.tasks.push(task);
+
+  persist();
+  renderAll();
+  els.taskDialog.close();
+  toast("Tarefa salva.");
+}
+
+function taskComputedStatus(task) {
+  if (task.status === "concluida") return "concluida";
+  if (task.dueDate && task.dueDate < todayIso) return "atrasada";
+  return "pendente";
+}
+
+function taskStatusLabel(status) {
+  return { pendente: "Pendente", concluida: "Concluída", atrasada: "Atrasada" }[status] || status;
+}
+
+function completeTask(id) {
+  const task = state.tasks.find((item) => item.id === id);
+  if (!task) return;
+  task.status = "concluida";
+  persist();
+  renderAll();
+  toast("Tarefa concluída.");
+}
+
+function renderTasks() {
+  const sellerFilter = els.taskSellerFilter.value;
+  const statusFilter = els.taskStatusFilter.value;
+
+  let tasks = state.tasks.slice();
+  if (sellerFilter && sellerFilter !== "todos") tasks = tasks.filter((task) => task.sellerId === sellerFilter);
+  if (statusFilter === "pendente") tasks = tasks.filter((task) => task.status !== "concluida");
+  if (statusFilter === "concluida") tasks = tasks.filter((task) => task.status === "concluida");
+
+  const weekLimit = toIso(addDays(today, 7));
+  const overdue = [];
+  const dueToday = [];
+  const dueWeek = [];
+  const dueLater = [];
+
+  tasks.forEach((task) => {
+    const computed = taskComputedStatus(task);
+    if (computed === "concluida") {
+      dueLater.push(task);
+      return;
+    }
+    if (computed === "atrasada") overdue.push(task);
+    else if (task.dueDate === todayIso) dueToday.push(task);
+    else if (task.dueDate && task.dueDate <= weekLimit) dueWeek.push(task);
+    else dueLater.push(task);
+  });
+
+  renderTaskGroup(els.tasksOverdueList, overdue, "Nenhuma tarefa atrasada.");
+  renderTaskGroup(els.tasksTodayList, dueToday, "Nenhuma tarefa para hoje.");
+  renderTaskGroup(els.tasksWeekList, dueWeek, "Nenhuma tarefa nos próximos 7 dias.");
+  renderTaskGroup(els.tasksLaterList, dueLater, "Nenhuma tarefa futura.");
+}
+
+function renderTaskGroup(container, tasks, emptyText) {
+  container.innerHTML = tasks.length
+    ? tasks
+        .sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""))
+        .map((task) => `
+      <article class="report-item">
+        <strong><span>${escapeHtml(task.title)}</span><span>${taskStatusLabel(taskComputedStatus(task))}</span></strong>
+        <span class="muted">${formatDate(task.dueDate)} · ${escapeHtml(sellerName(task.sellerId))}${task.description ? ` · ${escapeHtml(task.description)}` : ""}</span>
+        ${task.status !== "concluida" ? `<div class="row-actions"><button type="button" data-complete-task="${task.id}">Concluir</button></div>` : ""}
+      </article>`).join("")
+    : emptyMessage(emptyText);
+
+  document.querySelectorAll("[data-complete-task]").forEach((button) => {
+    button.addEventListener("click", () => completeTask(button.dataset.completeTask));
+  });
+}
+
+function updateCrmReportPeriodUi() {
+  const isCustom = els.crmReportPeriod.value === "personalizado";
+  els.crmReportStartWrap.classList.toggle("hidden", !isCustom);
+  els.crmReportEndWrap.classList.toggle("hidden", !isCustom);
+  if (isCustom && !els.crmReportStart.value) {
+    els.crmReportStart.value = currentMonthStart;
+    els.crmReportEnd.value = currentMonthEnd;
+  }
+}
+
+function getCrmReportPeriod() {
+  const mode = els.crmReportPeriod.value;
+  if (mode === "trimestre") {
+    const quarterStartMonth = Math.floor(today.getMonth() / 3) * 3;
+    const start = new Date(today.getFullYear(), quarterStartMonth, 1);
+    const end = new Date(today.getFullYear(), quarterStartMonth + 3, 0);
+    return { start: toIso(start), end: toIso(end) };
+  }
+  if (mode === "personalizado") {
+    return { start: els.crmReportStart.value || currentMonthStart, end: els.crmReportEnd.value || currentMonthEnd };
+  }
+  return { start: currentMonthStart, end: currentMonthEnd };
+}
+
+function renderCrmReports() {
+  const period = getCrmReportPeriod();
+  const won = state.opportunities.filter((item) => item.stage === "ganho" && isInPeriod((item.wonAt || "").slice(0, 10), period.start, period.end));
+  const lost = state.opportunities.filter((item) => item.stage === "perdido" && isInPeriod((item.lostAt || "").slice(0, 10), period.start, period.end));
+
+  const avgTicket = won.length ? sum(won.map((item) => item.value)) / won.length : 0;
+  const avgCloseDays = won.length
+    ? won.reduce((total, item) => total + Math.max(0, daysBetween((item.wonAt || "").slice(0, 10), (item.createdAt || "").slice(0, 10))), 0) / won.length
+    : 0;
+
+  els.crmAvgTicket.textContent = money(avgTicket);
+  els.crmAvgCloseTime.textContent = `${avgCloseDays.toFixed(1)} dias`;
+  els.crmWonCount.textContent = String(won.length);
+  els.crmLostCount.textContent = String(lost.length);
+
+  renderStageConversionReport();
+  renderSellerRanking(won, lost);
+}
+
+function renderStageConversionReport() {
+  const rows = OPPORTUNITY_STAGES.filter((stageInfo) => !["ganho", "perdido"].includes(stageInfo.key)).map((stageInfo) => {
+    const stageIndex = OPPORTUNITY_STAGES.findIndex((entry) => entry.key === stageInfo.key);
+    const reached = state.opportunities.filter((item) => item.stageHistory.some((entry) => entry.stage === stageInfo.key));
+    const advanced = reached.filter((item) =>
+      item.stageHistory.some((entry) => OPPORTUNITY_STAGES.findIndex((s) => s.key === entry.stage) > stageIndex)
+    );
+    const rate = reached.length ? (advanced.length / reached.length) * 100 : 0;
+    return { stageInfo, reachedCount: reached.length, advancedCount: advanced.length, rate };
+  });
+
+  els.crmStageConversionReport.innerHTML = rows.map((row) => `
+    <article class="report-item">
+      <strong><span>${row.stageInfo.label}</span><span>${row.rate.toFixed(1)}%</span></strong>
+      <span class="muted">${row.advancedCount} de ${row.reachedCount} avançaram para o próximo estágio</span>
+    </article>`).join("");
+}
+
+function renderSellerRanking(won, lost) {
+  const sellerIds = new Set([...won.map((item) => item.sellerId), ...lost.map((item) => item.sellerId)].filter(Boolean));
+  const rows = [...sellerIds]
+    .map((sellerId) => {
+      const wonBySeller = won.filter((item) => item.sellerId === sellerId);
+      const lostBySeller = lost.filter((item) => item.sellerId === sellerId);
+      const total = sum(wonBySeller.map((item) => item.value));
+      const conversion = wonBySeller.length + lostBySeller.length ? (wonBySeller.length / (wonBySeller.length + lostBySeller.length)) * 100 : 0;
+      return { sellerId, total, count: wonBySeller.length, conversion };
+    })
+    .sort((a, b) => b.total - a.total);
+
+  els.crmSellerRankingTable.innerHTML = rows.length
+    ? rows.map((row) => `
+      <tr>
+        <td>${escapeHtml(sellerName(row.sellerId))}</td>
+        <td class="money">${money(row.total)}</td>
+        <td>${row.count}</td>
+        <td>${row.conversion.toFixed(1)}%</td>
+      </tr>`).join("")
+    : `<tr><td colspan="4">${emptyMessage("Sem negócios fechados no período.")}</td></tr>`;
+}
+
+function renderCrm() {
+  hydrateSellerOptions();
+  renderPipelineBoard();
+  renderFollowUpList();
+  renderTasks();
+  renderCrmReports();
 }
 
 // ---- Notas Fiscais ----
