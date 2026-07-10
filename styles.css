@@ -386,6 +386,10 @@ button {
   margin-bottom: 18px;
 }
 
+.dashboard-kpis {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .kpi,
 .panel {
   background: var(--surface);
@@ -409,6 +413,16 @@ button {
 .kpi strong {
   font-size: 27px;
   letter-spacing: 0;
+}
+
+.kpi-danger {
+  border-color: var(--danger);
+}
+
+.kpi-danger span,
+.kpi-danger strong,
+.kpi-danger small {
+  color: var(--danger);
 }
 
 .sector-overview-panel {

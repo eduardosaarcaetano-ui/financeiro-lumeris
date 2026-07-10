@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-cliente-projeto1" />
+    <link rel="stylesheet" href="styles.css?v=20260709-vencido-receber1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -107,7 +107,7 @@
             </div>
           </section>
 
-          <div class="kpi-grid">
+          <div class="kpi-grid dashboard-kpis">
             <article class="kpi">
               <span>A receber em aberto</span>
               <strong id="kpiReceberAberto">R$ 0,00</strong>
@@ -117,6 +117,11 @@
               <span>A pagar em aberto</span>
               <strong id="kpiPagarAberto">R$ 0,00</strong>
               <small id="kpiPagarVencido">R$ 0,00 vencido</small>
+            </article>
+            <article class="kpi kpi-danger">
+              <span>A receber vencido</span>
+              <strong id="kpiReceberVencidoCard">R$ 0,00</strong>
+              <small id="kpiReceberVencidoCount">0 lançamento(s) vencido(s)</small>
             </article>
             <article class="kpi">
               <span>Saldo previsto</span>
@@ -1904,6 +1909,6 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260709-custo-direto1"></script>
+    <script src="app.js?v=20260709-vencido-receber1"></script>
   </body>
 </html>

@@ -2055,13 +2055,16 @@ function renderDashboard() {
   const pagar = state.transactions.filter((item) => item.type === "pagar");
   const receberAberto = sum(receber.filter((item) => item.status === "aberto"));
   const pagarAberto = sum(pagar.filter((item) => item.status === "aberto"));
-  const receberVencido = sum(receber.filter(isOverdue));
+  const receberVencidoItems = receber.filter(isOverdue);
+  const receberVencido = sum(receberVencidoItems);
   const pagarVencido = sum(pagar.filter(isOverdue));
   const realizadoMes = sum(state.transactions.filter(isPaidThisMonth).map(signedAmount));
 
   document.querySelector("#kpiReceberAberto").textContent = money(receberAberto);
   document.querySelector("#kpiPagarAberto").textContent = money(pagarAberto);
   document.querySelector("#kpiReceberVencido").textContent = `${money(receberVencido)} vencido`;
+  document.querySelector("#kpiReceberVencidoCard").textContent = money(receberVencido);
+  document.querySelector("#kpiReceberVencidoCount").textContent = `${receberVencidoItems.length} lançamento(s) vencido(s)`;
   document.querySelector("#kpiPagarVencido").textContent = `${money(pagarVencido)} vencido`;
   document.querySelector("#kpiSaldoPrevisto").textContent = money(receberAberto - pagarAberto);
   document.querySelector("#kpiRealizadoMes").textContent = money(realizadoMes);
