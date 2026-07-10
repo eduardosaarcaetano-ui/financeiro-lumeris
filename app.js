@@ -333,6 +333,7 @@ const els = {
   transactionId: document.querySelector("#transactionId"),
   transactionType: document.querySelector("#transactionType"),
   transactionPerson: document.querySelector("#transactionPerson"),
+  newTransactionPersonBtn: document.querySelector("#newTransactionPersonBtn"),
   transactionDescription: document.querySelector("#transactionDescription"),
   transactionCategory: document.querySelector("#transactionCategory"),
   transactionDreGroup: document.querySelector("#transactionDreGroup"),
@@ -342,11 +343,19 @@ const els = {
   transactionPaidDate: document.querySelector("#transactionPaidDate"),
   transactionProjectMode: document.querySelector("#transactionProjectMode"),
   transactionProject: document.querySelector("#transactionProject"),
+  newTransactionProjectBtn: document.querySelector("#newTransactionProjectBtn"),
   transactionProjectWrap: document.querySelector("#transactionProjectWrap"),
   transactionDirectProjectCost: document.querySelector("#transactionDirectProjectCost"),
   allocationBox: document.querySelector("#allocationBox"),
   allocationRows: document.querySelector("#allocationRows"),
   allocationTotal: document.querySelector("#allocationTotal"),
+  transactionInstallmentBox: document.querySelector("#transactionInstallmentBox"),
+  transactionUseInstallments: document.querySelector("#transactionUseInstallments"),
+  transactionInstallments: document.querySelector("#transactionInstallments"),
+  transactionInstallmentInterval: document.querySelector("#transactionInstallmentInterval"),
+  transactionCustomDaysWrap: document.querySelector("#transactionCustomDaysWrap"),
+  transactionCustomDays: document.querySelector("#transactionCustomDays"),
+  transactionInstallmentPreview: document.querySelector("#transactionInstallmentPreview"),
   transactionNotes: document.querySelector("#transactionNotes"),
   saleDialog: document.querySelector("#saleDialog"),
   saleForm: document.querySelector("#saleForm"),
@@ -707,6 +716,7 @@ function bindEvents() {
     hydratePersonOptions();
     hydrateStatusOptions();
     setDefaultDreGroup();
+    updateTransactionInstallmentUi();
   });
 
   els.transactionStatus.addEventListener("change", () => {
@@ -717,6 +727,14 @@ function bindEvents() {
 
   els.transactionProjectMode.addEventListener("change", renderAllocationControls);
   els.transactionAmount.addEventListener("input", renderAllocationTotal);
+  els.transactionAmount.addEventListener("input", renderTransactionInstallmentPreview);
+  els.transactionDueDate.addEventListener("input", renderTransactionInstallmentPreview);
+  els.transactionUseInstallments.addEventListener("change", updateTransactionInstallmentUi);
+  els.transactionInstallments.addEventListener("input", renderTransactionInstallmentPreview);
+  els.transactionInstallmentInterval.addEventListener("change", updateTransactionInstallmentUi);
+  els.transactionCustomDays.addEventListener("input", renderTransactionInstallmentPreview);
+  els.newTransactionPersonBtn.addEventListener("click", createPersonFromTransactionDialog);
+  els.newTransactionProjectBtn.addEventListener("click", createProjectFromTransactionDialog);
   document.querySelector("#addAllocationBtn").addEventListener("click", () => addAllocationRow());
 
   els.transactionForm.addEventListener("submit", (event) => {
@@ -4895,8 +4913,13 @@ function openTransactionDialog(item = null) {
   const allocations = item?.allocations || [];
   els.transactionProjectMode.value = allocations.length > 1 ? "split" : allocations.length === 1 ? "single" : "none";
   els.transactionProject.value = allocations[0]?.projectId || "";
+  els.transactionUseInstallments.checked = false;
+  els.transactionInstallments.value = 1;
+  els.transactionInstallmentInterval.value = "monthly";
+  els.transactionCustomDays.value = 30;
   renderAllocationControls();
   renderAllocationRows(allocations);
+  updateTransactionInstallmentUi();
   els.transactionNotes.value = item?.notes || "";
   els.transactionTitle.textContent = item ? "Editar lançamento" : "Novo lançamento";
   els.transactionDialog.showModal();
@@ -4912,6 +4935,18 @@ function saveTransaction() {
     toast("A soma do rateio precisa ser igual ao valor total do lançamento.");
     return;
   }
+
+  const shouldGenerateInstallments =
+    type === "receber" &&
+    !existing &&
+    els.transactionUseInstallments.checked &&
+    Number(els.transactionInstallments.value || 1) > 1;
+
+  if (shouldGenerateInstallments) {
+    saveTransactionInstallments(type, status, allocations);
+    return;
+  }
+
   const data = {
     id: els.transactionId.value || crypto.randomUUID(),
     type,
@@ -4944,12 +4979,146 @@ function saveTransaction() {
   toast("Lançamento salvo.");
 }
 
+function saveTransactionInstallments(type, status, allocations) {
+  const total = Number(els.transactionAmount.value);
+  const count = Number(els.transactionInstallments.value || 1);
+  const installments = buildInstallments(total, count, els.transactionDueDate.value, els.transactionInstallmentInterval.value, Number(els.transactionCustomDays.value));
+  const batchId = crypto.randomUUID();
+
+  installments.forEach((installment) => {
+    const installmentAllocations = scaleAllocations(allocations, installment.amount, total);
+    state.transactions.push({
+      id: crypto.randomUUID(),
+      type,
+      personId: els.transactionPerson.value,
+      description: `${els.transactionDescription.value.trim()} - Parcela ${installment.number}/${count}`,
+      category: els.transactionCategory.value.trim(),
+      dreGroup: els.transactionDreGroup.value,
+      dueDate: installment.dueDate,
+      amount: installment.amount,
+      status,
+      paidDate: status === "recebido" ? els.transactionPaidDate.value || todayIso : "",
+      notes: els.transactionNotes.value.trim(),
+      directProjectCost: false,
+      projectId: installmentAllocations.length === 1 ? installmentAllocations[0].projectId : "",
+      allocations: installmentAllocations,
+      saleId: batchId,
+      installmentNumber: installment.number,
+      installmentTotal: count,
+      bankMovementId: "",
+      updatedAt: new Date().toISOString(),
+    });
+  });
+
+  persist();
+  renderAll();
+  els.transactionDialog.close();
+  toast(`${count} parcelas geradas na previsão de recebíveis.`);
+}
+
+function scaleAllocations(allocations, installmentAmount, totalAmount) {
+  if (!allocations.length || !totalAmount) return [];
+  const scaled = allocations.map((allocation) => ({
+    projectId: allocation.projectId,
+    amount: roundCurrency((allocation.amount / totalAmount) * installmentAmount),
+  }));
+  const diff = roundCurrency(installmentAmount - allocationTotal(scaled));
+  if (scaled.length && Math.abs(diff) >= 0.01) {
+    scaled[scaled.length - 1].amount = roundCurrency(scaled[scaled.length - 1].amount + diff);
+  }
+  return scaled;
+}
+
 function hydratePersonOptions() {
   const type = els.transactionType.value;
   const people = state.people.filter((person) => person.type === "ambos" || (type === "receber" ? person.type === "cliente" : person.type === "fornecedor"));
   els.transactionPerson.innerHTML = people.length
     ? people.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")
     : `<option value="">Cadastre ${type === "receber" ? "um cliente" : "um fornecedor"} primeiro</option>`;
+}
+
+function createPersonFromTransactionDialog() {
+  const type = els.transactionType.value === "receber" ? "cliente" : "fornecedor";
+  const name = window.prompt(`Nome do novo ${type}:`, "");
+  if (!name || !name.trim()) return;
+  const person = {
+    id: crypto.randomUUID(),
+    type,
+    name: name.trim(),
+    document: "",
+    contact: "",
+  };
+  state.people.push(person);
+  persist();
+  hydratePersonOptions();
+  hydrateSalePeople();
+  hydrateProjectOptions();
+  hydrateInvoicePersonOptions();
+  els.transactionPerson.value = person.id;
+  toast(`${type === "cliente" ? "Cliente" : "Fornecedor"} criado e selecionado.`);
+}
+
+function createProjectFromTransactionDialog() {
+  if (!guardViewAccess("projetos")) return;
+  const suggested = els.transactionDescription.value || personName(els.transactionPerson.value);
+  const name = window.prompt("Nome do novo projeto:", suggested);
+  if (!name || !name.trim()) return;
+  const amount = Number(els.transactionAmount.value || 0);
+  const project = {
+    id: crypto.randomUUID(),
+    code: "",
+    name: name.trim(),
+    customerId: els.transactionType.value === "receber" ? els.transactionPerson.value : "",
+    status: "ativo",
+    startDate: todayIso,
+    endDate: "",
+    contractValue: els.transactionType.value === "receber" ? amount : 0,
+    expectedCosts: els.transactionType.value === "pagar" ? amount : 0,
+    targetMargin: 20,
+    costCenterId: crypto.randomUUID(),
+    notes: "Criado durante cadastro de lançamento financeiro.",
+  };
+  state.projects.push(project);
+  upsertCostCenter(project);
+  persist();
+  hydrateProjectOptions();
+  els.transactionProjectMode.value = "single";
+  els.transactionProject.value = project.id;
+  renderAllocationControls();
+  renderProjects();
+  renderProjectReports();
+  toast("Projeto criado e selecionado.");
+}
+
+function updateTransactionInstallmentUi() {
+  const isReceivable = els.transactionType.value === "receber";
+  const enabled = isReceivable && els.transactionUseInstallments.checked;
+  els.transactionInstallmentBox.classList.toggle("hidden", !isReceivable);
+  els.transactionInstallments.disabled = !enabled;
+  els.transactionInstallmentInterval.disabled = !enabled;
+  els.transactionCustomDays.disabled = !enabled || els.transactionInstallmentInterval.value !== "custom";
+  els.transactionCustomDaysWrap.classList.toggle("hidden", !enabled || els.transactionInstallmentInterval.value !== "custom");
+  renderTransactionInstallmentPreview();
+}
+
+function renderTransactionInstallmentPreview() {
+  if (!els.transactionUseInstallments.checked || els.transactionType.value !== "receber") {
+    els.transactionInstallmentPreview.innerHTML = emptyMessage("Marque Gerar parcelas para dividir este recebível.");
+    return;
+  }
+  const total = Number(els.transactionAmount.value || 0);
+  const count = Number(els.transactionInstallments.value || 1);
+  const firstDue = els.transactionDueDate.value;
+  if (!total || !count || !firstDue) {
+    els.transactionInstallmentPreview.innerHTML = emptyMessage("Informe valor, vencimento e quantidade para visualizar as parcelas.");
+    return;
+  }
+  const installments = buildInstallments(total, count, firstDue, els.transactionInstallmentInterval.value, Number(els.transactionCustomDays.value));
+  els.transactionInstallmentPreview.innerHTML = `
+    <strong>Previsão das parcelas</strong>
+    <div class="preview-grid">
+      ${installments.map((item) => `<span>${item.number}/${count}</span><span>${formatDate(item.dueDate)}</span><strong>${money(item.amount)}</strong>`).join("")}
+    </div>`;
 }
 
 function hydrateSalePeople() {

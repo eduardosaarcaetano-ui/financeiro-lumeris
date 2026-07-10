@@ -1,10 +1,10 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-bankproject1" />
+    <link rel="stylesheet" href="styles.css?v=20260709-receber1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -1304,7 +1304,10 @@
             </select>
           </label>
           <label>Cliente/Fornecedor
-            <select id="transactionPerson" required></select>
+            <div class="inline-control">
+              <select id="transactionPerson" required></select>
+              <button class="secondary-btn" id="newTransactionPersonBtn" type="button">Novo cadastro</button>
+            </div>
           </label>
           <label>Descrição
             <input id="transactionDescription" required maxlength="120" />
@@ -1345,7 +1348,10 @@
             </select>
           </label>
           <label id="transactionProjectWrap">Projeto / centro de custo
-            <select id="transactionProject"></select>
+            <div class="inline-control">
+              <select id="transactionProject"></select>
+              <button class="secondary-btn" id="newTransactionProjectBtn" type="button">Novo projeto</button>
+            </div>
           </label>
           <label class="checkbox-line">
             <input id="transactionDirectProjectCost" type="checkbox" />
@@ -1359,8 +1365,34 @@
             <div id="allocationRows" class="allocation-rows"></div>
             <div class="allocation-total" id="allocationTotal">Total rateado: R$ 0,00</div>
           </div>
-          <label class="full">Observações
-            <textarea id="transactionNotes" rows="3" maxlength="300"></textarea>
+
+            <section class="allocation-box full" id="transactionInstallmentBox">
+              <div class="panel-head compact-head">
+                <h2>Parcelamento / previsão de recebíveis</h2>
+              </div>
+              <div class="form-grid compact-form-grid">
+                <label class="checkbox-line">
+                  <input id="transactionUseInstallments" type="checkbox" />
+                  Gerar parcelas
+                </label>
+                <label>Quantidade
+                  <input id="transactionInstallments" type="number" min="1" max="60" step="1" value="1" />
+                </label>
+                <label>Intervalo
+                  <select id="transactionInstallmentInterval">
+                    <option value="monthly">Mensal</option>
+                    <option value="weekly">Semanal</option>
+                    <option value="custom">Dias corridos</option>
+                  </select>
+                </label>
+                <label id="transactionCustomDaysWrap">Dias corridos
+                  <input id="transactionCustomDays" type="number" min="1" step="1" value="30" />
+                </label>
+              </div>
+              <div class="installment-preview" id="transactionInstallmentPreview"></div>
+            </section>
+                      <label class="full">Observações
+<textarea id="transactionNotes" rows="3" maxlength="300"></textarea>
           </label>
         </div>
         <menu class="modal-actions">
@@ -1785,6 +1817,7 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260709-bankproject1"></script>
+    <script src="app.js?v=20260709-receber1"></script>
   </body>
 </html>
+
