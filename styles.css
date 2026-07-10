@@ -1079,6 +1079,16 @@ table {
   box-shadow: 0 10px 28px rgba(18, 98, 82, 0.14);
 }
 
+.stock-filter-kpi {
+  cursor: pointer;
+}
+
+.stock-filter-kpi:hover,
+.stock-filter-kpi.active-filter {
+  border-color: var(--primary);
+  box-shadow: 0 10px 28px rgba(18, 98, 82, 0.14);
+}
+
 .form-actions {
   display: flex;
   gap: 10px;

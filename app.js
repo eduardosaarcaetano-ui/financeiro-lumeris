@@ -226,6 +226,8 @@ const els = {
   stockFilterType: document.querySelector("#stockFilterType"),
   stockFilterProject: document.querySelector("#stockFilterProject"),
   stockFilterItem: document.querySelector("#stockFilterItem"),
+  stockFilterStatus: document.querySelector("#stockFilterStatus"),
+  stockFilterCategory: document.querySelector("#stockFilterCategory"),
   applyStockFilters: document.querySelector("#applyStockFilters"),
   clearStockFilters: document.querySelector("#clearStockFilters"),
   stockEntryForm: document.querySelector("#stockEntryForm"),
@@ -400,6 +402,7 @@ const els = {
   ofxFile: document.querySelector("#ofxFile"),
   bankSearch: document.querySelector("#bankSearch"),
   bankStatus: document.querySelector("#bankStatus"),
+  bankAccountFilter: document.querySelector("#bankAccountFilter"),
   bankDialog: document.querySelector("#bankDialog"),
   bankForm: document.querySelector("#bankForm"),
   bankMovementId: document.querySelector("#bankMovementId"),
@@ -596,11 +599,21 @@ function bindEvents() {
   els.cancelStockItemEditBtn.addEventListener("click", resetStockItemForm);
   els.stockItemSearch.addEventListener("input", renderStockItems);
   els.importIluminarStockBtn.addEventListener("click", importIluminarStock);
-  [els.stockFilterStart, els.stockFilterEnd, els.stockFilterType, els.stockFilterProject, els.stockFilterItem].forEach((field) => {
+  [els.stockFilterStart, els.stockFilterEnd, els.stockFilterType, els.stockFilterProject, els.stockFilterItem, els.stockFilterStatus, els.stockFilterCategory].forEach((field) => {
     field.addEventListener("input", renderStock);
   });
   els.applyStockFilters.addEventListener("click", renderStock);
   els.clearStockFilters.addEventListener("click", clearStockFilters);
+  document.querySelectorAll("[data-stock-status-filter]").forEach((card) => {
+    const applyCardFilter = () => applyStockStatusFilter(card.dataset.stockStatusFilter);
+    card.addEventListener("click", applyCardFilter);
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        applyCardFilter();
+      }
+    });
+  });
   els.stockEntryForm.addEventListener("submit", saveStockEntry);
   els.newStockEntrySupplierBtn.addEventListener("click", createSupplierFromStockEntryDialog);
   els.stockEntryQuantity.addEventListener("input", updateStockEntryTotalCost);
@@ -758,6 +771,7 @@ function bindEvents() {
     "#salesSearch",
     "#bankSearch",
     "#bankStatus",
+    "#bankAccountFilter",
     "#peopleSearch",
     "#categoryReportType",
     "#reportStart",
@@ -3658,6 +3672,16 @@ function stockAlertLevel(item) {
   return "";
 }
 
+function stockItemMatchesStatus(item, status) {
+  if (!status) return true;
+  if (status === "comprar") return item.active && item.quantity < item.minQuantity;
+  if (status === "abaixo_minimo") return item.active && item.quantity > 0 && item.quantity < item.minQuantity;
+  if (status === "zerado") return item.active && item.quantity <= 0;
+  if (status === "inativo") return !item.active;
+  if (status === "acima_maximo") return item.active && item.maxQuantity > 0 && item.quantity > item.maxQuantity;
+  return true;
+}
+
 function stockUserName(id) {
   const user = state.users.find((entry) => entry.id === id);
   return user ? user.name || user.username : "—";
@@ -4049,6 +4073,7 @@ function setStockTab(tab) {
 
 function hydrateStockCatalogOptions() {
   const currentStockFilterItem = els.stockFilterItem?.value || "";
+  const currentStockFilterCategory = els.stockFilterCategory?.value || "";
   const suppliers = state.people.filter((person) => person.type === "fornecedor" || person.type === "ambos");
   const supplierOptions = suppliers.length
     ? suppliers.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")
@@ -4069,6 +4094,9 @@ function hydrateStockCatalogOptions() {
   els.stockExitItem.innerHTML = itemOptions;
   els.stockFilterItem.innerHTML = `<option value="">Todos os itens</option>${activeItems.map((item) => `<option value="${item.id}">${escapeHtml(stockItemLabel(item))}</option>`).join("")}`;
   if (currentStockFilterItem) els.stockFilterItem.value = currentStockFilterItem;
+  const categories = [...new Set(state.stockItems.map((item) => item.category || "SEM CADASTRO"))].sort((a, b) => a.localeCompare(b));
+  els.stockFilterCategory.innerHTML = `<option value="">Todas as categorias</option>${categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("")}`;
+  if (currentStockFilterCategory) els.stockFilterCategory.value = currentStockFilterCategory;
   refreshSearchableSelect(els.stockEntryItem);
   refreshSearchableSelect(els.stockExitItem);
   refreshSearchableSelect(els.stockFilterItem);
@@ -4140,7 +4168,13 @@ function saveStockItem(event) {
 
 function renderStockItems() {
   const search = els.stockItemSearch.value.toLowerCase().trim();
+  const selectedItemId = els.stockFilterItem.value;
+  const selectedStatus = els.stockFilterStatus.value;
+  const selectedCategory = els.stockFilterCategory.value;
   const items = state.stockItems
+    .filter((item) => !selectedItemId || item.id === selectedItemId)
+    .filter((item) => stockItemMatchesStatus(item, selectedStatus))
+    .filter((item) => !selectedCategory || (item.category || "SEM CADASTRO") === selectedCategory)
     .filter((item) =>
       [
         item.internalCode,
@@ -4513,6 +4547,9 @@ function renderStockAlerts() {
   els.stockMonthEntryTotal.textContent = money(monthEntries);
   els.stockMonthExitTotal.textContent = money(monthExits);
   els.stockMonthResultTotal.textContent = money(monthEntries - monthExits);
+  document.querySelectorAll("[data-stock-status-filter]").forEach((card) => {
+    card.classList.toggle("active-filter", els.stockFilterStatus.value === card.dataset.stockStatusFilter);
+  });
 }
 
 function filteredStockMovements(forcedType = "") {
@@ -4537,7 +4574,17 @@ function clearStockFilters() {
   els.stockFilterType.value = "";
   els.stockFilterProject.value = "";
   els.stockFilterItem.value = "";
+  els.stockFilterStatus.value = "";
+  els.stockFilterCategory.value = "";
+  els.stockItemSearch.value = "";
   renderStock();
+}
+
+function applyStockStatusFilter(status) {
+  els.stockFilterStatus.value = status;
+  setStockTab("itens");
+  renderStock();
+  document.querySelector(".stock-filter-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function renderStockPurchaseNeed() {
