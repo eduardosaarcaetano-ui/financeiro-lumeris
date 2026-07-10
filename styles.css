@@ -565,6 +565,19 @@ body[data-view="dashboard"] #newTransactionBtn {
   background: #fbfcfb;
 }
 
+.report-item-button {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.report-item-button:hover {
+  border-color: var(--primary);
+  box-shadow: 0 8px 20px rgba(18, 98, 82, 0.12);
+}
+
 .mini-item strong,
 .person-item strong,
 .report-item strong {
@@ -1123,6 +1136,34 @@ dialog::backdrop {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.detail-item {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.detail-item.full {
+  grid-column: 1 / -1;
+}
+
+.detail-item span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.detail-item strong {
+  overflow-wrap: anywhere;
 }
 
 .form-grid {

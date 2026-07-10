@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-estoque-filtros1" />
+    <link rel="stylesheet" href="styles.css?v=20260710-estoque-detalhe-saida1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -1799,6 +1799,20 @@
       </form>
     </dialog>
 
+    <dialog id="stockMovementDialog">
+      <form method="dialog" class="modal">
+        <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
+        <div class="modal-head">
+          <h2 id="stockMovementTitle">Detalhes da saída</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
+        </div>
+        <div class="detail-grid" id="stockMovementDetails"></div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Fechar</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="opportunityDialog">
       <form method="dialog" class="modal" id="opportunityForm">
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
@@ -1984,8 +1998,8 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-filtros1"></script>
+    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-detalhe-saida1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260710-estoque-filtros1"></script>
+    <script src="app.js?v=20260710-estoque-detalhe-saida1"></script>
   </body>
 </html>

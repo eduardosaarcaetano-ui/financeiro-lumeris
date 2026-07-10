@@ -250,6 +250,9 @@ const els = {
   stockExitReason: document.querySelector("#stockExitReason"),
   stockExitNotes: document.querySelector("#stockExitNotes"),
   stockExitList: document.querySelector("#stockExitList"),
+  stockMovementDialog: document.querySelector("#stockMovementDialog"),
+  stockMovementTitle: document.querySelector("#stockMovementTitle"),
+  stockMovementDetails: document.querySelector("#stockMovementDetails"),
   stockPurchaseNeedTable: document.querySelector("#stockPurchaseNeedTable"),
   pipelineBoard: document.querySelector("#pipelineBoard"),
   opportunityDialog: document.querySelector("#opportunityDialog"),
@@ -4394,12 +4397,51 @@ function renderStockExitList() {
     ? rows.map((movement) => {
         const item = state.stockItems.find((entry) => entry.id === movement.itemId);
         return `
-      <article class="report-item">
+      <button class="report-item report-item-button" type="button" data-stock-movement-id="${movement.id}">
         <strong><span>${escapeHtml(item ? stockItemLabel(item) : "Item removido")}</span><span>${money(movement.totalCost)}</span></strong>
         <span class="muted">${formatDate(movement.date)} · ${formatQuantity(movement.quantity)} ${item ? STOCK_UNIT_LABELS[item.unit] || item.unit : ""} · ${STOCK_EXIT_TYPE_LABELS[movement.exitType] || movement.exitType} · ${movement.projectId ? projectName(movement.projectId) : "Sem projeto"} · ${stockUserName(movement.responsibleUserId)}</span>
-      </article>`;
+        <small class="muted">Ver lançamento completo</small>
+      </button>`;
       }).join("")
     : emptyMessage("Nenhuma saída registrada.");
+
+  els.stockExitList.querySelectorAll("[data-stock-movement-id]").forEach((button) => {
+    button.addEventListener("click", () => openStockMovementDialog(button.dataset.stockMovementId));
+  });
+}
+
+function openStockMovementDialog(id) {
+  const movement = state.stockMovements.find((entry) => entry.id === id);
+  if (!movement) return;
+  const item = state.stockItems.find((entry) => entry.id === movement.itemId);
+  const transaction = movement.transactionId ? state.transactions.find((entry) => entry.id === movement.transactionId) : null;
+  const unitLabel = item ? STOCK_UNIT_LABELS[item.unit] || item.unit : "";
+  els.stockMovementTitle.textContent = movement.type === "saida" ? "Detalhes da saída" : "Detalhes da movimentação";
+  els.stockMovementDetails.innerHTML = [
+    detailItem("Item", item ? stockItemLabel(item) : movement.itemName || "Item removido"),
+    detailItem("Data", formatDate(movement.date)),
+    detailItem("Tipo", STOCK_EXIT_TYPE_LABELS[movement.exitType] || movement.exitType || "Saída"),
+    detailItem("Quantidade", `${formatQuantity(movement.quantity)} ${unitLabel}`.trim()),
+    detailItem("Custo unitário", money(movement.unitCost)),
+    detailItem("Valor total", money(movement.totalCost)),
+    detailItem("Saldo antes", formatQuantity(movement.balanceBefore)),
+    detailItem("Saldo depois", formatQuantity(movement.balanceAfter)),
+    detailItem("Projeto", movement.projectId ? projectName(movement.projectId) : "Sem projeto"),
+    detailItem("Funcionário/equipe", movement.recipientName || "Não informado"),
+    detailItem("Usuário responsável", stockUserName(movement.responsibleUserId)),
+    detailItem("Motivo", movement.reason || "Não informado"),
+    detailItem("Conta vinculada", transaction ? `${transaction.description} · ${money(transaction.amount)} · ${statusLabel(transaction.status)}` : "Sem conta vinculada"),
+    detailItem("Observações", movement.notes || "Sem observações", true),
+  ].join("");
+  els.stockMovementDialog.showModal();
+}
+
+function detailItem(label, value, full = false) {
+  return `
+    <article class="detail-item${full ? " full" : ""}">
+      <span>${escapeHtml(label)}</span>
+      <strong>${escapeHtml(String(value || "-"))}</strong>
+    </article>`;
 }
 
 function renderStockAlerts() {
