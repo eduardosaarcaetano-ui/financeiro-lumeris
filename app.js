@@ -505,6 +505,7 @@ const dreGroups = [
 
 let quickPersonTarget = "transaction";
 let quickProjectTarget = "transaction";
+let stockAutoImportRunning = false;
 
 boot().catch((error) => {
   console.error("Falha ao iniciar o sistema:", error);
@@ -3369,7 +3370,7 @@ function bankRow(item) {
       <td>${escapeHtml(item.category || "-")}</td>
       <td>${dreGroupLabel(item.dreGroup)}</td>
       <td>${bankStatusBadge(item)}</td>
-      <td class="money">${money(item.amount)}</td>
+      <td class="money${item.type === "saida" ? " money-negative" : ""}">${money(item.type === "saida" ? -item.amount : item.amount)}</td>
       <td>
         <div class="row-actions">
           <button type="button" data-bank-action="classify" data-id="${item.id}">Classificar</button>
@@ -3442,21 +3443,19 @@ function createProjectFromBankDialog() {
   if (!guardViewAccess("projetos")) return;
   const movement = state.bankMovements.find((item) => item.id === els.bankMovementId.value);
   const suggestedName = movement?.description ? movement.description.slice(0, 80) : "";
-  els.bankDialog.close();
-  setView("projetos");
-  els.projectForm.reset();
-  els.projectId.value = "";
-  els.projectName.value = suggestedName;
-  els.projectCustomer.value = "";
-  refreshSearchableSelect(els.projectCustomer);
-  els.projectStatus.value = "ativo";
-  els.projectStartDate.value = todayIso;
-  els.projectContractValue.value = movement?.type === "entrada" ? Number(movement.amount || 0) : 0;
-  els.projectExpectedCosts.value = movement?.type === "saida" ? Number(movement.amount || 0) : 0;
-  els.projectTargetMargin.value = 20;
-  els.projectNotes.value = movement ? `Criado a partir da conciliacao bancaria: ${movement.description}` : "Criado a partir da conciliacao bancaria.";
-  els.projectName.focus();
-  toast("Preencha o cadastro completo do projeto e salve. Depois volte para a conciliacao.");
+  quickProjectTarget = "bank";
+  hydrateProjectOptions();
+  els.quickProjectForm.reset();
+  els.quickProjectName.value = suggestedName;
+  els.quickProjectCustomer.value = "";
+  els.quickProjectStatus.value = "ativo";
+  els.quickProjectStartDate.value = todayIso;
+  els.quickProjectContractValue.value = movement?.type === "entrada" ? Number(movement.amount || 0) : 0;
+  els.quickProjectExpectedCosts.value = movement?.type === "saida" ? Number(movement.amount || 0) : 0;
+  els.quickProjectTargetMargin.value = 20;
+  els.quickProjectNotes.value = movement ? `Criado a partir da conciliacao bancaria: ${movement.description}` : "Criado a partir da conciliacao bancaria.";
+  els.quickProjectDialog.showModal();
+  els.quickProjectName.focus();
 }
 
 function hydrateBankInvoiceMatches(movement) {
@@ -4405,12 +4404,26 @@ function renderStockPurchaseNeed() {
 }
 
 function renderStock() {
+  ensureIluminarStockLoaded();
   hydrateStockCatalogOptions();
   renderStockItems();
   renderStockEntryList();
   renderStockExitList();
   renderStockAlerts();
   renderStockPurchaseNeed();
+}
+
+function ensureIluminarStockLoaded() {
+  if (stockAutoImportRunning) return;
+  const payload = window.ILUMINAR_STOCK_IMPORT;
+  if (!payload?.items?.length) return;
+  const expectedImportedItems = payload.items.length + (payload.uncatalogedItems || []).length;
+  const importedItemsCount = state.stockItems.filter((item) => item.source === payload.sourceFile || item.notes?.includes("Controle Estoque Iluminar")).length;
+  if (importedItemsCount >= expectedImportedItems) return;
+  stockAutoImportRunning = true;
+  const stockImport = importIluminarStock({ silent: true, includeMovements: false });
+  stockAutoImportRunning = false;
+  if (stockImport.changed) persist();
 }
 
 // ---- CRM ----
@@ -5722,6 +5735,9 @@ function saveQuickProjectFromTransaction() {
     els.stockExitProject.value = project.id;
     refreshSearchableSelect(els.stockExitProject);
     setStockTab("saida");
+  } else if (quickProjectTarget === "bank") {
+    els.bankProject.value = project.id;
+    refreshSearchableSelect(els.bankProject);
   } else {
     els.transactionProjectMode.value = "single";
     els.transactionProject.value = project.id;
@@ -5731,7 +5747,13 @@ function saveQuickProjectFromTransaction() {
   renderProjectReports();
   renderHomologation();
   els.quickProjectDialog.close();
-  toast(quickProjectTarget === "stockExit" ? "Projeto cadastrado e selecionado na saída de estoque." : "Projeto cadastrado e selecionado no lançamento.");
+  toast(
+    quickProjectTarget === "stockExit"
+      ? "Projeto cadastrado e selecionado na saída de estoque."
+      : quickProjectTarget === "bank"
+        ? "Projeto cadastrado e selecionado na conciliação bancária."
+        : "Projeto cadastrado e selecionado no lançamento."
+  );
   quickProjectTarget = "transaction";
 }
 

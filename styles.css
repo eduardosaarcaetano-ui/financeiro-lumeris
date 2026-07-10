@@ -998,6 +998,10 @@ tr:last-child td {
   white-space: nowrap;
 }
 
+.money-negative {
+  color: var(--danger);
+}
+
 .status {
   display: inline-grid;
   place-items: center;
