@@ -67,7 +67,7 @@ const MOCK_DESCRIPTIONS = {
 // como uma tela ficar acessível por engano num lugar e bloqueada em outro.
 const ROLE_ALLOWED_VIEWS = {
   administrador: null,
-  usuario: ["dashboard", "receber", "pagar", "vendas", "projetos", "banco", "notasfiscais", "pessoas", "relatorios", "estoque", "crm"],
+  usuario: ["dashboard", "receber", "pagar", "vendas", "projetos", "homologacao", "instalacoes", "banco", "notasfiscais", "pessoas", "relatorios", "estoque", "crm"],
   estoque: ["estoque"],
 };
 
@@ -401,6 +401,19 @@ const els = {
   projectTargetMargin: document.querySelector("#projectTargetMargin"),
   projectNotes: document.querySelector("#projectNotes"),
   projectReportSelect: document.querySelector("#projectReportSelect"),
+  homologationTable: document.querySelector("#homologationTable"),
+  installationForm: document.querySelector("#installationForm"),
+  installationId: document.querySelector("#installationId"),
+  installationProject: document.querySelector("#installationProject"),
+  installationCustomer: document.querySelector("#installationCustomer"),
+  installationStatus: document.querySelector("#installationStatus"),
+  installationScheduledDate: document.querySelector("#installationScheduledDate"),
+  installationTeam: document.querySelector("#installationTeam"),
+  installationMaterials: document.querySelector("#installationMaterials"),
+  installationNotes: document.querySelector("#installationNotes"),
+  installationConclusion: document.querySelector("#installationConclusion"),
+  installationSearch: document.querySelector("#installationSearch"),
+  installationList: document.querySelector("#installationList"),
   personForm: document.querySelector("#personForm"),
   personId: document.querySelector("#personId"),
   personType: document.querySelector("#personType"),
@@ -414,12 +427,14 @@ const els = {
 };
 
 const viewNames = {
-  dashboard: "Painel financeiro",
+  dashboard: "Dashboard",
   crm: "Pipeline comercial",
   receber: "Contas a receber",
   pagar: "Contas a pagar",
   vendas: "Vendas parceladas",
   projetos: "Projetos e centros de custo",
+  homologacao: "Homologação",
+  instalacoes: "Instalações",
   banco: "Conciliação bancária",
   notasfiscais: "Notas Fiscais",
   estoque: "Estoque",
@@ -588,8 +603,9 @@ function bindEvents() {
     pendingWonOpportunity = null;
     els.opportunityWonDialog.close();
     if (!opportunity || event.submitter?.value === "cancel") return;
-    if (event.submitter.value === "sale") convertOpportunityToSale(opportunity);
-    if (event.submitter.value === "project") convertOpportunityToProject(opportunity);
+  if (event.submitter.value === "sale") convertOpportunityToSale(opportunity);
+  if (event.submitter.value === "project") convertOpportunityToProject(opportunity);
+  if (event.submitter.value === "contract") generateContractFromOpportunity(opportunity);
   });
 
   // Ganchos para vincular a oportunidade de volta à venda/projeto gerado, sem alterar
@@ -755,6 +771,8 @@ function bindEvents() {
   document.querySelector("#projectSearch").addEventListener("input", renderProjects);
   els.projectReportSelect.addEventListener("input", renderProjectReports);
   document.querySelector("#exportProjectCsv").addEventListener("click", exportProjectsCsv);
+  els.installationForm.addEventListener("submit", saveInstallation);
+  els.installationSearch.addEventListener("input", renderInstallations);
 
   els.personForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -789,6 +807,7 @@ function loadState() {
     stockItems: [],
     stockMovements: [],
     stockLocations: [],
+    installations: [],
     opportunities: [],
     interactions: [],
     tasks: [],
@@ -815,6 +834,7 @@ function normalizeState(data) {
     stockItems: Array.isArray(data.stockItems) ? data.stockItems : [],
     stockMovements: Array.isArray(data.stockMovements) ? data.stockMovements : [],
     stockLocations: Array.isArray(data.stockLocations) ? data.stockLocations : [],
+    installations: Array.isArray(data.installations) ? data.installations : [],
     opportunities: Array.isArray(data.opportunities) ? data.opportunities : [],
     interactions: Array.isArray(data.interactions) ? data.interactions : [],
     tasks: Array.isArray(data.tasks) ? data.tasks : [],
@@ -838,6 +858,9 @@ function normalizeState(data) {
     expectedCloseDate: "",
     sellerId: "",
     projectId: "",
+    contractId: "",
+    contractGeneratedAt: "",
+    installationId: "",
     lostReason: "",
     stageChangedAt: item.createdAt || new Date().toISOString(),
     stageHistory: [],
@@ -936,6 +959,23 @@ function normalizeState(data) {
     toLocationId: "",
     notes: "",
     createdAt: "",
+    ...item,
+  }));
+
+  normalized.installations = normalized.installations.map((item) => ({
+    id: crypto.randomUUID(),
+    projectId: "",
+    customerId: "",
+    status: "programada",
+    scheduledDate: "",
+    team: "",
+    materials: "",
+    notes: "",
+    conclusion: "",
+    opportunityId: "",
+    contractId: "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
     ...item,
   }));
 
@@ -1654,6 +1694,8 @@ function renderAll() {
   renderSales();
   renderProjects();
   renderProjectReports();
+  renderHomologation();
+  renderInstallations();
   renderBank();
   renderPeople();
   renderInvoices();
@@ -1962,11 +2004,35 @@ function renderDashboard() {
   document.querySelector("#kpiPagarVencido").textContent = `${money(pagarVencido)} vencido`;
   document.querySelector("#kpiSaldoPrevisto").textContent = money(receberAberto - pagarAberto);
   document.querySelector("#kpiRealizadoMes").textContent = money(realizadoMes);
+  renderSectorOverview(receberAberto, pagarAberto);
 
   renderBankBalances();
   renderCashflowBars();
   renderUpcoming();
   renderInvoiceDashboardKpis();
+}
+
+function renderSectorOverview(receberAberto, pagarAberto) {
+  const monthSales = state.sales.filter((sale) => isInPeriod(sale.saleDate, currentMonthStart, currentMonthEnd));
+  const monthSalesTotal = sum(monthSales.map((sale) => sale.total || 0));
+  const activeProjects = state.projects.filter((project) => !["concluido", "cancelado"].includes(project.status));
+  const scheduledInstallations = state.installations.filter((item) => ["programada", "em_andamento", "pendente"].includes(item.status));
+  const stockTotal = sum(state.stockItems.map((item) => (item.quantity || 0) * (item.averageCost || 0)));
+  const monthInvoices = state.invoices.filter((invoice) => invoice.kind !== "despesa" && invoice.status !== "cancelada" && isInPeriod(invoice.issueDate, currentMonthStart, currentMonthEnd));
+  const monthInvoicesTotal = sum(monthInvoices.map(accountingValueOf));
+
+  document.querySelector("#dashboardSalesTotal").textContent = money(monthSalesTotal);
+  document.querySelector("#dashboardSalesSmall").textContent = `${monthSales.length} venda(s) no mês`;
+  document.querySelector("#dashboardFinanceBalance").textContent = money(receberAberto - pagarAberto);
+  document.querySelector("#dashboardFinanceSmall").textContent = `${money(receberAberto)} a receber / ${money(pagarAberto)} a pagar`;
+  document.querySelector("#dashboardProjectsCount").textContent = String(activeProjects.length);
+  document.querySelector("#dashboardProjectsSmall").textContent = `${state.projects.filter((project) => project.status === "homologacao").length} em homologação`;
+  document.querySelector("#dashboardInstallationsCount").textContent = String(scheduledInstallations.length);
+  document.querySelector("#dashboardInstallationsSmall").textContent = `${state.installations.filter((item) => item.status === "concluida").length} concluída(s)`;
+  document.querySelector("#dashboardStockValue").textContent = money(stockTotal);
+  document.querySelector("#dashboardStockSmall").textContent = `${state.stockItems.length} item(ns) cadastrados`;
+  document.querySelector("#dashboardInvoicesTotal").textContent = money(monthInvoicesTotal);
+  document.querySelector("#dashboardInvoicesSmall").textContent = `${monthInvoices.length} NF emitida(s) no mês`;
 }
 
 function renderBankBalances() {
@@ -2402,6 +2468,11 @@ function hydrateProjectOptions() {
   els.invoiceProject.innerHTML = optionalProjectOptions;
   els.stockEntryProject.innerHTML = optionalProjectOptions;
   els.stockExitProject.innerHTML = optionalProjectOptions;
+  els.installationProject.innerHTML = projectOptions;
+  els.installationCustomer.innerHTML = `<option value="">Sem cliente vinculado</option>${state.people
+    .filter((person) => person.type === "cliente" || person.type === "ambos")
+    .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
+    .join("")}`;
   els.projectCustomer.innerHTML = `<option value="">Sem cliente vinculado</option>${state.people
     .filter((person) => person.type === "cliente" || person.type === "ambos")
     .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
@@ -2414,11 +2485,154 @@ function projectLabel(project) {
 }
 
 function projectStatusLabel(status) {
-  return { ativo: "Ativo", orcamento: "Orçamento", concluido: "Concluído", pausado: "Pausado" }[status] || status;
+  return { ativo: "Ativo", orcamento: "Orçamento", homologacao: "Homologação", concluido: "Concluído", pausado: "Pausado" }[status] || status;
 }
 
 function costCenterName(costCenterId) {
   return state.costCenters.find((item) => item.id === costCenterId)?.name || "Não criado";
+}
+
+function renderHomologation() {
+  const rows = state.projects
+    .filter((project) => ["homologacao", "orcamento", "ativo"].includes(project.status))
+    .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+
+  els.homologationTable.innerHTML = rows.length
+    ? rows.map((project) => `
+      <tr>
+        <td>${escapeHtml(projectLabel(project))}</td>
+        <td>${escapeHtml(personName(project.customerId))}</td>
+        <td>${projectStatusLabel(project.status)}</td>
+        <td>${formatDate(project.startDate)}</td>
+        <td>${formatDate(project.endDate)}</td>
+        <td>
+          <button type="button" data-homologation-action="edit" data-id="${project.id}">Editar projeto</button>
+          <button type="button" data-homologation-action="installation" data-id="${project.id}">Programar instalação</button>
+        </td>
+      </tr>`).join("")
+    : `<tr><td colspan="6">${emptyMessage("Nenhum projeto em homologação.")}</td></tr>`;
+
+  document.querySelectorAll("[data-homologation-action]").forEach((button) => {
+    button.addEventListener("click", () => handleHomologationAction(button.dataset.homologationAction, button.dataset.id));
+  });
+}
+
+function handleHomologationAction(action, projectId) {
+  const project = state.projects.find((item) => item.id === projectId);
+  if (!project) return;
+  if (action === "edit") {
+    setView("projetos");
+    handleProjectAction("edit", projectId);
+    return;
+  }
+  if (action === "installation") {
+    openInstallationForProject(project);
+  }
+}
+
+function openInstallationForProject(project) {
+  setView("instalacoes");
+  resetInstallationForm();
+  els.installationProject.value = project.id;
+  els.installationCustomer.value = project.customerId;
+  els.installationScheduledDate.value = project.endDate || "";
+  toast("Revise os dados e salve a instalação.");
+}
+
+function resetInstallationForm() {
+  els.installationForm.reset();
+  els.installationId.value = "";
+  hydrateProjectOptions();
+}
+
+function installationStatusLabel(status) {
+  return {
+    programada: "Programada",
+    em_andamento: "Em andamento",
+    concluida: "Concluída",
+    pendente: "Pendente",
+    cancelada: "Cancelada",
+  }[status] || status;
+}
+
+function renderInstallations() {
+  hydrateProjectOptions();
+  const search = (els.installationSearch.value || "").toLowerCase().trim();
+  const rows = state.installations
+    .filter((item) => `${projectName(item.projectId)} ${personName(item.customerId)} ${item.team} ${item.status}`.toLowerCase().includes(search))
+    .sort((a, b) => (a.scheduledDate || "").localeCompare(b.scheduledDate || ""));
+
+  els.installationList.innerHTML = rows.length
+    ? rows.map((item) => `
+      <article class="person-item">
+        <strong><span>${escapeHtml(projectName(item.projectId))}</span><span>${installationStatusLabel(item.status)}</span></strong>
+        <span class="muted">${escapeHtml(personName(item.customerId))} · ${formatDate(item.scheduledDate)} · ${escapeHtml(item.team || "Sem equipe")}</span>
+        <span class="muted">${escapeHtml(item.materials || "Materiais não informados")}</span>
+        <div class="row-actions">
+          <button type="button" data-installation-action="edit" data-id="${item.id}">Editar</button>
+          <button type="button" data-installation-action="complete" data-id="${item.id}">Concluir</button>
+        </div>
+      </article>`).join("")
+    : emptyMessage("Nenhuma instalação cadastrada.");
+
+  document.querySelectorAll("[data-installation-action]").forEach((button) => {
+    button.addEventListener("click", () => handleInstallationAction(button.dataset.installationAction, button.dataset.id));
+  });
+}
+
+function saveInstallation(event) {
+  event.preventDefault();
+  const id = els.installationId.value || crypto.randomUUID();
+  const existing = state.installations.find((item) => item.id === id);
+  const project = state.projects.find((item) => item.id === els.installationProject.value);
+  const data = {
+    id,
+    projectId: els.installationProject.value,
+    customerId: els.installationCustomer.value || project?.customerId || "",
+    status: els.installationStatus.value,
+    scheduledDate: els.installationScheduledDate.value,
+    team: els.installationTeam.value.trim(),
+    materials: els.installationMaterials.value.trim(),
+    notes: els.installationNotes.value.trim(),
+    conclusion: els.installationConclusion.value.trim(),
+    opportunityId: existing?.opportunityId || "",
+    contractId: existing?.contractId || "",
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const index = state.installations.findIndex((item) => item.id === id);
+  if (index >= 0) state.installations[index] = data;
+  else state.installations.push(data);
+
+  persist();
+  renderAll();
+  resetInstallationForm();
+  toast("Instalação salva.");
+}
+
+function handleInstallationAction(action, id) {
+  const installation = state.installations.find((item) => item.id === id);
+  if (!installation) return;
+  if (action === "edit") {
+    els.installationId.value = installation.id;
+    els.installationProject.value = installation.projectId;
+    els.installationCustomer.value = installation.customerId;
+    els.installationStatus.value = installation.status;
+    els.installationScheduledDate.value = installation.scheduledDate;
+    els.installationTeam.value = installation.team;
+    els.installationMaterials.value = installation.materials;
+    els.installationNotes.value = installation.notes;
+    els.installationConclusion.value = installation.conclusion;
+    return;
+  }
+  if (action === "complete") {
+    installation.status = "concluida";
+    installation.updatedAt = new Date().toISOString();
+    persist();
+    renderAll();
+    toast("Instalação concluída.");
+  }
 }
 
 function renderProjectReports() {
@@ -3955,6 +4169,106 @@ function convertOpportunityToProject(opportunity) {
   toast("Revise os dados do projeto e clique em Salvar projeto para concluir a conversão.");
 }
 
+function generateContractFromOpportunity(opportunity) {
+  if (opportunity.contractId) {
+    toast("Essa oportunidade já possui contrato gerado.");
+    setView("homologacao");
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const contractId = crypto.randomUUID();
+  const projectId = crypto.randomUUID();
+  const installationId = crypto.randomUUID();
+  const saleId = crypto.randomUUID();
+  const dueDate = opportunity.expectedCloseDate || todayIso;
+  const title = opportunity.title || `Contrato ${personName(opportunity.personId)}`;
+  const amount = Number(opportunity.value || 0);
+
+  const project = {
+    id: projectId,
+    code: "",
+    name: title,
+    customerId: opportunity.personId,
+    status: "homologacao",
+    startDate: todayIso,
+    endDate: dueDate,
+    contractValue: amount,
+    expectedCosts: 0,
+    targetMargin: 20,
+    costCenterId: crypto.randomUUID(),
+    notes: `Gerado automaticamente pelo CRM. Contrato: ${contractId}`,
+  };
+  state.projects.push(project);
+  upsertCostCenter(project);
+
+  state.sales.push({
+    id: saleId,
+    personId: opportunity.personId,
+    saleDate: todayIso,
+    description: title,
+    category: "Contrato CRM",
+    projectId,
+    total: amount,
+    installments: 1,
+    dreGroup: "receita_bruta",
+    notes: `Contrato gerado no CRM: ${contractId}`,
+    contractId,
+    opportunityId: opportunity.id,
+    createdAt: now,
+  });
+
+  state.transactions.push({
+    id: crypto.randomUUID(),
+    type: "receber",
+    personId: opportunity.personId,
+    description: `${title} - Contrato CRM`,
+    category: "Contrato CRM",
+    dreGroup: "receita_bruta",
+    dueDate,
+    amount,
+    status: "aberto",
+    paidDate: "",
+    notes: `Gerado automaticamente pelo CRM. Contrato: ${contractId}`,
+    saleId,
+    installmentNumber: 1,
+    installmentTotal: 1,
+    projectId,
+    allocations: [{ projectId, amount }],
+    contractId,
+    bankMovementId: "",
+    invoiceId: "",
+    updatedAt: now,
+  });
+
+  state.installations.push({
+    id: installationId,
+    projectId,
+    customerId: opportunity.personId,
+    status: "programada",
+    scheduledDate: dueDate,
+    team: "",
+    materials: "",
+    notes: `Programação criada automaticamente pelo contrato ${contractId}.`,
+    conclusion: "",
+    opportunityId: opportunity.id,
+    contractId,
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  opportunity.projectId = projectId;
+  opportunity.contractId = contractId;
+  opportunity.contractGeneratedAt = now;
+  opportunity.installationId = installationId;
+  opportunity.updatedAt = now;
+
+  persist();
+  renderAll();
+  setView("homologacao");
+  toast("Contrato gerado: recebimento, projeto e instalação foram criados.");
+}
+
 function latestInteractionFor(opportunityId) {
   const matches = state.interactions
     .filter((item) => item.opportunityId === opportunityId)
@@ -4981,6 +5295,10 @@ function importBackup(event) {
     state.bankMovements = data.bankMovements;
     state.transactions = data.transactions;
     state.invoices = data.invoices;
+    state.stockItems = data.stockItems;
+    state.stockMovements = data.stockMovements;
+    state.stockLocations = data.stockLocations;
+    state.installations = data.installations;
     persist();
     renderAll();
     toast("Backup importado.");

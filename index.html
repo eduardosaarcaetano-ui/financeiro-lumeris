@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Financeiro Lumeris</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-layout1" />
+    <link rel="stylesheet" href="styles.css?v=20260709-setores1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -39,18 +39,34 @@
         </div>
 
         <nav class="nav-list">
-          <button class="nav-item active" data-view="dashboard" type="button">Painel</button>
-          <button class="nav-item" data-view="crm" type="button">CRM</button>
-          <button class="nav-item" data-view="receber" type="button">A Receber</button>
-          <button class="nav-item" data-view="pagar" type="button">A Pagar</button>
-          <button class="nav-item" data-view="vendas" type="button">Vendas</button>
-          <button class="nav-item" data-view="projetos" type="button">Projetos</button>
-          <button class="nav-item" data-view="banco" type="button">Banco</button>
-          <button class="nav-item" data-view="notasfiscais" type="button">Notas Fiscais</button>
-          <button class="nav-item" data-view="estoque" type="button">Estoque</button>
-          <button class="nav-item" data-view="pessoas" type="button">Cadastros</button>
-          <button class="nav-item" data-view="relatorios" type="button">Relatórios</button>
-          <button class="nav-item hidden" data-view="usuarios" id="navUsuarios" type="button">Usuários</button>
+          <div class="nav-group">
+            <span class="nav-group-title">Principal</span>
+            <button class="nav-item active" data-view="dashboard" type="button">Dashboard</button>
+          </div>
+          <div class="nav-group">
+            <span class="nav-group-title">Vendas</span>
+            <button class="nav-item" data-view="crm" type="button">CRM</button>
+          </div>
+          <div class="nav-group">
+            <span class="nav-group-title">Financeiro</span>
+            <button class="nav-item" data-view="receber" type="button">A Receber</button>
+            <button class="nav-item" data-view="pagar" type="button">A Pagar</button>
+            <button class="nav-item" data-view="banco" type="button">Bancos</button>
+            <button class="nav-item" data-view="notasfiscais" type="button">Notas Fiscais</button>
+            <button class="nav-item" data-view="estoque" type="button">Estoque</button>
+            <button class="nav-item" data-view="relatorios" type="button">Relatórios</button>
+          </div>
+          <div class="nav-group">
+            <span class="nav-group-title">Projetos</span>
+            <button class="nav-item" data-view="projetos" type="button">Projetos</button>
+            <button class="nav-item" data-view="homologacao" type="button">Homologação</button>
+            <button class="nav-item" data-view="instalacoes" type="button">Instalações</button>
+          </div>
+          <div class="nav-group">
+            <span class="nav-group-title">Configurações</span>
+            <button class="nav-item" data-view="pessoas" type="button">Cadastros</button>
+            <button class="nav-item hidden" data-view="usuarios" id="navUsuarios" type="button">Usuários</button>
+          </div>
         </nav>
 
         <div class="sidebar-actions">
@@ -147,6 +163,45 @@
               <article class="kpi">
                 <span>NF recebidas ainda não pagas</span>
                 <strong id="kpiInvoiceReceivedPending">R$ 0,00</strong>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel sector-overview-panel">
+            <div class="panel-head">
+              <h2>Visão por setor</h2>
+              <small class="muted">Indicadores principais para acompanhamento operacional</small>
+            </div>
+            <div class="sector-grid">
+              <article class="sector-card">
+                <span>Vendas</span>
+                <strong id="dashboardSalesTotal">R$ 0,00</strong>
+                <small id="dashboardSalesSmall">0 vendas no mês</small>
+              </article>
+              <article class="sector-card">
+                <span>Financeiro</span>
+                <strong id="dashboardFinanceBalance">R$ 0,00</strong>
+                <small id="dashboardFinanceSmall">saldo previsto</small>
+              </article>
+              <article class="sector-card">
+                <span>Projetos</span>
+                <strong id="dashboardProjectsCount">0</strong>
+                <small id="dashboardProjectsSmall">em andamento</small>
+              </article>
+              <article class="sector-card">
+                <span>Instalações</span>
+                <strong id="dashboardInstallationsCount">0</strong>
+                <small id="dashboardInstallationsSmall">programadas</small>
+              </article>
+              <article class="sector-card">
+                <span>Estoque</span>
+                <strong id="dashboardStockValue">R$ 0,00</strong>
+                <small id="dashboardStockSmall">valor em estoque</small>
+              </article>
+              <article class="sector-card">
+                <span>Notas fiscais</span>
+                <strong id="dashboardInvoicesTotal">R$ 0,00</strong>
+                <small id="dashboardInvoicesSmall">faturado no mês</small>
               </article>
             </div>
           </section>
@@ -324,6 +379,7 @@
                 <select id="projectStatus">
                   <option value="ativo">Ativo</option>
                   <option value="orcamento">Orçamento</option>
+                  <option value="homologacao">Homologação</option>
                   <option value="concluido">Concluído</option>
                   <option value="pausado">Pausado</option>
                 </select>
@@ -438,6 +494,78 @@
                 <h2>Despesas sem projeto</h2>
               </div>
               <div id="unallocatedExpenses" class="report-list"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="homologacao">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Homologação de projetos</h2>
+              <small class="muted">Projetos aguardando validação técnica, documentação ou liberação para instalação</small>
+            </div>
+            <div class="table-wrap compact-table">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Projeto</th>
+                    <th>Cliente</th>
+                    <th>Status</th>
+                    <th>Início</th>
+                    <th>Previsão</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody id="homologationTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <section class="view" id="instalacoes">
+          <div class="project-layout">
+            <form class="panel form-panel" id="installationForm">
+              <h2>Nova instalação</h2>
+              <input type="hidden" id="installationId" />
+              <label>Projeto
+                <select id="installationProject"></select>
+              </label>
+              <label>Cliente
+                <select id="installationCustomer"></select>
+              </label>
+              <label>Status
+                <select id="installationStatus">
+                  <option value="programada">Programada</option>
+                  <option value="em_andamento">Em andamento</option>
+                  <option value="concluida">Concluída</option>
+                  <option value="pendente">Pendente</option>
+                  <option value="cancelada">Cancelada</option>
+                </select>
+              </label>
+              <label>Data prevista
+                <input id="installationScheduledDate" type="date" />
+              </label>
+              <label>Equipe responsável
+                <input id="installationTeam" maxlength="120" placeholder="Equipe, técnico ou parceiro" />
+              </label>
+              <label class="full">Materiais
+                <textarea id="installationMaterials" rows="3" maxlength="600" placeholder="Materiais separados ou necessários"></textarea>
+              </label>
+              <label class="full">Observações
+                <textarea id="installationNotes" rows="3" maxlength="600"></textarea>
+              </label>
+              <label class="full">Conclusão
+                <textarea id="installationConclusion" rows="3" maxlength="600" placeholder="Preencher após finalizar a instalação"></textarea>
+              </label>
+              <button class="primary-btn" type="submit">Salvar instalação</button>
+            </form>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Instalações</h2>
+                <input id="installationSearch" type="search" placeholder="Buscar cliente, projeto, equipe ou status" />
+              </div>
+              <div class="people-list" id="installationList"></div>
             </section>
           </div>
         </section>
@@ -1602,6 +1730,7 @@
           <button class="secondary-btn" value="cancel" type="submit">Não gerar agora</button>
           <button class="secondary-btn" id="opportunityWonSaleBtn" value="sale" type="submit">Gerar venda parcelada</button>
           <button class="primary-btn" id="opportunityWonProjectBtn" value="project" type="submit">Gerar projeto</button>
+          <button class="primary-btn" value="contract" type="submit">Gerar contrato e iniciar operação</button>
         </menu>
       </form>
     </dialog>
@@ -1639,6 +1768,6 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260709-loginfix3"></script>
+    <script src="app.js?v=20260709-setores1"></script>
   </body>
 </html>

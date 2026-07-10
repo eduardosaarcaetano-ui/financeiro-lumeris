@@ -82,6 +82,31 @@ button {
   gap: 8px;
 }
 
+.nav-list {
+  align-content: start;
+}
+
+.nav-group {
+  display: grid;
+  gap: 5px;
+  padding-top: 8px;
+}
+
+.nav-group + .nav-group {
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.nav-group-title {
+  padding: 0 10px;
+  color: rgba(245, 250, 247, 0.58);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
 .nav-item,
 .ghost-btn,
 .primary-btn,
@@ -361,6 +386,36 @@ button {
 
 .kpi strong {
   font-size: 27px;
+  letter-spacing: 0;
+}
+
+.sector-overview-panel {
+  margin-bottom: 18px;
+}
+
+.sector-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.sector-card {
+  display: grid;
+  gap: 6px;
+  min-height: 108px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+
+.sector-card span,
+.sector-card small {
+  color: var(--muted);
+}
+
+.sector-card strong {
+  font-size: 24px;
   letter-spacing: 0;
 }
 
@@ -1184,6 +1239,7 @@ dialog::backdrop {
   }
 
   .kpi-grid,
+  .sector-grid,
   .dashboard-grid,
   .report-grid,
   .split,
@@ -1214,6 +1270,7 @@ dialog::backdrop {
   }
 
   .kpi-grid,
+  .sector-grid,
   .dashboard-grid,
   .report-grid,
   .split,
