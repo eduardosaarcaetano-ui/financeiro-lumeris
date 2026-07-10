@@ -215,6 +215,16 @@ const els = {
   importIluminarStockBtn: document.querySelector("#importIluminarStockBtn"),
   stockTotalValue: document.querySelector("#stockTotalValue"),
   stockPurchaseCount: document.querySelector("#stockPurchaseCount"),
+  stockMonthEntryTotal: document.querySelector("#stockMonthEntryTotal"),
+  stockMonthExitTotal: document.querySelector("#stockMonthExitTotal"),
+  stockMonthResultTotal: document.querySelector("#stockMonthResultTotal"),
+  stockFilterStart: document.querySelector("#stockFilterStart"),
+  stockFilterEnd: document.querySelector("#stockFilterEnd"),
+  stockFilterType: document.querySelector("#stockFilterType"),
+  stockFilterProject: document.querySelector("#stockFilterProject"),
+  stockFilterItem: document.querySelector("#stockFilterItem"),
+  applyStockFilters: document.querySelector("#applyStockFilters"),
+  clearStockFilters: document.querySelector("#clearStockFilters"),
   stockEntryForm: document.querySelector("#stockEntryForm"),
   stockEntryDate: document.querySelector("#stockEntryDate"),
   stockEntrySupplier: document.querySelector("#stockEntrySupplier"),
@@ -578,6 +588,11 @@ function bindEvents() {
   els.stockItemForm.addEventListener("submit", saveStockItem);
   els.stockItemSearch.addEventListener("input", renderStockItems);
   els.importIluminarStockBtn.addEventListener("click", importIluminarStock);
+  [els.stockFilterStart, els.stockFilterEnd, els.stockFilterType, els.stockFilterProject, els.stockFilterItem].forEach((field) => {
+    field.addEventListener("input", renderStock);
+  });
+  els.applyStockFilters.addEventListener("click", renderStock);
+  els.clearStockFilters.addEventListener("click", clearStockFilters);
   els.stockEntryForm.addEventListener("submit", saveStockEntry);
   els.stockEntryQuantity.addEventListener("input", updateStockEntryTotalCost);
   els.stockEntryUnitCost.addEventListener("input", updateStockEntryTotalCost);
@@ -588,8 +603,12 @@ function bindEvents() {
   enhanceSearchableSelect(els.stockExitItem, { placeholder: "Buscar item…" });
   enhanceSearchableSelect(els.stockEntryProject, { placeholder: "Buscar projeto…" });
   enhanceSearchableSelect(els.stockExitProject, { placeholder: "Buscar projeto…" });
+  enhanceSearchableSelect(els.stockFilterProject, { placeholder: "Todos os projetos" });
+  enhanceSearchableSelect(els.stockFilterItem, { placeholder: "Todos os itens" });
   els.stockEntryDate.value = todayIso;
   els.stockExitDate.value = todayIso;
+  els.stockFilterStart.value = currentMonthStart;
+  els.stockFilterEnd.value = currentMonthEnd;
   updateStockExitTypeUi();
 
   document.querySelectorAll("[data-crm-tab]").forEach((button) => {
@@ -2565,6 +2584,7 @@ function handleProjectAction(action, id) {
 }
 
 function hydrateProjectOptions() {
+  const currentStockFilterProject = els.stockFilterProject?.value || "";
   const projectOptions = state.projects.length
     ? state.projects.map((project) => `<option value="${project.id}">${escapeHtml(projectLabel(project))}</option>`).join("")
     : `<option value="">Cadastre um projeto primeiro</option>`;
@@ -2578,8 +2598,11 @@ function hydrateProjectOptions() {
   els.invoiceProject.innerHTML = optionalProjectOptions;
   els.stockEntryProject.innerHTML = optionalProjectOptions;
   els.stockExitProject.innerHTML = optionalProjectOptions;
+  els.stockFilterProject.innerHTML = optionalProjectOptions;
+  if (currentStockFilterProject) els.stockFilterProject.value = currentStockFilterProject;
   refreshSearchableSelect(els.stockEntryProject);
   refreshSearchableSelect(els.stockExitProject);
+  refreshSearchableSelect(els.stockFilterProject);
   els.installationProject.innerHTML = projectOptions;
   els.installationCustomer.innerHTML = `<option value="">Sem cliente vinculado</option>${state.people
     .filter((person) => person.type === "cliente" || person.type === "ambos")
@@ -3994,6 +4017,7 @@ function setStockTab(tab) {
 }
 
 function hydrateStockCatalogOptions() {
+  const currentStockFilterItem = els.stockFilterItem?.value || "";
   const suppliers = state.people.filter((person) => person.type === "fornecedor" || person.type === "ambos");
   const supplierOptions = suppliers.length
     ? suppliers.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")
@@ -4012,8 +4036,11 @@ function hydrateStockCatalogOptions() {
     : `<option value="">Cadastre um item primeiro</option>`;
   els.stockEntryItem.innerHTML = itemOptions;
   els.stockExitItem.innerHTML = itemOptions;
+  els.stockFilterItem.innerHTML = `<option value="">Todos os itens</option>${activeItems.map((item) => `<option value="${item.id}">${escapeHtml(stockItemLabel(item))}</option>`).join("")}`;
+  if (currentStockFilterItem) els.stockFilterItem.value = currentStockFilterItem;
   refreshSearchableSelect(els.stockEntryItem);
   refreshSearchableSelect(els.stockExitItem);
+  refreshSearchableSelect(els.stockFilterItem);
 
   const openInvoices = state.invoices.filter((item) => item.kind === "despesa" && item.status !== "cancelada");
   els.stockEntryInvoice.innerHTML = [
@@ -4224,7 +4251,7 @@ function saveStockEntry(event) {
 }
 
 function renderStockEntryList() {
-  const rows = state.stockMovements
+  const rows = filteredStockMovements("entrada")
     .filter((movement) => movement.type === "entrada")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 20);
@@ -4358,7 +4385,7 @@ function saveStockExit(event) {
 }
 
 function renderStockExitList() {
-  const rows = state.stockMovements
+  const rows = filteredStockMovements("saida")
     .filter((movement) => movement.type === "saida")
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, 20);
@@ -4378,11 +4405,42 @@ function renderStockExitList() {
 function renderStockAlerts() {
   const items = state.stockItems.filter((item) => item.active);
   const totalValue = sum(items.map((item) => Number(item.quantity || 0) * Number(item.averageCost || 0)));
+  const monthMovements = state.stockMovements.filter((movement) => isInPeriod(movement.date, currentMonthStart, currentMonthEnd));
+  const monthEntries = sum(monthMovements.filter((movement) => movement.type === "entrada").map((movement) => Number(movement.totalCost || 0)));
+  const monthExits = sum(monthMovements.filter((movement) => movement.type === "saida").map((movement) => Number(movement.totalCost || 0)));
   els.stockTotalValue.textContent = money(totalValue);
   els.stockPurchaseCount.textContent = String(items.filter((item) => item.quantity < item.minQuantity).length);
   els.stockAlertBelowMin.textContent = String(items.filter((item) => item.quantity > 0 && item.quantity < item.minQuantity).length);
   els.stockAlertZero.textContent = String(items.filter((item) => item.quantity <= 0).length);
   els.stockAlertAboveMax.textContent = String(items.filter((item) => item.maxQuantity > 0 && item.quantity > item.maxQuantity).length);
+  els.stockMonthEntryTotal.textContent = money(monthEntries);
+  els.stockMonthExitTotal.textContent = money(monthExits);
+  els.stockMonthResultTotal.textContent = money(monthEntries - monthExits);
+}
+
+function filteredStockMovements(forcedType = "") {
+  const start = els.stockFilterStart.value;
+  const end = els.stockFilterEnd.value;
+  const selectedType = els.stockFilterType.value;
+  const type = forcedType || selectedType;
+  if (forcedType && selectedType && selectedType !== forcedType) return [];
+  const projectId = els.stockFilterProject.value;
+  const itemId = els.stockFilterItem.value;
+  return state.stockMovements
+    .filter((movement) => !type || movement.type === type)
+    .filter((movement) => !start || movement.date >= start)
+    .filter((movement) => !end || movement.date <= end)
+    .filter((movement) => !projectId || movement.projectId === projectId)
+    .filter((movement) => !itemId || movement.itemId === itemId);
+}
+
+function clearStockFilters() {
+  els.stockFilterStart.value = currentMonthStart;
+  els.stockFilterEnd.value = currentMonthEnd;
+  els.stockFilterType.value = "";
+  els.stockFilterProject.value = "";
+  els.stockFilterItem.value = "";
+  renderStock();
 }
 
 function renderStockPurchaseNeed() {

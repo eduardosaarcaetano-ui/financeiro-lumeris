@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-estoque-loadfix1" />
+    <link rel="stylesheet" href="styles.css?v=20260710-estoque-filtros1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -767,7 +767,48 @@
               <span>Itens acima do máximo</span>
               <strong id="stockAlertAboveMax">0</strong>
             </article>
+            <article class="kpi">
+              <span>Entradas no mês</span>
+              <strong id="stockMonthEntryTotal">R$ 0,00</strong>
+            </article>
+            <article class="kpi">
+              <span>Saídas no mês</span>
+              <strong id="stockMonthExitTotal">R$ 0,00</strong>
+            </article>
+            <article class="kpi">
+              <span>Resultado do mês</span>
+              <strong id="stockMonthResultTotal">R$ 0,00</strong>
+            </article>
           </div>
+
+          <section class="panel stock-filter-panel">
+            <div class="panel-head">
+              <h2>Filtros do estoque</h2>
+              <button class="secondary-btn" id="clearStockFilters" type="button">Limpar filtros</button>
+            </div>
+            <div class="toolbar stock-filter-toolbar">
+              <label class="toolbar-period">De
+                <input id="stockFilterStart" type="date" class="toolbar-date" />
+              </label>
+              <label class="toolbar-period">Até
+                <input id="stockFilterEnd" type="date" class="toolbar-date" />
+              </label>
+              <label>Tipo
+                <select id="stockFilterType">
+                  <option value="">Todos</option>
+                  <option value="entrada">Entradas</option>
+                  <option value="saida">Saídas</option>
+                </select>
+              </label>
+              <label>Projeto
+                <select id="stockFilterProject"></select>
+              </label>
+              <label>Item
+                <select id="stockFilterItem"></select>
+              </label>
+              <button class="primary-btn" id="applyStockFilters" type="button">Aplicar filtros</button>
+            </div>
+          </section>
 
           <div class="stock-panel" data-stock-panel="itens">
             <div class="split">
@@ -1943,8 +1984,8 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-loadfix1"></script>
+    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-filtros1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260710-estoque-loadfix1"></script>
+    <script src="app.js?v=20260710-estoque-filtros1"></script>
   </body>
 </html>

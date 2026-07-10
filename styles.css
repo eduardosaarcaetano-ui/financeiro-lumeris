@@ -961,6 +961,18 @@ textarea {
   margin-left: auto;
 }
 
+.stock-filter-panel {
+  margin-bottom: 16px;
+}
+
+.stock-filter-toolbar {
+  align-items: end;
+}
+
+.stock-filter-toolbar label {
+  min-width: 160px;
+}
+
 .table-wrap {
   overflow-x: auto;
   background: var(--surface);
