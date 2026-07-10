@@ -1747,13 +1747,18 @@ function setView(view) {
     toast("Acesso restrito para o seu perfil.");
     view = defaultViewForRole();
   }
+  document.body.dataset.view = view;
   els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
   els.views.forEach((section) => section.classList.toggle("active", section.id === view));
   els.viewTitle.textContent = viewNames[view];
 }
 
 function renderAll() {
-  els.currentPeriod.textContent = new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(today);
+  els.currentPeriod.textContent = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(today);
   hydrateCrmOptions();
   renderCrm();
   renderDashboard();
