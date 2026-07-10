@@ -408,8 +408,8 @@ body[data-view="dashboard"] #newTransactionBtn {
 }
 
 .kpi {
-  padding: 18px;
-  min-height: 138px;
+  padding: 14px;
+  min-height: 118px;
   display: grid;
   align-content: space-between;
 }
@@ -420,8 +420,9 @@ body[data-view="dashboard"] #newTransactionBtn {
 }
 
 .kpi strong {
-  font-size: 27px;
+  font-size: 22px;
   letter-spacing: 0;
+  overflow-wrap: anywhere;
 }
 
 .kpi-danger {
@@ -936,6 +937,21 @@ textarea {
   max-width: 190px;
 }
 
+.toolbar-period {
+  font-size: 12px;
+}
+
+.toolbar-date {
+  width: 150px;
+}
+
+.toolbar-total {
+  margin-left: auto;
+  font-size: 15px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
 .invoice-xml-btn {
   margin-left: auto;
   cursor: pointer;
@@ -1302,6 +1318,12 @@ dialog::backdrop {
 .toast.show {
   opacity: 1;
   transform: translateY(0);
+}
+
+@media (max-width: 1500px) {
+  .dashboard-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1050px) {

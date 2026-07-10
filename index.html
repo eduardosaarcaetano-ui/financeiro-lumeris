@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-vendas-2026-1" />
+    <link rel="stylesheet" href="styles.css?v=20260710-estoque-projeto1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -303,6 +303,13 @@
               <option value="recebido">Recebido</option>
               <option value="vencido">Vencido</option>
             </select>
+            <label class="toolbar-period">De
+              <input id="receberPeriodStart" type="date" class="toolbar-date" />
+            </label>
+            <label class="toolbar-period">Até
+              <input id="receberPeriodEnd" type="date" class="toolbar-date" />
+            </label>
+            <strong class="toolbar-total" id="receberTotal">Total: R$ 0,00</strong>
             <button class="secondary-btn" data-export-csv="receber" type="button">Exportar CSV</button>
           </div>
           <div class="table-wrap">
@@ -333,6 +340,13 @@
               <option value="pago">Pago</option>
               <option value="vencido">Vencido</option>
             </select>
+            <label class="toolbar-period">De
+              <input id="pagarPeriodStart" type="date" class="toolbar-date" />
+            </label>
+            <label class="toolbar-period">Até
+              <input id="pagarPeriodEnd" type="date" class="toolbar-date" />
+            </label>
+            <strong class="toolbar-total" id="pagarTotal">Total: R$ 0,00</strong>
             <button class="secondary-btn" data-export-csv="pagar" type="button">Exportar CSV</button>
           </div>
           <div class="table-wrap">
@@ -729,7 +743,7 @@
             <button type="button" class="chip-tab" data-stock-tab="entrada">Entrada de Material</button>
             <button type="button" class="chip-tab" data-stock-tab="saida">Saída de Material</button>
             <button type="button" class="chip-tab" data-stock-tab="compras">Necessidade de Compra</button>
-            <button class="secondary-btn stock-import-btn" id="importIluminarStockBtn" type="button">Importar planilha Iluminar</button>
+            <button class="secondary-btn stock-import-btn" id="importIluminarStockBtn" type="button">Atualizar planilha Iluminar</button>
           </div>
 
           <div class="kpi-grid stock-alert-kpis">
@@ -832,6 +846,8 @@
                         <th>Item</th>
                         <th>Categoria</th>
                         <th class="money">Estoque</th>
+                        <th class="money">Mínimo</th>
+                        <th class="money">Máximo</th>
                         <th class="money">Custo médio</th>
                         <th class="money">Valor total</th>
                         <th>Status</th>
@@ -920,7 +936,10 @@
                   </select>
                 </label>
                 <label id="stockExitProjectWrap">Projeto de destino
-                  <select id="stockExitProject"></select>
+                  <div class="inline-control">
+                    <select id="stockExitProject"></select>
+                    <button class="secondary-btn" id="newStockExitProjectBtn" type="button">Novo projeto</button>
+                  </div>
                 </label>
                 <label>Funcionário/equipe que recebeu
                   <input id="stockExitRecipient" maxlength="120" />
@@ -1371,7 +1390,10 @@
             </div>
           </label>
           <label id="transactionProjectWrap">Projeto / centro de custo
-            <select id="transactionProject"></select>
+            <div class="inline-control">
+              <select id="transactionProject"></select>
+              <button class="secondary-btn" id="newTransactionProjectFieldBtn" type="button">Novo projeto</button>
+            </div>
           </label>
           <label class="checkbox-line">
             <input id="transactionDirectProjectCost" type="checkbox" />
@@ -1921,8 +1943,8 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="assets/estoque-iluminar-data.js?v=20260709-estoque-iluminar1"></script>
+    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-projeto1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260709-vendas-2026-1"></script>
+    <script src="app.js?v=20260710-estoque-projeto1"></script>
   </body>
 </html>

@@ -235,6 +235,7 @@ const els = {
   stockExitType: document.querySelector("#stockExitType"),
   stockExitProjectWrap: document.querySelector("#stockExitProjectWrap"),
   stockExitProject: document.querySelector("#stockExitProject"),
+  newStockExitProjectBtn: document.querySelector("#newStockExitProjectBtn"),
   stockExitRecipient: document.querySelector("#stockExitRecipient"),
   stockExitReason: document.querySelector("#stockExitReason"),
   stockExitNotes: document.querySelector("#stockExitNotes"),
@@ -348,6 +349,7 @@ const els = {
   transactionProjectMode: document.querySelector("#transactionProjectMode"),
   transactionProject: document.querySelector("#transactionProject"),
   newTransactionProjectBtn: document.querySelector("#newTransactionProjectBtn"),
+  newTransactionProjectFieldBtn: document.querySelector("#newTransactionProjectFieldBtn"),
   transactionProjectWrap: document.querySelector("#transactionProjectWrap"),
   transactionDirectProjectCost: document.querySelector("#transactionDirectProjectCost"),
   allocationBox: document.querySelector("#allocationBox"),
@@ -502,6 +504,7 @@ const dreGroups = [
 ];
 
 let quickPersonTarget = "transaction";
+let quickProjectTarget = "transaction";
 
 boot().catch((error) => {
   console.error("Falha ao iniciar o sistema:", error);
@@ -514,8 +517,9 @@ async function boot() {
   try {
     bindEvents();
     setDefaultReportPeriod();
+    const stockImport = importIluminarStock({ silent: true, includeMovements: false });
     const vendasImport = importVendas2026Receivables();
-    if (vendasImport.changed) persist();
+    if (stockImport.changed || vendasImport.changed) persist();
     renderAll();
     await ensureMasterUser();
     renderUsers();
@@ -543,6 +547,7 @@ function bindEvents() {
   els.logoutBtn.addEventListener("click", handleLogout);
   els.userForm.addEventListener("submit", saveUser);
   enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente…" });
+  enhanceSearchableSelect(els.bankProject, { placeholder: "Buscar projeto…" });
 
   document.querySelectorAll("[data-invoice-kind]").forEach((button) => {
     button.addEventListener("click", () => setInvoiceKind(button.dataset.invoiceKind));
@@ -577,8 +582,11 @@ function bindEvents() {
   els.stockEntryUnitCost.addEventListener("input", updateStockEntryTotalCost);
   els.stockExitForm.addEventListener("submit", saveStockExit);
   els.stockExitType.addEventListener("change", updateStockExitTypeUi);
+  els.newStockExitProjectBtn.addEventListener("click", createProjectFromStockExitDialog);
   enhanceSearchableSelect(els.stockEntryItem, { placeholder: "Buscar item…" });
   enhanceSearchableSelect(els.stockExitItem, { placeholder: "Buscar item…" });
+  enhanceSearchableSelect(els.stockEntryProject, { placeholder: "Buscar projeto…" });
+  enhanceSearchableSelect(els.stockExitProject, { placeholder: "Buscar projeto…" });
   els.stockEntryDate.value = todayIso;
   els.stockExitDate.value = todayIso;
   updateStockExitTypeUi();
@@ -712,8 +720,12 @@ function bindEvents() {
     "#crmPendingOnly",
     "#crmStaleOnly",
     "#receberStatus",
+    "#receberPeriodStart",
+    "#receberPeriodEnd",
     "#pagarSearch",
     "#pagarStatus",
+    "#pagarPeriodStart",
+    "#pagarPeriodEnd",
     "#salesSearch",
     "#bankSearch",
     "#bankStatus",
@@ -765,6 +777,7 @@ function bindEvents() {
   els.transactionCustomDays.addEventListener("input", renderTransactionInstallmentPreview);
   els.newTransactionPersonBtn.addEventListener("click", createPersonFromTransactionDialog);
   els.newTransactionProjectBtn.addEventListener("click", createProjectFromTransactionDialog);
+  els.newTransactionProjectFieldBtn.addEventListener("click", createProjectFromTransactionDialog);
   document.querySelector("#addAllocationBtn").addEventListener("click", () => addAllocationRow());
 
   els.transactionForm.addEventListener("submit", (event) => {
@@ -824,6 +837,7 @@ function bindEvents() {
     event.preventDefault();
     if (event.submitter?.value === "cancel") {
       els.quickProjectDialog.close();
+      quickProjectTarget = "transaction";
       return;
     }
     saveQuickProjectFromTransaction();
@@ -1253,9 +1267,10 @@ async function initRemoteSync() {
     if (result.data) {
       const remoteState = normalizeState(result.data);
       Object.assign(state, remoteState);
+      const stockImport = importIluminarStock({ silent: true, includeMovements: false });
       const vendasImport = importVendas2026Receivables();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      if (vendasImport.changed) scheduleRemoteSync();
+      if (stockImport.changed || vendasImport.changed) scheduleRemoteSync();
       renderAll();
     }
     setSyncStatus("Sincronizado com o Google Sheets", "ok");
@@ -2222,12 +2237,15 @@ function renderTransactionTables() {
 function renderTransactionTable(type) {
   const search = document.querySelector(`#${type}Search`).value.toLowerCase().trim();
   const statusFilter = document.querySelector(`#${type}Status`).value;
+  const periodStart = document.querySelector(`#${type}PeriodStart`).value;
+  const periodEnd = document.querySelector(`#${type}PeriodEnd`).value;
   const tbody = document.querySelector(`#${type}Table`);
   const colspan = type === "receber" ? 8 : 7;
 
   const rows = state.transactions
     .filter((item) => item.type === type)
     .filter((item) => matchesTransaction(item, search, statusFilter))
+    .filter((item) => (!periodStart || item.dueDate >= periodStart) && (!periodEnd || item.dueDate <= periodEnd))
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
   tbody.innerHTML = rows.length
@@ -2237,6 +2255,8 @@ function renderTransactionTable(type) {
   tbody.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => handleTransactionAction(button.dataset.action, button.dataset.id));
   });
+
+  document.querySelector(`#${type}Total`).textContent = `Total: ${money(sum(rows))}`;
 }
 
 function transactionRow(item, type) {
@@ -2552,10 +2572,13 @@ function hydrateProjectOptions() {
   els.transactionProject.innerHTML = projectOptions;
   els.saleProject.innerHTML = optionalProjectOptions;
   els.bankProject.innerHTML = optionalProjectOptions;
+  refreshSearchableSelect(els.bankProject);
   els.projectReportSelect.innerHTML = optionalProjectOptions;
   els.invoiceProject.innerHTML = optionalProjectOptions;
   els.stockEntryProject.innerHTML = optionalProjectOptions;
   els.stockExitProject.innerHTML = optionalProjectOptions;
+  refreshSearchableSelect(els.stockEntryProject);
+  refreshSearchableSelect(els.stockExitProject);
   els.installationProject.innerHTML = projectOptions;
   els.installationCustomer.innerHTML = `<option value="">Sem cliente vinculado</option>${state.people
     .filter((person) => person.type === "cliente" || person.type === "ambos")
@@ -3393,6 +3416,7 @@ function openBankDialog(movement) {
   els.bankDreGroup.value = movement.dreGroup || (movement.type === "entrada" ? "receita_bruta" : "despesas_operacionais");
   hydrateProjectOptions();
   els.bankProject.value = movement.projectId || "";
+  refreshSearchableSelect(els.bankProject);
   els.bankNotes.value = movement.notes || "";
   els.bankMovementSummary.innerHTML = `
     <strong>${movement.type === "entrada" ? "Entrada" : "Saída"} de ${money(movement.amount)}</strong>
@@ -3403,7 +3427,10 @@ function openBankDialog(movement) {
     if (!els.bankProject.value) {
       const transaction = state.transactions.find((item) => item.id === els.bankMatchTransaction.value);
       const allocations = transaction ? normalizeAllocations(transaction) : [];
-      if (allocations.length === 1) els.bankProject.value = allocations[0].projectId;
+      if (allocations.length === 1) {
+        els.bankProject.value = allocations[0].projectId;
+        refreshSearchableSelect(els.bankProject);
+      }
     }
   };
   hydrateBankInvoiceMatches(movement);
@@ -3612,15 +3639,22 @@ function appendStockMovement(entry) {
   });
 }
 
-function importIluminarStock() {
+function importIluminarStock(options = {}) {
+  const silent = options.silent === true;
+  const includeMovements = options.includeMovements !== false;
   const payload = window.ILUMINAR_STOCK_IMPORT;
   if (!payload?.items?.length) {
-    toast("Base da planilha Iluminar não encontrada no sistema.");
-    return;
+    if (!silent) toast("Base da planilha Iluminar não encontrada no sistema.");
+    return { changed: false, importedItems: 0, updatedItems: 0, importedMovements: 0 };
   }
-  const alreadyImported = state.stockItems.some((item) => item.source === payload.sourceFile || item.notes?.includes("Controle Estoque Iluminar"));
+  const expectedImportedItems = payload.items.length + (payload.uncatalogedItems || []).length;
+  const importedItemsCount = state.stockItems.filter((item) => item.source === payload.sourceFile || item.notes?.includes("Controle Estoque Iluminar")).length;
+  const alreadyImported = importedItemsCount > 0;
+  if (silent && importedItemsCount >= expectedImportedItems) {
+    return { changed: false, importedItems: 0, updatedItems: 0, importedMovements: 0 };
+  }
   if (alreadyImported && !window.confirm("A base Iluminar já parece ter sido importada. Deseja atualizar/mesclar novamente sem duplicar registros?")) {
-    return;
+    return { changed: false, importedItems: 0, updatedItems: 0, importedMovements: 0 };
   }
 
   const mainLocationId = ensureStockLocation("Estoque principal");
@@ -3667,40 +3701,46 @@ function importIluminarStock() {
     itemIdByImportId.set(sourceItem.id, item.id);
   });
 
-  (payload.movements || []).forEach((movement) => {
-    if (state.stockMovements.some((entry) => entry.id === movement.id)) return;
-    const itemId = itemIdByImportId.get(movement.itemId) || findStockItemByImportMovement(movement)?.id || createImportedUncatalogedItem(movement, mainLocationId);
-    const item = state.stockItems.find((entry) => entry.id === itemId);
-    const supplierId = movement.supplierName ? ensurePersonByName(movement.supplierName, "fornecedor") : "";
-    const projectId = movement.projectName ? ensureProjectByName(movement.projectName) : "";
-    const unitCost = Number(movement.unitCost || item?.averageCost || 0);
-    appendStockMovement({
-      id: movement.id,
-      itemId,
-      type: movement.type,
-      date: movement.date || todayIso,
-      timestamp: new Date().toISOString(),
-      quantity: Number(movement.quantity || 0),
-      unitCost,
-      totalCost: Number(movement.totalCost || 0) || roundCurrency(Number(movement.quantity || 0) * unitCost),
-      balanceBefore: 0,
-      balanceAfter: item?.quantity || 0,
-      projectId,
-      supplierId,
-      invoiceNumber: movement.invoiceNumber || "",
-      exitType: movement.exitType || "",
-      reason: movement.reason || "",
-      recipientName: movement.recipientName || "",
-      notes: [movement.notes, movement.source ? `Origem: ${movement.source} linha ${movement.sourceRow || ""}` : ""].filter(Boolean).join(" "),
-      createdAt: new Date().toISOString(),
+  if (includeMovements) {
+    (payload.movements || []).forEach((movement) => {
+      if (state.stockMovements.some((entry) => entry.id === movement.id)) return;
+      const itemId = itemIdByImportId.get(movement.itemId) || findStockItemByImportMovement(movement)?.id || createImportedUncatalogedItem(movement, mainLocationId);
+      const item = state.stockItems.find((entry) => entry.id === itemId);
+      const supplierId = movement.supplierName ? ensurePersonByName(movement.supplierName, "fornecedor") : "";
+      const projectId = movement.projectName ? ensureProjectByName(movement.projectName) : "";
+      const unitCost = Number(movement.unitCost || item?.averageCost || 0);
+      appendStockMovement({
+        id: movement.id,
+        itemId,
+        type: movement.type,
+        date: movement.date || todayIso,
+        timestamp: new Date().toISOString(),
+        quantity: Number(movement.quantity || 0),
+        unitCost,
+        totalCost: Number(movement.totalCost || 0) || roundCurrency(Number(movement.quantity || 0) * unitCost),
+        balanceBefore: 0,
+        balanceAfter: item?.quantity || 0,
+        projectId,
+        supplierId,
+        invoiceNumber: movement.invoiceNumber || "",
+        exitType: movement.exitType || "",
+        reason: movement.reason || "",
+        recipientName: movement.recipientName || "",
+        notes: [movement.notes, movement.source ? `Origem: ${movement.source} linha ${movement.sourceRow || ""}` : ""].filter(Boolean).join(" "),
+        createdAt: new Date().toISOString(),
+      });
+      importedMovements += 1;
     });
-    importedMovements += 1;
-  });
+  }
 
-  persist();
-  renderAll();
-  setStockTab("itens");
-  toast(`Planilha Iluminar importada: ${importedItems} item(ns), ${updatedItems} atualizado(s), ${importedMovements} movimento(s).`);
+  const result = { changed: importedItems > 0 || updatedItems > 0 || importedMovements > 0, importedItems, updatedItems, importedMovements };
+  if (!silent) {
+    persist();
+    renderAll();
+    setStockTab("itens");
+    toast(`Planilha Iluminar importada: ${importedItems} item(ns), ${updatedItems} atualizado(s), ${importedMovements} movimento(s).`);
+  }
+  return result;
 }
 
 function findImportedStockItem(sourceItem) {
@@ -4046,7 +4086,7 @@ function renderStockItems() {
 
   els.stockItemTable.innerHTML = items.length
     ? items.map(stockItemRow).join("")
-    : `<tr><td colspan="7">${emptyMessage("Nenhum item cadastrado.")}</td></tr>`;
+    : `<tr><td colspan="9">${emptyMessage("Nenhum item cadastrado.")}</td></tr>`;
 
   document.querySelectorAll("[data-stock-item-action]").forEach((button) => {
     button.addEventListener("click", () => handleStockItemAction(button.dataset.stockItemAction, button.dataset.id));
@@ -4064,6 +4104,8 @@ function stockItemRow(item) {
       </td>
       <td>${escapeHtml(item.category || "-")}</td>
       <td class="money">${formatQuantity(item.quantity)}</td>
+      <td class="money">${formatQuantity(item.minQuantity)}</td>
+      <td class="money">${formatQuantity(item.maxQuantity)}</td>
       <td class="money">${money(item.averageCost)}</td>
       <td class="money">${money(totalValue)}</td>
       <td>${item.active ? `<span class="status baixado">Ativo</span>` : `<span class="status vencido">Inativo</span>`}</td>
@@ -4210,6 +4252,25 @@ function resetStockExitForm() {
   updateStockExitTypeUi();
 }
 
+function createProjectFromStockExitDialog() {
+  const item = state.stockItems.find((entry) => entry.id === els.stockExitItem.value);
+  const quantity = Number(els.stockExitQuantity.value || 0);
+  const expectedCost = item ? roundCurrency(quantity * Number(item.averageCost || 0)) : 0;
+  quickProjectTarget = "stockExit";
+  hydrateProjectOptions();
+  els.quickProjectForm.reset();
+  els.quickProjectName.value = els.stockExitReason.value.trim() || (item ? `Uso de estoque - ${stockItemLabel(item)}` : "");
+  els.quickProjectCustomer.value = "";
+  els.quickProjectStatus.value = "ativo";
+  els.quickProjectStartDate.value = els.stockExitDate.value || todayIso;
+  els.quickProjectContractValue.value = 0;
+  els.quickProjectExpectedCosts.value = expectedCost;
+  els.quickProjectTargetMargin.value = 20;
+  els.quickProjectNotes.value = "Criado a partir da saída de material do estoque.";
+  els.quickProjectDialog.showModal();
+  els.quickProjectName.focus();
+}
+
 function saveStockExit(event) {
   event.preventDefault();
   const item = state.stockItems.find((entry) => entry.id === els.stockExitItem.value);
@@ -4230,6 +4291,10 @@ function saveStockExit(event) {
 
   const exitType = els.stockExitType.value;
   const projectId = exitType === "consumo_projeto" ? els.stockExitProject.value : "";
+  if (exitType === "consumo_projeto" && !projectId) {
+    toast("Selecione ou cadastre o projeto de destino.");
+    return;
+  }
   const balanceBefore = item.quantity;
   const unitCost = item.averageCost;
   const totalCost = roundCurrency(quantity * unitCost);
@@ -5617,6 +5682,7 @@ function createProjectFromTransactionDialog() {
   if (!guardViewAccess("projetos")) return;
   const suggested = els.transactionDescription.value || personName(els.transactionPerson.value);
   const amount = Number(els.transactionAmount.value || 0);
+  quickProjectTarget = "transaction";
   hydrateProjectOptions();
   els.quickProjectForm.reset();
   els.quickProjectName.value = suggested === "Não informado" ? "" : suggested;
@@ -5652,14 +5718,21 @@ function saveQuickProjectFromTransaction() {
   upsertCostCenter(project);
   persist();
   hydrateProjectOptions();
-  els.transactionProjectMode.value = "single";
-  els.transactionProject.value = project.id;
-  renderAllocationControls();
+  if (quickProjectTarget === "stockExit") {
+    els.stockExitProject.value = project.id;
+    refreshSearchableSelect(els.stockExitProject);
+    setStockTab("saida");
+  } else {
+    els.transactionProjectMode.value = "single";
+    els.transactionProject.value = project.id;
+    renderAllocationControls();
+  }
   renderProjects();
   renderProjectReports();
   renderHomologation();
   els.quickProjectDialog.close();
-  toast("Projeto cadastrado e selecionado no lançamento.");
+  toast(quickProjectTarget === "stockExit" ? "Projeto cadastrado e selecionado na saída de estoque." : "Projeto cadastrado e selecionado no lançamento.");
+  quickProjectTarget = "transaction";
 }
 
 function updateTransactionInstallmentUi() {
