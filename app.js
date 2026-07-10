@@ -4,9 +4,12 @@ const LEGACY_STORAGE_KEYS = ["financeiro-lumeris-v2", "financeiro-lumeris-v1"];
 // URL de implantação do Google Apps Script (Web App). Preencha depois de publicar o Code.gs
 // na sua planilha para que todos os usuários passem a compartilhar os mesmos dados.
 const SHEETS_ENDPOINT = "https://script.google.com/macros/s/AKfycbw6UqQ8YH0jMLdvDfSumh6h8zZfBSh91NIOd6oqJo_DP5bgP88N8lLl25daHvwCUWSq/exec";
-const SYNC_DEBOUNCE_MS = 1200;
+const SYNC_DEBOUNCE_MS = 800;
+const SYNC_TIMEOUT_MS = 18000;
 let remoteUpdatedAt = "";
 let syncTimer = null;
+let syncInFlight = false;
+let syncQueued = false;
 
 const AUTH_STORAGE_KEY = "financeiro-lumeris-session";
 const MASTER_USERNAME = "adm";
@@ -1332,35 +1335,75 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
 
 function scheduleRemoteSync() {
   if (!SHEETS_ENDPOINT) return;
+  if (syncInFlight) {
+    syncQueued = true;
+    setSyncStatus("Salvo localmente. Aguardando sincronizacao...", "syncing");
+    return;
+  }
   window.clearTimeout(syncTimer);
-  setSyncStatus("Salvando alterações…", "syncing");
+  setSyncStatus("Salvo localmente. Sincronizando...", "syncing");
   syncTimer = window.setTimeout(pushToSheets, SYNC_DEBOUNCE_MS);
 }
 
-function pushToSheets() {
-  fetch(SHEETS_ENDPOINT, {
-    method: "POST",
-    body: JSON.stringify({ data: state, baseUpdatedAt: remoteUpdatedAt }),
-  })
-    .then((response) => response.json())
-    .then((result) => {
-      if (!result.ok) {
-        if (result.error === "conflict") {
-          toast("Outra pessoa salvou dados mais novos. Recarregue a página antes de continuar.");
-          setSyncStatus("Conflito — recarregue a página", "error");
-          return;
-        }
-        throw new Error(result.error || "Falha ao salvar");
+async function pushToSheets() {
+  if (syncInFlight) {
+    syncQueued = true;
+    return;
+  }
+
+  syncInFlight = true;
+  syncQueued = false;
+  window.clearTimeout(syncTimer);
+  setSyncStatus("Sincronizando com o Google Sheets...", "syncing");
+
+  try {
+    const response = await fetchWithTimeout(
+      SHEETS_ENDPOINT,
+      {
+        method: "POST",
+        body: JSON.stringify({ data: state, baseUpdatedAt: remoteUpdatedAt }),
+      },
+      SYNC_TIMEOUT_MS
+    );
+    const result = await response.json();
+    if (!result.ok) {
+      if (result.error === "conflict") {
+        await retrySyncAfterConflict();
+        return;
       }
-      remoteUpdatedAt = result.updatedAt || "";
-      setSyncStatus("Sincronizado com o Google Sheets", "ok");
-    })
-    .catch((error) => {
-      console.error(error);
-      setSyncStatus("Erro ao salvar no Sheets — dados mantidos localmente", "error");
-    });
+      throw new Error(result.error || "Falha ao salvar");
+    }
+    remoteUpdatedAt = result.updatedAt || remoteUpdatedAt;
+    setSyncStatus("Sincronizado com o Google Sheets", "ok");
+  } catch (error) {
+    console.error(error);
+    setSyncStatus("Erro ao sincronizar - dados salvos neste computador", "error");
+  } finally {
+    syncInFlight = false;
+    if (syncQueued) scheduleRemoteSync();
+  }
 }
 
+async function retrySyncAfterConflict() {
+  setSyncStatus("Atualizando versao do Sheets e salvando novamente...", "syncing");
+  const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, 8000);
+  const result = await response.json();
+  if (!result.ok) throw new Error(result.error || "Falha ao atualizar versao");
+  remoteUpdatedAt = result.updatedAt || "";
+
+  const retryResponse = await fetchWithTimeout(
+    SHEETS_ENDPOINT,
+    {
+      method: "POST",
+      body: JSON.stringify({ data: state, baseUpdatedAt: remoteUpdatedAt }),
+    },
+    SYNC_TIMEOUT_MS
+  );
+  const retryResult = await retryResponse.json();
+  if (!retryResult.ok) throw new Error(retryResult.error || "Falha ao salvar apos conflito");
+  remoteUpdatedAt = retryResult.updatedAt || remoteUpdatedAt;
+  setSyncStatus("Sincronizado com o Google Sheets", "ok");
+}
 function setSyncStatus(text, kind) {
   if (!els.syncStatus) return;
   els.syncStatus.textContent = text;
