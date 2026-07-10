@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-estoque-filtros1" />
+    <link rel="stylesheet" href="styles.css?v=20260710-fix-import-popup1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -1818,6 +1818,9 @@
         </div>
         <input type="hidden" id="invoiceLinkId" />
         <p class="muted" id="invoiceLinkSummary"></p>
+        <label>Projeto / centro de custo
+          <select id="invoiceLinkProject"></select>
+        </label>
         <div class="people-list" id="invoiceLinkList"></div>
         <menu class="modal-actions">
           <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
@@ -2025,8 +2028,8 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-filtros1"></script>
+    <script src="assets/estoque-iluminar-data.js?v=20260710-fix-import-popup1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260710-estoque-filtros1"></script>
+    <script src="app.js?v=20260710-fix-import-popup1"></script>
   </body>
 </html>

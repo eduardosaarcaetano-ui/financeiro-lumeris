@@ -187,6 +187,7 @@ const els = {
   invoiceLinkId: document.querySelector("#invoiceLinkId"),
   invoiceLinkTitle: document.querySelector("#invoiceLinkTitle"),
   invoiceLinkSummary: document.querySelector("#invoiceLinkSummary"),
+  invoiceLinkProject: document.querySelector("#invoiceLinkProject"),
   invoiceLinkList: document.querySelector("#invoiceLinkList"),
   bankMatchInvoice: document.querySelector("#bankMatchInvoice"),
   stockAlertBelowMin: document.querySelector("#stockAlertBelowMin"),
@@ -2619,6 +2620,7 @@ function hydrateProjectOptions() {
   refreshSearchableSelect(els.bankProject);
   els.projectReportSelect.innerHTML = optionalProjectOptions;
   els.invoiceProject.innerHTML = optionalProjectOptions;
+  els.invoiceLinkProject.innerHTML = optionalProjectOptions;
   els.stockEntryProject.innerHTML = optionalProjectOptions;
   els.stockExitProject.innerHTML = optionalProjectOptions;
   els.stockFilterProject.innerHTML = optionalProjectOptions;
@@ -3393,6 +3395,7 @@ async function handleBankSyncSubmit() {
 
 function renderBank() {
   renderBankSyncList();
+  hydrateBankAccountFilter();
   const movements = filteredBankMovements();
   const all = state.bankMovements;
   const totalIn = sum(all.filter((item) => item.type === "entrada"));
@@ -3415,13 +3418,36 @@ function renderBank() {
   });
 }
 
+function bankAccountKey(item) {
+  return `${item.bankId || ""}|${item.accountId || ""}`;
+}
+
+function hydrateBankAccountFilter() {
+  const current = els.bankAccountFilter.value;
+  const accounts = new Map();
+  state.bankMovements.forEach((item) => {
+    const key = bankAccountKey(item);
+    if (!accounts.has(key)) accounts.set(key, { bankId: item.bankId || "Banco não identificado", accountId: item.accountId });
+  });
+  const sorted = [...accounts.entries()].sort((a, b) => a[1].bankId.localeCompare(b[1].bankId) || String(a[1].accountId).localeCompare(String(b[1].accountId)));
+  els.bankAccountFilter.innerHTML =
+    `<option value="todas">Todas as contas</option>` +
+    sorted.map(([key, acc]) => `<option value="${escapeHtml(key)}">${escapeHtml(acc.bankId)} · Conta ${escapeHtml(acc.accountId || "não identificada")}</option>`).join("");
+  els.bankAccountFilter.value = accounts.has(current) ? current : "todas";
+}
+
 function filteredBankMovements() {
   const search = els.bankSearch.value.toLowerCase().trim();
   const status = els.bankStatus.value;
+  const accountFilter = els.bankAccountFilter.value;
   return state.bankMovements
     .filter((item) => {
       const haystack = `${item.description} ${item.bankId} ${item.accountId} ${item.documentNumber} ${item.category} ${projectName(item.projectId)}`.toLowerCase();
-      return (!search || haystack.includes(search)) && (status === "todos" || bankStatus(item) === status);
+      return (
+        (!search || haystack.includes(search)) &&
+        (status === "todos" || bankStatus(item) === status) &&
+        (accountFilter === "todas" || bankAccountKey(item) === accountFilter)
+      );
     })
     .sort((a, b) => b.date.localeCompare(a.date));
 }
@@ -3532,13 +3558,15 @@ function hydrateBankInvoiceMatches(movement) {
     .filter((item) => wantKinds.includes(item.kind))
     .filter((item) => item.status !== "cancelada")
     .map((item) => ({ item, score: invoiceMatchScore(movement, item) }))
-    .filter((entry) => entry.score >= 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 30);
+    .slice(0, 50);
 
   els.bankMatchInvoice.innerHTML = [
     `<option value="">Sem vínculo com NF</option>`,
-    ...matches.map(({ item }) => `<option value="${item.id}">NF ${escapeHtml(item.number)} · ${escapeHtml(personName(item.personId))} · valor contábil ${money(item.accountingValue)}</option>`),
+    ...matches.map(
+      ({ item, score }) =>
+        `<option value="${item.id}">NF ${escapeHtml(item.number)} · ${escapeHtml(personName(item.personId))} · valor contábil ${money(item.accountingValue)}${score >= 0 ? " · valor compatível" : ""}</option>`
+    ),
   ].join("");
 }
 
@@ -3730,7 +3758,7 @@ function importIluminarStock(options = {}) {
   if (silent && importedItemsCount >= expectedImportedItems) {
     return { changed: false, importedItems: 0, updatedItems: 0, importedMovements: 0 };
   }
-  if (alreadyImported && !window.confirm("A base Iluminar já parece ter sido importada. Deseja atualizar/mesclar novamente sem duplicar registros?")) {
+  if (alreadyImported && !silent && !window.confirm("A base Iluminar já parece ter sido importada. Deseja atualizar/mesclar novamente sem duplicar registros?")) {
     return { changed: false, importedItems: 0, updatedItems: 0, importedMovements: 0 };
   }
 
@@ -5585,6 +5613,8 @@ function openInvoiceLinkDialog(invoice) {
   els.invoiceLinkId.value = invoice.id;
   els.invoiceLinkTitle.textContent = `Vincular NF ${invoice.number} a lançamentos`;
   els.invoiceLinkSummary.textContent = `Valor contábil da NF: ${money(invoice.accountingValue)}`;
+  hydrateProjectOptions();
+  els.invoiceLinkProject.value = invoice.projectId || "";
 
   const candidates = state.transactions
     .filter((item) => item.type === wantType)
@@ -5606,6 +5636,8 @@ function openInvoiceLinkDialog(invoice) {
 function saveInvoiceLink() {
   if (!guardViewAccess("notasfiscais")) return;
   const invoiceId = els.invoiceLinkId.value;
+  const invoice = state.invoices.find((item) => item.id === invoiceId);
+  if (invoice) invoice.projectId = els.invoiceLinkProject.value;
   const checkboxes = els.invoiceLinkList.querySelectorAll("[data-link-transaction]");
 
   checkboxes.forEach((box) => {
