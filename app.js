@@ -488,7 +488,7 @@ function getDefaultCrmStages() {
 const dreGroups = [
   { key: "receita_bruta", label: "Receita bruta", sign: 1 },
   { key: "deducoes", label: "Deduções", sign: -1 },
-  { key: "custos", label: "Custos", sign: -1 },
+  { key: "custos", label: "Custo direto", sign: -1 },
   { key: "despesas_operacionais", label: "Despesas operacionais", sign: -1 },
   { key: "despesas_financeiras", label: "Despesas financeiras", sign: -1 },
   { key: "impostos", label: "Impostos", sign: -1 },
