@@ -3349,33 +3349,21 @@ function createProjectFromBankDialog() {
   if (!guardViewAccess("projetos")) return;
   const movement = state.bankMovements.find((item) => item.id === els.bankMovementId.value);
   const suggestedName = movement?.description ? movement.description.slice(0, 80) : "";
-  const name = window.prompt("Nome do novo projeto:", suggestedName);
-  if (!name || !name.trim()) return;
-
-  const project = {
-    id: crypto.randomUUID(),
-    code: "",
-    name: name.trim(),
-    customerId: "",
-    status: "ativo",
-    startDate: todayIso,
-    endDate: "",
-    contractValue: movement?.type === "entrada" ? Number(movement.amount || 0) : 0,
-    expectedCosts: movement?.type === "saida" ? Number(movement.amount || 0) : 0,
-    targetMargin: 20,
-    costCenterId: crypto.randomUUID(),
-    notes: movement ? `Criado durante conciliação bancária: ${movement.description}` : "Criado durante conciliação bancária.",
-  };
-
-  state.projects.push(project);
-  upsertCostCenter(project);
-  persist();
-  hydrateProjectOptions();
-  els.bankProject.value = project.id;
-  renderProjects();
-  renderProjectReports();
-  renderHomologation();
-  toast("Projeto criado e selecionado na conciliação.");
+  els.bankDialog.close();
+  setView("projetos");
+  els.projectForm.reset();
+  els.projectId.value = "";
+  els.projectName.value = suggestedName;
+  els.projectCustomer.value = "";
+  refreshSearchableSelect(els.projectCustomer);
+  els.projectStatus.value = "ativo";
+  els.projectStartDate.value = todayIso;
+  els.projectContractValue.value = movement?.type === "entrada" ? Number(movement.amount || 0) : 0;
+  els.projectExpectedCosts.value = movement?.type === "saida" ? Number(movement.amount || 0) : 0;
+  els.projectTargetMargin.value = 20;
+  els.projectNotes.value = movement ? `Criado a partir da conciliacao bancaria: ${movement.description}` : "Criado a partir da conciliacao bancaria.";
+  els.projectName.focus();
+  toast("Preencha o cadastro completo do projeto e salve. Depois volte para a conciliacao.");
 }
 
 function hydrateBankInvoiceMatches(movement) {
