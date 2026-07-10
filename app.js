@@ -212,6 +212,9 @@ const els = {
   stockNotes: document.querySelector("#stockNotes"),
   stockItemSearch: document.querySelector("#stockItemSearch"),
   stockItemTable: document.querySelector("#stockItemTable"),
+  importIluminarStockBtn: document.querySelector("#importIluminarStockBtn"),
+  stockTotalValue: document.querySelector("#stockTotalValue"),
+  stockPurchaseCount: document.querySelector("#stockPurchaseCount"),
   stockEntryForm: document.querySelector("#stockEntryForm"),
   stockEntryDate: document.querySelector("#stockEntryDate"),
   stockEntrySupplier: document.querySelector("#stockEntrySupplier"),
@@ -566,6 +569,7 @@ function bindEvents() {
   });
   els.stockItemForm.addEventListener("submit", saveStockItem);
   els.stockItemSearch.addEventListener("input", renderStockItems);
+  els.importIluminarStockBtn.addEventListener("click", importIluminarStock);
   els.stockEntryForm.addEventListener("submit", saveStockEntry);
   els.stockEntryQuantity.addEventListener("input", updateStockEntryTotalCost);
   els.stockEntryUnitCost.addEventListener("input", updateStockEntryTotalCost);
@@ -3599,6 +3603,192 @@ function appendStockMovement(entry) {
   });
 }
 
+function importIluminarStock() {
+  const payload = window.ILUMINAR_STOCK_IMPORT;
+  if (!payload?.items?.length) {
+    toast("Base da planilha Iluminar não encontrada no sistema.");
+    return;
+  }
+  const alreadyImported = state.stockItems.some((item) => item.source === payload.sourceFile || item.notes?.includes("Controle Estoque Iluminar"));
+  if (alreadyImported && !window.confirm("A base Iluminar já parece ter sido importada. Deseja atualizar/mesclar novamente sem duplicar registros?")) {
+    return;
+  }
+
+  const mainLocationId = ensureStockLocation("Estoque principal");
+  const itemIdByImportId = new Map();
+  let importedItems = 0;
+  let updatedItems = 0;
+  let importedMovements = 0;
+
+  [...payload.items, ...(payload.uncatalogedItems || [])].forEach((sourceItem) => {
+    const existing = findImportedStockItem(sourceItem);
+    const item = {
+      id: existing?.id || sourceItem.id || crypto.randomUUID(),
+      internalCode: sourceItem.internalCode || "",
+      barcode: sourceItem.barcode || "",
+      name: sourceItem.name || "",
+      description: sourceItem.description || sourceItem.name || "",
+      category: sourceItem.category || "SEM CATEGORIA",
+      subcategory: sourceItem.subcategory || "",
+      brand: sourceItem.brand || "",
+      model: sourceItem.model || "",
+      unit: sourceItem.unit || "unidade",
+      primarySupplierId: existing?.primarySupplierId || "",
+      locationId: mainLocationId,
+      quantity: Number(sourceItem.quantity || 0),
+      minQuantity: Number(sourceItem.minQuantity || 0),
+      maxQuantity: Number(sourceItem.maxQuantity || 0),
+      averageCost: Number(sourceItem.averageCost || 0),
+      lastPurchaseCost: Number(sourceItem.lastPurchaseCost || sourceItem.averageCost || 0),
+      active: sourceItem.active !== false,
+      notes: sourceItem.notes || "Importado da planilha Controle Estoque Iluminar.",
+      source: sourceItem.source || payload.sourceFile,
+      sourceRow: sourceItem.sourceRow || "",
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const index = state.stockItems.findIndex((entry) => entry.id === item.id);
+    if (index >= 0) {
+      state.stockItems[index] = { ...state.stockItems[index], ...item };
+      updatedItems += 1;
+    } else {
+      state.stockItems.push(item);
+      importedItems += 1;
+    }
+    itemIdByImportId.set(sourceItem.id, item.id);
+  });
+
+  (payload.movements || []).forEach((movement) => {
+    if (state.stockMovements.some((entry) => entry.id === movement.id)) return;
+    const itemId = itemIdByImportId.get(movement.itemId) || findStockItemByImportMovement(movement)?.id || createImportedUncatalogedItem(movement, mainLocationId);
+    const item = state.stockItems.find((entry) => entry.id === itemId);
+    const supplierId = movement.supplierName ? ensurePersonByName(movement.supplierName, "fornecedor") : "";
+    const projectId = movement.projectName ? ensureProjectByName(movement.projectName) : "";
+    const unitCost = Number(movement.unitCost || item?.averageCost || 0);
+    appendStockMovement({
+      id: movement.id,
+      itemId,
+      type: movement.type,
+      date: movement.date || todayIso,
+      timestamp: new Date().toISOString(),
+      quantity: Number(movement.quantity || 0),
+      unitCost,
+      totalCost: Number(movement.totalCost || 0) || roundCurrency(Number(movement.quantity || 0) * unitCost),
+      balanceBefore: 0,
+      balanceAfter: item?.quantity || 0,
+      projectId,
+      supplierId,
+      invoiceNumber: movement.invoiceNumber || "",
+      exitType: movement.exitType || "",
+      reason: movement.reason || "",
+      recipientName: movement.recipientName || "",
+      notes: [movement.notes, movement.source ? `Origem: ${movement.source} linha ${movement.sourceRow || ""}` : ""].filter(Boolean).join(" "),
+      createdAt: new Date().toISOString(),
+    });
+    importedMovements += 1;
+  });
+
+  persist();
+  renderAll();
+  setStockTab("itens");
+  toast(`Planilha Iluminar importada: ${importedItems} item(ns), ${updatedItems} atualizado(s), ${importedMovements} movimento(s).`);
+}
+
+function findImportedStockItem(sourceItem) {
+  return state.stockItems.find((item) =>
+    item.id === sourceItem.id ||
+    (sourceItem.internalCode && item.internalCode === sourceItem.internalCode && item.name === sourceItem.name) ||
+    (!sourceItem.internalCode && item.name.toLowerCase() === String(sourceItem.name || "").toLowerCase())
+  );
+}
+
+function findStockItemByImportMovement(movement) {
+  const code = String(movement.itemCode || "").trim();
+  const name = String(movement.itemName || "").trim().toLowerCase();
+  return state.stockItems.find((item) => (code && item.internalCode === code) || item.name.toLowerCase() === name);
+}
+
+function createImportedUncatalogedItem(movement, locationId) {
+  const id = `iluminar-mov-item-${crypto.randomUUID()}`;
+  state.stockItems.push({
+    id,
+    internalCode: movement.itemCode && movement.itemCode !== "item não encontrado" ? movement.itemCode : "",
+    barcode: "",
+    name: movement.itemName || "Item sem cadastro",
+    description: movement.itemName || "",
+    category: "SEM CADASTRO",
+    subcategory: "",
+    brand: "",
+    model: "",
+    unit: stockUnitFromName(movement.itemName),
+    primarySupplierId: "",
+    locationId,
+    quantity: 0,
+    minQuantity: 0,
+    maxQuantity: 0,
+    averageCost: Number(movement.unitCost || 0),
+    lastPurchaseCost: Number(movement.unitCost || 0),
+    active: true,
+    notes: "Criado automaticamente porque apareceu em movimentação importada sem cadastro localizado.",
+    source: movement.source || "Controle Estoque Iluminar.xlsx",
+    sourceRow: movement.sourceRow || "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
+  return id;
+}
+
+function ensureStockLocation(name) {
+  const existing = state.stockLocations.find((location) => location.name.toLowerCase() === name.toLowerCase());
+  if (existing) return existing.id;
+  const location = { id: crypto.randomUUID(), name, description: "Local criado pela importação da planilha Iluminar.", active: true };
+  state.stockLocations.push(location);
+  return location.id;
+}
+
+function ensurePersonByName(name, type) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return "";
+  const existing = state.people.find((person) => person.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return existing.id;
+  const person = { id: crypto.randomUUID(), type, name: trimmed, document: "", contact: "" };
+  state.people.push(person);
+  return person.id;
+}
+
+function ensureProjectByName(name) {
+  const trimmed = String(name || "").trim();
+  if (!trimmed) return "";
+  const existing = state.projects.find((project) => project.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) return existing.id;
+  const project = {
+    id: crypto.randomUUID(),
+    code: "",
+    name: trimmed,
+    customerId: "",
+    status: "ativo",
+    startDate: todayIso,
+    endDate: "",
+    contractValue: 0,
+    expectedCosts: 0,
+    targetMargin: 20,
+    costCenterId: crypto.randomUUID(),
+    notes: "Criado automaticamente pela importação de requisições de estoque.",
+  };
+  state.projects.push(project);
+  upsertCostCenter(project);
+  return project.id;
+}
+
+function stockUnitFromName(name) {
+  const text = String(name || "").toUpperCase();
+  if (text.includes("METRO")) return "metro";
+  if (text.includes("PCT") || text.includes("PACOTE")) return "pacote";
+  if (text.includes("ROLO")) return "rolo";
+  if (text.includes("CAIXA")) return "caixa";
+  return "unidade";
+}
+
 function setStockTab(tab) {
   currentStockTab = tab;
   document.querySelectorAll("[data-stock-tab]").forEach((button) => {
@@ -3968,6 +4158,9 @@ function renderStockExitList() {
 
 function renderStockAlerts() {
   const items = state.stockItems.filter((item) => item.active);
+  const totalValue = sum(items.map((item) => Number(item.quantity || 0) * Number(item.averageCost || 0)));
+  els.stockTotalValue.textContent = money(totalValue);
+  els.stockPurchaseCount.textContent = String(items.filter((item) => item.quantity < item.minQuantity).length);
   els.stockAlertBelowMin.textContent = String(items.filter((item) => item.quantity > 0 && item.quantity < item.minQuantity).length);
   els.stockAlertZero.textContent = String(items.filter((item) => item.quantity <= 0).length);
   els.stockAlertAboveMax.textContent = String(items.filter((item) => item.maxQuantity > 0 && item.quantity > item.maxQuantity).length);

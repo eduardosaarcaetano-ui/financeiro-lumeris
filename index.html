@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-xml-nf2" />
+    <link rel="stylesheet" href="styles.css?v=20260709-estoque-iluminar1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -729,9 +729,18 @@
             <button type="button" class="chip-tab" data-stock-tab="entrada">Entrada de Material</button>
             <button type="button" class="chip-tab" data-stock-tab="saida">Saída de Material</button>
             <button type="button" class="chip-tab" data-stock-tab="compras">Necessidade de Compra</button>
+            <button class="secondary-btn stock-import-btn" id="importIluminarStockBtn" type="button">Importar planilha Iluminar</button>
           </div>
 
           <div class="kpi-grid stock-alert-kpis">
+            <article class="kpi">
+              <span>Valor total em estoque</span>
+              <strong id="stockTotalValue">R$ 0,00</strong>
+            </article>
+            <article class="kpi">
+              <span>Itens a comprar</span>
+              <strong id="stockPurchaseCount">0</strong>
+            </article>
             <article class="kpi">
               <span>Itens abaixo do mínimo</span>
               <strong id="stockAlertBelowMin">0</strong>
@@ -1912,6 +1921,7 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260709-xml-nf2"></script>
+    <script src="assets/estoque-iluminar-data.js?v=20260709-estoque-iluminar1"></script>
+    <script src="app.js?v=20260709-estoque-iluminar1"></script>
   </body>
 </html>

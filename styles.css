@@ -933,6 +933,10 @@ textarea {
   cursor: pointer;
 }
 
+.stock-import-btn {
+  margin-left: auto;
+}
+
 .table-wrap {
   overflow-x: auto;
   background: var(--surface);
