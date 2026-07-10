@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-projeto-modal1" />
+    <link rel="stylesheet" href="styles.css?v=20260709-cadastro-modal1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -1405,6 +1405,38 @@
       </form>
     </dialog>
 
+    <dialog id="quickPersonDialog">
+      <form method="dialog" class="modal" id="quickPersonForm">
+        <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
+        <div class="modal-head">
+          <h2>Novo cadastro</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
+        </div>
+        <div class="form-grid">
+          <label>Tipo
+            <select id="quickPersonType" required>
+              <option value="cliente">Cliente</option>
+              <option value="fornecedor">Fornecedor</option>
+              <option value="ambos">Cliente e fornecedor</option>
+            </select>
+          </label>
+          <label>Nome
+            <input id="quickPersonName" required maxlength="80" />
+          </label>
+          <label>Documento
+            <input id="quickPersonDocument" maxlength="30" placeholder="CPF, CNPJ ou identificação" />
+          </label>
+          <label>Contato
+            <input id="quickPersonContact" maxlength="80" placeholder="Telefone ou e-mail" />
+          </label>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Salvar cadastro</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="quickProjectDialog">
       <form method="dialog" class="modal" id="quickProjectForm">
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
@@ -1869,6 +1901,6 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260709-projeto-modal1"></script>
+    <script src="app.js?v=20260709-cadastro-modal1"></script>
   </body>
 </html>

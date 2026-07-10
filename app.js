@@ -442,6 +442,12 @@ const els = {
   personName: document.querySelector("#personName"),
   personDocument: document.querySelector("#personDocument"),
   personContact: document.querySelector("#personContact"),
+  quickPersonDialog: document.querySelector("#quickPersonDialog"),
+  quickPersonForm: document.querySelector("#quickPersonForm"),
+  quickPersonType: document.querySelector("#quickPersonType"),
+  quickPersonName: document.querySelector("#quickPersonName"),
+  quickPersonDocument: document.querySelector("#quickPersonDocument"),
+  quickPersonContact: document.querySelector("#quickPersonContact"),
   reportStart: document.querySelector("#reportStart"),
   reportEnd: document.querySelector("#reportEnd"),
   dreBasis: document.querySelector("#dreBasis"),
@@ -820,6 +826,14 @@ function bindEvents() {
   els.personForm.addEventListener("submit", (event) => {
     event.preventDefault();
     savePerson();
+  });
+  els.quickPersonForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.quickPersonDialog.close();
+      return;
+    }
+    saveQuickPersonFromTransaction();
   });
 }
 
@@ -5062,14 +5076,32 @@ function hydratePersonOptions() {
 function createPersonFromTransactionDialog() {
   const type = els.transactionType.value === "receber" ? "cliente" : "fornecedor";
   const name = personName(els.transactionPerson.value);
-  els.transactionDialog.close();
-  setView("pessoas");
-  els.personForm.reset();
-  els.personId.value = "";
-  els.personType.value = type;
-  els.personName.value = name === "Não informado" ? "" : name;
-  els.personName.focus();
-  toast(`Preencha o cadastro completo do ${type} e salve. Depois volte ao lançamento.`);
+  els.quickPersonForm.reset();
+  els.quickPersonType.value = type;
+  els.quickPersonName.value = name === "Não informado" ? "" : name;
+  els.quickPersonDialog.showModal();
+  els.quickPersonName.focus();
+}
+
+function saveQuickPersonFromTransaction() {
+  const person = {
+    id: crypto.randomUUID(),
+    type: els.quickPersonType.value,
+    name: els.quickPersonName.value.trim(),
+    document: els.quickPersonDocument.value.trim(),
+    contact: els.quickPersonContact.value.trim(),
+  };
+
+  state.people.push(person);
+  persist();
+  hydratePersonOptions();
+  hydrateSalePeople();
+  hydrateProjectOptions();
+  hydrateInvoicePersonOptions();
+  renderPeople();
+  els.transactionPerson.value = person.id;
+  els.quickPersonDialog.close();
+  toast("Cadastro salvo e selecionado no lançamento.");
 }
 
 function createProjectFromTransactionDialog() {
