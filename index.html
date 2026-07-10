@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-parcelas2" />
+    <link rel="stylesheet" href="styles.css?v=20260709-cancel1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -1293,7 +1293,7 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2 id="transactionTitle">Novo lançamento</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <input type="hidden" id="transactionId" />
         <div class="form-grid">
@@ -1399,7 +1399,7 @@
           </label>
         </div>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" id="saveTransactionBtn" value="default" type="submit">Salvar</button>
         </menu>
       </form>
@@ -1409,7 +1409,7 @@
       <form method="dialog" class="modal large-modal" id="opportunityForm">
         <div class="modal-head">
           <h2 id="opportunityTitle">Nova oportunidade</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <input type="hidden" id="opportunityId" />
         <div class="form-grid">
@@ -1467,7 +1467,7 @@
           <div id="opportunityHistory" class="report-list"></div>
         </section>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Salvar oportunidade</button>
         </menu>
       </form>
@@ -1478,7 +1478,7 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2>Cadastrar venda parcelada</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <div class="form-grid">
           <label>Cliente
@@ -1529,7 +1529,7 @@
         </div>
         <div class="installment-preview" id="installmentPreview"></div>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Gerar parcelas</button>
         </menu>
       </form>
@@ -1540,7 +1540,7 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2>Classificar movimento bancario</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <input type="hidden" id="bankMovementId" />
         <div class="bank-movement-summary" id="bankMovementSummary"></div>
@@ -1578,7 +1578,7 @@
           </label>
         </div>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Salvar conciliacao</button>
         </menu>
       </form>
@@ -1589,7 +1589,7 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2 id="bankSyncTitle">Sincronizar extrato</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <input type="hidden" id="bankSyncAccountKey" />
         <div class="form-grid">
@@ -1612,7 +1612,7 @@
         </div>
         <p class="muted bank-sync-hint" id="bankSyncHint"></p>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" id="bankSyncSubmit" value="default" type="submit">Buscar extrato</button>
         </menu>
       </form>
@@ -1623,13 +1623,13 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2 id="invoiceLinkTitle">Vincular NF a lançamentos</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <input type="hidden" id="invoiceLinkId" />
         <p class="muted" id="invoiceLinkSummary"></p>
         <div class="people-list" id="invoiceLinkList"></div>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Salvar vínculo</button>
         </menu>
       </form>
@@ -1640,7 +1640,7 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2 id="opportunityFormTitle">Nova oportunidade</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <input type="hidden" id="opportunityId" />
         <div class="form-grid">
@@ -1675,7 +1675,7 @@
           </label>
         </div>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Salvar oportunidade</button>
         </menu>
       </form>
@@ -1686,7 +1686,7 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2 id="interactionDialogTitle">Registrar contato</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <input type="hidden" id="interactionOpportunityId" />
         <div class="form-grid">
@@ -1710,7 +1710,7 @@
           </label>
         </div>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Salvar contato</button>
         </menu>
       </form>
@@ -1721,7 +1721,7 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2>Nova tarefa</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <input type="hidden" id="taskId" />
         <div class="form-grid">
@@ -1745,7 +1745,7 @@
           </label>
         </div>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Salvar tarefa</button>
         </menu>
       </form>
@@ -1756,14 +1756,14 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2>Motivo da perda</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <input type="hidden" id="opportunityLostId" />
         <label class="full">Motivo
           <textarea id="opportunityLostReason" rows="3" maxlength="300" required></textarea>
         </label>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Cancelar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Confirmar perda</button>
         </menu>
       </form>
@@ -1774,12 +1774,12 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2>Oportunidade ganha 🎉</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <p class="muted" id="opportunityWonSummary"></p>
         <p>Deseja gerar um lançamento a partir dessa oportunidade?</p>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Não gerar agora</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Não gerar agora</button>
           <button class="secondary-btn" id="opportunityWonSaleBtn" value="sale" type="submit">Gerar venda parcelada</button>
           <button class="primary-btn" id="opportunityWonProjectBtn" value="project" type="submit">Gerar projeto</button>
           <button class="primary-btn" value="contract" type="submit">Gerar contrato e iniciar operação</button>
@@ -1792,7 +1792,7 @@
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
           <h2>Vendedores</h2>
-          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit">×</button>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <div class="form-grid">
           <label class="full">Nome do vendedor
@@ -1801,7 +1801,7 @@
         </div>
         <div class="people-list" id="sellerList"></div>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit">Fechar</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Fechar</button>
           <button class="primary-btn" id="addSellerBtn" value="add" type="submit">Adicionar vendedor</button>
         </menu>
       </form>
@@ -1820,7 +1820,7 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260709-parcelas2"></script>
+    <script src="app.js?v=20260709-cancel1"></script>
   </body>
 </html>
 
