@@ -160,6 +160,7 @@ const els = {
   invoiceFormTitle: document.querySelector("#invoiceFormTitle"),
   invoiceId: document.querySelector("#invoiceId"),
   invoiceKind: document.querySelector("#invoiceKind"),
+  invoiceXmlFile: document.querySelector("#invoiceXmlFile"),
   invoiceNumber: document.querySelector("#invoiceNumber"),
   invoiceSeries: document.querySelector("#invoiceSeries"),
   invoicePersonWrap: document.querySelector("#invoicePersonWrap"),
@@ -548,6 +549,7 @@ function bindEvents() {
   els.invoiceSearch.addEventListener("input", renderInvoices);
   els.invoiceGrossAmount.addEventListener("input", suggestInvoiceAccountingValue);
   els.invoiceTaxAmount.addEventListener("input", suggestInvoiceAccountingValue);
+  els.invoiceXmlFile.addEventListener("change", importInvoiceXml);
   els.invoiceLinkForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (event.submitter?.value === "cancel") {
@@ -4652,6 +4654,7 @@ function setInvoiceKind(kind) {
 function resetInvoiceForm() {
   els.invoiceForm.reset();
   els.invoiceId.value = "";
+  els.invoiceXmlFile.value = "";
   els.invoiceIssueDate.value = todayIso;
   updateInvoiceFormForKind(currentInvoiceKind);
   suggestInvoiceAccountingValue();
@@ -4675,6 +4678,131 @@ function hydrateInvoicePersonOptions() {
   els.invoicePerson.innerHTML = people.length
     ? people.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")
     : `<option value="">Cadastre ${wantType === "cliente" ? "um cliente" : "um fornecedor"} primeiro</option>`;
+}
+
+async function importInvoiceXml(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const xmlText = await file.text();
+    const data = parseInvoiceXml(xmlText);
+    if (!data.number && !data.grossAmount) {
+      toast("Não consegui identificar os dados principais desse XML.");
+      return;
+    }
+
+    els.invoiceNumber.value = data.number || els.invoiceNumber.value;
+    els.invoiceSeries.value = data.series || els.invoiceSeries.value;
+    els.invoiceDocument.value = data.document || els.invoiceDocument.value;
+    els.invoiceIssueDate.value = data.issueDate || els.invoiceIssueDate.value || todayIso;
+    els.invoiceDueDate.value = data.dueDate || els.invoiceDueDate.value;
+    els.invoiceCategory.value = data.category || els.invoiceCategory.value;
+    els.invoiceGrossAmount.value = data.grossAmount || els.invoiceGrossAmount.value;
+    els.invoiceTaxAmount.value = data.taxAmount || 0;
+    els.invoiceAccountingValue.value = data.accountingValue || data.grossAmount || els.invoiceAccountingValue.value;
+    els.invoiceDescription.value = data.description || els.invoiceDescription.value;
+    els.invoiceProject.value = "";
+
+    const personId = upsertPersonFromInvoiceXml(data);
+    if (personId) {
+      hydrateInvoicePersonOptions();
+      els.invoicePerson.value = personId;
+    }
+
+    if (els.invoiceKind.value === "despesa") els.invoiceStatus.value = "aberto";
+    els.invoiceNotes.value = [els.invoiceNotes.value.trim(), "Importada por XML. Projeto pendente de conciliação."].filter(Boolean).join("\n");
+    suggestInvoiceAccountingValue();
+    toast("XML importado. Revise os dados e vincule o projeto quando necessário.");
+  } catch (error) {
+    console.error(error);
+    toast("Não foi possível ler o XML da NF.");
+  } finally {
+    event.target.value = "";
+  }
+}
+
+function parseInvoiceXml(xmlText) {
+  const doc = new DOMParser().parseFromString(xmlText, "application/xml");
+  if (doc.querySelector("parsererror")) throw new Error("XML inválido");
+  const tag = (...names) => {
+    for (const name of names) {
+      const node = [...doc.getElementsByTagName(name)][0];
+      const value = node?.textContent?.trim();
+      if (value) return value;
+    }
+    return "";
+  };
+  const emit = doc.getElementsByTagName("emit")[0] || doc;
+  const emitTag = (...names) => {
+    for (const name of names) {
+      const node = emit.getElementsByTagName(name)[0];
+      const value = node?.textContent?.trim();
+      if (value) return value;
+    }
+    return "";
+  };
+  const serviceValue = tag("ValorServicos", "ValorServico");
+  const productTotal = tag("vNF", "ValorNfse", "ValorNota");
+  const taxValue = tag("ValorDeducoes", "vTotTrib", "ValorIss", "ValorIssRetido");
+  const issueRaw = tag("dhEmi", "dEmi", "DataEmissao", "Competencia");
+  const description = tag("Discriminacao", "xProd", "infCpl", "xNome");
+  return {
+    number: tag("nNF", "Numero", "NumeroNfse", "NumeroNota"),
+    series: tag("serie", "Serie", "SerieNfse"),
+    document: onlyDigits(emitTag("CNPJ", "CPF", "CpfCnpj")),
+    personName: emitTag("xNome", "RazaoSocial", "Nome"),
+    issueDate: xmlDateToIso(issueRaw),
+    dueDate: xmlDateToIso(tag("dVenc", "DataVencimento")),
+    category: serviceValue ? "Serviços" : "Nota fiscal",
+    grossAmount: parseXmlMoney(productTotal || serviceValue),
+    taxAmount: parseXmlMoney(taxValue),
+    accountingValue: parseXmlMoney(productTotal || serviceValue),
+    description,
+  };
+}
+
+function upsertPersonFromInvoiceXml(data) {
+  if (!data.personName && !data.document) return "";
+  const meta = INVOICE_KIND_META[els.invoiceKind.value] || INVOICE_KIND_META.servico;
+  const type = meta.direction === "recebida" ? "fornecedor" : "cliente";
+  const document = onlyDigits(data.document);
+  const personNameFromXml = data.personName || "";
+  const existing = state.people.find((person) => (document && onlyDigits(person.document) === document) || (personNameFromXml && person.name.toLowerCase() === personNameFromXml.toLowerCase()));
+  if (existing) return existing.id;
+  const person = {
+    id: crypto.randomUUID(),
+    type,
+    name: data.personName || `Cadastro XML ${document}`,
+    document,
+    contact: "",
+  };
+  state.people.push(person);
+  persist();
+  renderPeople();
+  return person.id;
+}
+
+function onlyDigits(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function xmlDateToIso(value) {
+  if (!value) return "";
+  const text = String(value).trim();
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const br = text.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return "";
+}
+
+function parseXmlMoney(value) {
+  if (!value) return 0;
+  const raw = String(value).trim();
+  const text = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? roundCurrency(parsed) : 0;
 }
 
 function suggestInvoiceAccountingValue() {
@@ -4763,10 +4891,11 @@ function renderInvoices() {
 function invoiceRow(invoice) {
   const linked = linkedTransactionsForInvoice(invoice.id);
   const linkText = linked.length ? `${linked.length} parcela(s) vinculada(s) (${money(sum(linked))})` : "sem vínculo financeiro";
+  const projectText = invoice.projectId ? `Projeto: ${projectName(invoice.projectId)}` : "Projeto pendente";
   return `
     <article class="person-item">
       <strong><span>NF ${escapeHtml(invoice.number)}${invoice.series ? "/" + escapeHtml(invoice.series) : ""} · ${escapeHtml(personName(invoice.personId))}</span><span>${money(invoice.accountingValue)}</span></strong>
-      <span class="muted">${formatDate(invoice.issueDate)} · ${invoiceStatusLabel(invoice)} · ${linkText}</span>
+      <span class="muted">${formatDate(invoice.issueDate)} - ${invoiceStatusLabel(invoice)} - ${linkText} - ${escapeHtml(projectText)}</span>
       <div class="row-actions">
         <button type="button" data-invoice-action="edit" data-id="${invoice.id}">Editar</button>
         <button type="button" data-invoice-action="link" data-id="${invoice.id}">Vincular</button>

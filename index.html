@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-vencido-receber1" />
+    <link rel="stylesheet" href="styles.css?v=20260709-xml-nf1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -662,6 +662,9 @@
               <h2 id="invoiceFormTitle">Nova NF de serviço</h2>
               <input type="hidden" id="invoiceId" />
               <input type="hidden" id="invoiceKind" value="servico" />
+              <label class="ghost-btn file-btn full" for="invoiceXmlFile">Importar XML da NF</label>
+              <input id="invoiceXmlFile" type="file" accept=".xml,text/xml,application/xml" />
+              <small class="muted full">O XML preenche os dados da NF e deixa o projeto pendente para conciliação.</small>
               <label>Número da NF
                 <input id="invoiceNumber" required maxlength="40" />
               </label>
@@ -1909,6 +1912,6 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260709-vencido-receber1"></script>
+    <script src="app.js?v=20260709-xml-nf1"></script>
   </body>
 </html>
