@@ -59,15 +59,13 @@ button {
   align-items: center;
 }
 
-.brand-mark {
-  width: 48px;
-  height: 48px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 8px;
-  background: #264139;
-  font-weight: 800;
+.brand-logo {
+  width: 74px;
+  height: 42px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #020403;
+  border: 1px solid rgba(255, 255, 255, 0.16);
 }
 
 .brand small {
@@ -193,7 +191,7 @@ button {
 
 .login-card {
   width: 100%;
-  max-width: 360px;
+  max-width: 390px;
   background: var(--surface);
   border-radius: 16px;
   box-shadow: var(--shadow);
@@ -207,10 +205,9 @@ button {
   margin-bottom: 4px;
 }
 
-.login-brand .brand-mark {
-  background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
+.login-brand .brand-logo {
+  width: 118px;
+  height: 66px;
 }
 
 .login-brand strong,
@@ -355,6 +352,31 @@ button {
 
 .view.active {
   display: block;
+}
+
+.dashboard-brand-panel {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 18px;
+  background: #070908;
+  color: #ffffff;
+  overflow: hidden;
+}
+
+.dashboard-brand-panel img {
+  width: min(280px, 42vw);
+  height: 86px;
+  object-fit: contain;
+}
+
+.dashboard-brand-panel h2 {
+  margin: 0 0 4px;
+  font-size: 24px;
+}
+
+.dashboard-brand-panel small {
+  color: #d7c27a;
 }
 
 .kpi-grid {
@@ -1257,6 +1279,16 @@ dialog::backdrop {
 @media (max-width: 760px) {
   .main {
     padding: 18px;
+  }
+
+  .dashboard-brand-panel {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-brand-panel img {
+    width: 100%;
+    max-width: 280px;
   }
 
   .topbar,
