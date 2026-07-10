@@ -229,6 +229,7 @@ const els = {
   stockEntryForm: document.querySelector("#stockEntryForm"),
   stockEntryDate: document.querySelector("#stockEntryDate"),
   stockEntrySupplier: document.querySelector("#stockEntrySupplier"),
+  newStockEntrySupplierBtn: document.querySelector("#newStockEntrySupplierBtn"),
   stockEntryItem: document.querySelector("#stockEntryItem"),
   stockEntryQuantity: document.querySelector("#stockEntryQuantity"),
   stockEntryUnitCost: document.querySelector("#stockEntryUnitCost"),
@@ -598,6 +599,7 @@ function bindEvents() {
   els.applyStockFilters.addEventListener("click", renderStock);
   els.clearStockFilters.addEventListener("click", clearStockFilters);
   els.stockEntryForm.addEventListener("submit", saveStockEntry);
+  els.newStockEntrySupplierBtn.addEventListener("click", createSupplierFromStockEntryDialog);
   els.stockEntryQuantity.addEventListener("input", updateStockEntryTotalCost);
   els.stockEntryUnitCost.addEventListener("input", updateStockEntryTotalCost);
   els.stockExitForm.addEventListener("submit", saveStockExit);
@@ -5806,6 +5808,15 @@ function createPersonFromProjectForm() {
   els.quickPersonName.focus();
 }
 
+function createSupplierFromStockEntryDialog() {
+  quickPersonTarget = "stockEntrySupplier";
+  els.quickPersonForm.reset();
+  els.quickPersonType.value = "fornecedor";
+  els.quickPersonName.value = "";
+  els.quickPersonDialog.showModal();
+  els.quickPersonName.focus();
+}
+
 function saveQuickPersonFromTransaction() {
   const person = {
     id: crypto.randomUUID(),
@@ -5821,10 +5832,13 @@ function saveQuickPersonFromTransaction() {
   hydrateSalePeople();
   hydrateProjectOptions();
   hydrateInvoicePersonOptions();
+  hydrateStockCatalogOptions();
   renderPeople();
   if (quickPersonTarget === "project") {
     els.projectCustomer.value = person.id;
     refreshSearchableSelect(els.projectCustomer);
+  } else if (quickPersonTarget === "stockEntrySupplier") {
+    els.stockEntrySupplier.value = person.id;
   } else {
     els.transactionPerson.value = person.id;
   }

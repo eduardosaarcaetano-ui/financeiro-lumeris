@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-estoque-lista-total1" />
+    <link rel="stylesheet" href="styles.css?v=20260710-estoque-fornecedor1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -915,7 +915,10 @@
                   <input id="stockEntryDate" type="date" required />
                 </label>
                 <label>Fornecedor
-                  <select id="stockEntrySupplier"></select>
+                  <div class="inline-control">
+                    <select id="stockEntrySupplier"></select>
+                    <button class="secondary-btn" id="newStockEntrySupplierBtn" type="button">Novo fornecedor</button>
+                  </div>
                 </label>
                 <label class="full">Item
                   <select id="stockEntryItem" required></select>
@@ -2003,8 +2006,8 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-lista-total1"></script>
+    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-fornecedor1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260710-estoque-lista-total1"></script>
+    <script src="app.js?v=20260710-estoque-fornecedor1"></script>
   </body>
 </html>
