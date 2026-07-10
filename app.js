@@ -351,6 +351,7 @@ const els = {
   allocationTotal: document.querySelector("#allocationTotal"),
   transactionInstallmentBox: document.querySelector("#transactionInstallmentBox"),
   transactionUseInstallments: document.querySelector("#transactionUseInstallments"),
+  transactionEntryAmount: document.querySelector("#transactionEntryAmount"),
   transactionInstallments: document.querySelector("#transactionInstallments"),
   transactionInstallmentInterval: document.querySelector("#transactionInstallmentInterval"),
   transactionCustomDaysWrap: document.querySelector("#transactionCustomDaysWrap"),
@@ -730,6 +731,7 @@ function bindEvents() {
   els.transactionAmount.addEventListener("input", renderTransactionInstallmentPreview);
   els.transactionDueDate.addEventListener("input", renderTransactionInstallmentPreview);
   els.transactionUseInstallments.addEventListener("change", updateTransactionInstallmentUi);
+  els.transactionEntryAmount.addEventListener("input", renderTransactionInstallmentPreview);
   els.transactionInstallments.addEventListener("input", renderTransactionInstallmentPreview);
   els.transactionInstallmentInterval.addEventListener("change", updateTransactionInstallmentUi);
   els.transactionCustomDays.addEventListener("input", renderTransactionInstallmentPreview);
@@ -4914,6 +4916,7 @@ function openTransactionDialog(item = null) {
   els.transactionProjectMode.value = allocations.length > 1 ? "split" : allocations.length === 1 ? "single" : "none";
   els.transactionProject.value = allocations[0]?.projectId || "";
   els.transactionUseInstallments.checked = false;
+  els.transactionEntryAmount.value = 0;
   els.transactionInstallments.value = 1;
   els.transactionInstallmentInterval.value = "monthly";
   els.transactionCustomDays.value = 30;
@@ -4940,7 +4943,7 @@ function saveTransaction() {
     type === "receber" &&
     !existing &&
     els.transactionUseInstallments.checked &&
-    Number(els.transactionInstallments.value || 1) > 1;
+    (Number(els.transactionInstallments.value || 1) > 1 || Number(els.transactionEntryAmount.value || 0) > 0);
 
   if (shouldGenerateInstallments) {
     saveTransactionInstallments(type, status, allocations);
@@ -4981,8 +4984,18 @@ function saveTransaction() {
 
 function saveTransactionInstallments(type, status, allocations) {
   const total = Number(els.transactionAmount.value);
-  const count = Number(els.transactionInstallments.value || 1);
-  const installments = buildInstallments(total, count, els.transactionDueDate.value, els.transactionInstallmentInterval.value, Number(els.transactionCustomDays.value));
+  let installments = getEditedTransactionInstallments();
+  if (!installments.length) {
+    renderTransactionInstallmentPreview();
+    installments = getEditedTransactionInstallments();
+  }
+  const rowsTotal = roundCurrency(sum(installments.map((item) => item.amount)));
+  if (Math.abs(roundCurrency(total - rowsTotal)) >= 0.01) {
+    toast("A soma das parcelas precisa ser igual ao valor total da venda.");
+    return;
+  }
+  const parcelTotal = installments.filter((item) => item.label !== "Entrada").length;
+  const count = installments.length;
   const batchId = crypto.randomUUID();
 
   installments.forEach((installment) => {
@@ -4991,7 +5004,7 @@ function saveTransactionInstallments(type, status, allocations) {
       id: crypto.randomUUID(),
       type,
       personId: els.transactionPerson.value,
-      description: `${els.transactionDescription.value.trim()} - Parcela ${installment.number}/${count}`,
+      description: `${els.transactionDescription.value.trim()} - ${installment.label === "Entrada" ? "Entrada" : `Parcela ${installment.label}`}`,
       category: els.transactionCategory.value.trim(),
       dreGroup: els.transactionDreGroup.value,
       dueDate: installment.dueDate,
@@ -5003,8 +5016,8 @@ function saveTransactionInstallments(type, status, allocations) {
       projectId: installmentAllocations.length === 1 ? installmentAllocations[0].projectId : "",
       allocations: installmentAllocations,
       saleId: batchId,
-      installmentNumber: installment.number,
-      installmentTotal: count,
+      installmentNumber: installment.label === "Entrada" ? "entrada" : installment.number,
+      installmentTotal: installment.label === "Entrada" ? parcelTotal : installment.total,
       bankMovementId: "",
       updatedAt: new Date().toISOString(),
     });
@@ -5013,7 +5026,7 @@ function saveTransactionInstallments(type, status, allocations) {
   persist();
   renderAll();
   els.transactionDialog.close();
-  toast(`${count} parcelas geradas na previsão de recebíveis.`);
+  toast(`${count} previsões geradas em contas a receber.`);
 }
 
 function scaleAllocations(allocations, installmentAmount, totalAmount) {
@@ -5039,61 +5052,43 @@ function hydratePersonOptions() {
 
 function createPersonFromTransactionDialog() {
   const type = els.transactionType.value === "receber" ? "cliente" : "fornecedor";
-  const name = window.prompt(`Nome do novo ${type}:`, "");
-  if (!name || !name.trim()) return;
-  const person = {
-    id: crypto.randomUUID(),
-    type,
-    name: name.trim(),
-    document: "",
-    contact: "",
-  };
-  state.people.push(person);
-  persist();
-  hydratePersonOptions();
-  hydrateSalePeople();
-  hydrateProjectOptions();
-  hydrateInvoicePersonOptions();
-  els.transactionPerson.value = person.id;
-  toast(`${type === "cliente" ? "Cliente" : "Fornecedor"} criado e selecionado.`);
+  const name = personName(els.transactionPerson.value);
+  els.transactionDialog.close();
+  setView("pessoas");
+  els.personForm.reset();
+  els.personId.value = "";
+  els.personType.value = type;
+  els.personName.value = name === "Não informado" ? "" : name;
+  els.personName.focus();
+  toast(`Preencha o cadastro completo do ${type} e salve. Depois volte ao lançamento.`);
 }
 
 function createProjectFromTransactionDialog() {
   if (!guardViewAccess("projetos")) return;
   const suggested = els.transactionDescription.value || personName(els.transactionPerson.value);
-  const name = window.prompt("Nome do novo projeto:", suggested);
-  if (!name || !name.trim()) return;
   const amount = Number(els.transactionAmount.value || 0);
-  const project = {
-    id: crypto.randomUUID(),
-    code: "",
-    name: name.trim(),
-    customerId: els.transactionType.value === "receber" ? els.transactionPerson.value : "",
-    status: "ativo",
-    startDate: todayIso,
-    endDate: "",
-    contractValue: els.transactionType.value === "receber" ? amount : 0,
-    expectedCosts: els.transactionType.value === "pagar" ? amount : 0,
-    targetMargin: 20,
-    costCenterId: crypto.randomUUID(),
-    notes: "Criado durante cadastro de lançamento financeiro.",
-  };
-  state.projects.push(project);
-  upsertCostCenter(project);
-  persist();
-  hydrateProjectOptions();
-  els.transactionProjectMode.value = "single";
-  els.transactionProject.value = project.id;
-  renderAllocationControls();
-  renderProjects();
-  renderProjectReports();
-  toast("Projeto criado e selecionado.");
+  els.transactionDialog.close();
+  setView("projetos");
+  els.projectForm.reset();
+  els.projectId.value = "";
+  els.projectName.value = suggested === "Não informado" ? "" : suggested;
+  els.projectCustomer.value = els.transactionType.value === "receber" ? els.transactionPerson.value : "";
+  refreshSearchableSelect(els.projectCustomer);
+  els.projectStatus.value = "ativo";
+  els.projectStartDate.value = todayIso;
+  els.projectContractValue.value = els.transactionType.value === "receber" ? amount : 0;
+  els.projectExpectedCosts.value = els.transactionType.value === "pagar" ? amount : 0;
+  els.projectTargetMargin.value = 20;
+  els.projectNotes.value = "Criado a partir do fluxo financeiro.";
+  els.projectName.focus();
+  toast("Preencha o cadastro completo do projeto e salve. Depois volte ao lançamento.");
 }
 
 function updateTransactionInstallmentUi() {
   const isReceivable = els.transactionType.value === "receber";
   const enabled = isReceivable && els.transactionUseInstallments.checked;
   els.transactionInstallmentBox.classList.toggle("hidden", !isReceivable);
+  els.transactionEntryAmount.disabled = !enabled;
   els.transactionInstallments.disabled = !enabled;
   els.transactionInstallmentInterval.disabled = !enabled;
   els.transactionCustomDays.disabled = !enabled || els.transactionInstallmentInterval.value !== "custom";
@@ -5113,12 +5108,73 @@ function renderTransactionInstallmentPreview() {
     els.transactionInstallmentPreview.innerHTML = emptyMessage("Informe valor, vencimento e quantidade para visualizar as parcelas.");
     return;
   }
-  const installments = buildInstallments(total, count, firstDue, els.transactionInstallmentInterval.value, Number(els.transactionCustomDays.value));
+  const entryAmount = roundCurrency(Number(els.transactionEntryAmount.value || 0));
+  if (entryAmount >= total) {
+    els.transactionInstallmentPreview.innerHTML = emptyMessage("O valor de entrada precisa ser menor que o valor total.");
+    return;
+  }
+  const installments = buildTransactionInstallmentPlan(total, count, firstDue, entryAmount);
+  const rowsTotal = roundCurrency(sum(installments.map((item) => item.amount)));
   els.transactionInstallmentPreview.innerHTML = `
     <strong>Previsão das parcelas</strong>
-    <div class="preview-grid">
-      ${installments.map((item) => `<span>${item.number}/${count}</span><span>${formatDate(item.dueDate)}</span><strong>${money(item.amount)}</strong>`).join("")}
-    </div>`;
+    <div class="editable-installments">
+      ${installments.map((item, index) => `
+        <div class="editable-installment-row">
+          <span>${escapeHtml(item.label)}</span>
+          <input data-installment-date type="date" value="${item.dueDate}" />
+          <input data-installment-amount type="number" min="0.01" step="0.01" value="${item.amount.toFixed(2)}" />
+        </div>`).join("")}
+    </div>
+    <small class="allocation-total ${Math.abs(total - rowsTotal) >= 0.01 ? "invalid" : ""}">Total das parcelas: ${money(rowsTotal)} · Diferença: ${money(roundCurrency(total - rowsTotal))}</small>`;
+  els.transactionInstallmentPreview.querySelectorAll("[data-installment-amount]").forEach((input) => {
+    input.addEventListener("input", updateEditedInstallmentTotal);
+  });
+}
+
+function updateEditedInstallmentTotal() {
+  const total = roundCurrency(Number(els.transactionAmount.value || 0));
+  const rowsTotal = roundCurrency(sum(getEditedTransactionInstallments().map((item) => item.amount)));
+  const diff = roundCurrency(total - rowsTotal);
+  const totalEl = els.transactionInstallmentPreview.querySelector(".allocation-total");
+  if (!totalEl) return;
+  totalEl.textContent = `Total das parcelas: ${money(rowsTotal)} · Diferença: ${money(diff)}`;
+  totalEl.classList.toggle("invalid", Math.abs(diff) >= 0.01);
+}
+
+function buildTransactionInstallmentPlan(total, count, firstDue, entryAmount) {
+  const interval = els.transactionInstallmentInterval.value;
+  const customDays = Number(els.transactionCustomDays.value);
+  const plan = [];
+  if (entryAmount > 0) {
+    plan.push({ label: "Entrada", number: 0, amount: entryAmount, dueDate: firstDue });
+  }
+  const remaining = roundCurrency(total - entryAmount);
+  const firstInstallmentDate = entryAmount > 0
+    ? toIso(nextInstallmentDate(parseDate(firstDue), 1, interval, customDays))
+    : firstDue;
+  buildInstallments(remaining, count, firstInstallmentDate, interval, customDays).forEach((installment) => {
+    plan.push({
+      ...installment,
+      label: `${installment.number}/${count}`,
+    });
+  });
+  return plan;
+}
+
+function getEditedTransactionInstallments() {
+  return [...els.transactionInstallmentPreview.querySelectorAll(".editable-installment-row")]
+    .map((row, index) => {
+      const label = row.querySelector("span")?.textContent || `${index + 1}`;
+      const match = label.match(/^(\d+)\/(\d+)/);
+      return {
+        number: match ? Number(match[1]) : 0,
+        total: match ? Number(match[2]) : 0,
+        label,
+        dueDate: row.querySelector("[data-installment-date]").value,
+        amount: roundCurrency(Number(row.querySelector("[data-installment-amount]").value || 0)),
+      };
+    })
+    .filter((item) => item.dueDate && item.amount > 0);
 }
 
 function hydrateSalePeople() {

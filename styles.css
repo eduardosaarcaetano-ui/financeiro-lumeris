@@ -1230,6 +1230,19 @@ dialog::backdrop {
   align-items: center;
 }
 
+.editable-installments {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.editable-installment-row {
+  display: grid;
+  grid-template-columns: 80px minmax(130px, 1fr) minmax(130px, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
 .toast {
   position: fixed;
   right: 20px;
@@ -1330,6 +1343,10 @@ dialog::backdrop {
   }
 
   .allocation-row {
+    grid-template-columns: 1fr;
+  }
+
+  .editable-installment-row {
     grid-template-columns: 1fr;
   }
 
