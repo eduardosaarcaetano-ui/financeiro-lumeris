@@ -514,6 +514,8 @@ async function boot() {
   try {
     bindEvents();
     setDefaultReportPeriod();
+    const vendasImport = importVendas2026Receivables();
+    if (vendasImport.changed) persist();
     renderAll();
     await ensureMasterUser();
     renderUsers();
@@ -1251,7 +1253,9 @@ async function initRemoteSync() {
     if (result.data) {
       const remoteState = normalizeState(result.data);
       Object.assign(state, remoteState);
+      const vendasImport = importVendas2026Receivables();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (vendasImport.changed) scheduleRemoteSync();
       renderAll();
     }
     setSyncStatus("Sincronizado com o Google Sheets", "ok");
@@ -3783,6 +3787,152 @@ function ensureProjectByName(name) {
   state.projects.push(project);
   upsertCostCenter(project);
   return project.id;
+}
+
+function importVendas2026Receivables() {
+  const payload = window.LUMERIS_VENDAS_2026_IMPORT;
+  if (!payload?.rows?.length) return { changed: false, people: 0, projects: 0, transactions: 0 };
+
+  const counters = { changed: false, people: 0, projects: 0, transactions: 0 };
+  payload.rows.forEach((row) => {
+    const sourceKey = `${payload.sourceId}:row:${row.row}`;
+    const personId = ensureImportedVendasPerson(row, payload.sourceId, counters);
+    const projectId = ensureImportedVendasProject(row, personId, payload.sourceId, counters);
+    const project = state.projects.find((item) => item.id === projectId);
+    const allocationsFor = (amount) => (projectId ? [{ projectId, amount: roundCurrency(amount) }] : []);
+
+    if (Number(row.received || 0) > 0) {
+      addImportedVendasTransaction({
+        id: deterministicImportId("vendas-2026-tx", `${sourceKey}:recebido`),
+        importSourceKey: `${sourceKey}:recebido`,
+        personId,
+        projectId,
+        description: `${row.projectName} - recebido`,
+        dueDate: row.date || todayIso,
+        amount: row.received,
+        status: "recebido",
+        paidDate: row.date || todayIso,
+        allocations: allocationsFor(row.received),
+        notes: importedVendasNotes(row, "Parcela/valor ja recebido na planilha."),
+      }, counters);
+    }
+
+    if (Number(row.open || 0) > 0) {
+      addImportedVendasTransaction({
+        id: deterministicImportId("vendas-2026-tx", `${sourceKey}:aberto`),
+        importSourceKey: `${sourceKey}:aberto`,
+        personId,
+        projectId,
+        description: `${row.projectName} - saldo a receber`,
+        dueDate: row.date || todayIso,
+        amount: row.open,
+        status: "aberto",
+        paidDate: "",
+        allocations: allocationsFor(row.open),
+        notes: importedVendasNotes(row, "Saldo pendente na planilha."),
+      }, counters);
+    }
+
+    if (project) upsertCostCenter(project);
+  });
+
+  return counters;
+}
+
+function ensureImportedVendasPerson(row, sourceId, counters) {
+  const name = String(row.customerName || row.name || "Cliente importado").trim();
+  const existing = state.people.find((person) => person.name.toLowerCase() === name.toLowerCase());
+  if (existing) return existing.id;
+  const person = {
+    id: deterministicImportId("vendas-2026-person", `${sourceId}:${name}`),
+    type: "cliente",
+    name,
+    document: "",
+    contact: "",
+    importSource: sourceId,
+    createdAt: new Date().toISOString(),
+  };
+  state.people.push(person);
+  counters.people += 1;
+  counters.changed = true;
+  return person.id;
+}
+
+function ensureImportedVendasProject(row, personId, sourceId, counters) {
+  const sourceKey = `${sourceId}:row:${row.row}:project`;
+  const name = String(row.projectName || row.name || "Projeto importado").trim();
+  const existing = state.projects.find((project) => project.importSourceKey === sourceKey || project.name.toLowerCase() === name.toLowerCase());
+  if (existing) {
+    if (!existing.customerId && personId) existing.customerId = personId;
+    if (!existing.contractValue && Number(row.total || 0) > 0) existing.contractValue = Number(row.total || 0);
+    if (!existing.costCenterId) existing.costCenterId = deterministicImportId("vendas-2026-cost-center", sourceKey);
+    upsertCostCenter(existing);
+    return existing.id;
+  }
+  const project = {
+    id: deterministicImportId("vendas-2026-project", sourceKey),
+    code: row.code || "",
+    name,
+    customerId: personId,
+    status: Number(row.open || 0) > 0 ? "ativo" : "concluido",
+    startDate: row.date || todayIso,
+    endDate: Number(row.open || 0) > 0 ? "" : row.date || "",
+    contractValue: Number(row.total || row.received || row.open || 0),
+    expectedCosts: 0,
+    targetMargin: 20,
+    costCenterId: deterministicImportId("vendas-2026-cost-center", sourceKey),
+    notes: importedVendasNotes(row, "Projeto criado pela importacao da planilha Vendas_2026_2.xlsx."),
+    importSource: sourceId,
+    importSourceKey: sourceKey,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  state.projects.push(project);
+  upsertCostCenter(project);
+  counters.projects += 1;
+  counters.changed = true;
+  return project.id;
+}
+
+function addImportedVendasTransaction(transaction, counters) {
+  if (state.transactions.some((item) => item.id === transaction.id || item.importSourceKey === transaction.importSourceKey)) return;
+  state.transactions.push({
+    type: "receber",
+    category: "Venda importada",
+    dreGroup: "receita_bruta",
+    saleId: "",
+    installmentNumber: "",
+    installmentTotal: "",
+    bankMovementId: "",
+    directProjectCost: false,
+    invoiceId: "",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    importSource: "vendas-2026-2",
+    ...transaction,
+    amount: roundCurrency(transaction.amount),
+  });
+  counters.transactions += 1;
+  counters.changed = true;
+}
+
+function importedVendasNotes(row, extra) {
+  return [
+    extra,
+    `Origem: Vendas_2026_2.xlsx, linha ${row.row}.`,
+    row.seller ? `Vendedor: ${row.seller}.` : "",
+    row.status ? `Status original: ${row.status}.` : "",
+  ].filter(Boolean).join(" ");
+}
+
+function deterministicImportId(prefix, value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${prefix}-${(hash >>> 0).toString(36)}`;
 }
 
 function stockUnitFromName(name) {
