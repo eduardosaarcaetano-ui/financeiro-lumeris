@@ -577,6 +577,15 @@ td strong {
   margin-bottom: 4px;
 }
 
+.bank-balance-total {
+  background: var(--soft);
+  border-color: var(--primary);
+}
+
+.bank-balance-total .money {
+  font-size: 1.2rem;
+}
+
 .bank-sync-list {
   display: grid;
   gap: 10px;

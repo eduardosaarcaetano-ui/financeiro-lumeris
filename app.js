@@ -2094,15 +2094,24 @@ function renderSectorOverview(receberAberto, pagarAberto) {
 
 function renderBankBalances() {
   const accounts = latestBankAccounts();
+  const totalBalance = accounts.reduce((total, account) => total + Number(account.balance || 0), 0);
   els.bankBalanceList.innerHTML = accounts.length
-    ? accounts.map((account) => `
+    ? `
+      <article class="bank-balance-item bank-balance-total">
+        <div>
+          <strong>Saldo total bancário</strong>
+          <span class="muted">${accounts.length} conta(s) somadas pelo saldo mais atual</span>
+        </div>
+        <strong class="money">${money(totalBalance)}</strong>
+      </article>
+      ${accounts.map((account) => `
       <article class="bank-balance-item">
         <div>
           <strong>${escapeHtml(account.bankId)}</strong>
           <span class="muted">Conta ${escapeHtml(account.accountId || "não identificada")} · ${account.balanceDate ? formatDate(account.balanceDate) : "sem data"} · ${account.source === "ofx" ? "saldo do OFX" : "saldo dos movimentos"}</span>
         </div>
         <strong class="money">${money(account.balance)}</strong>
-      </article>`).join("")
+      </article>`).join("")}`
     : emptyMessage("Importe um arquivo OFX na aba Banco para exibir os saldos das contas.");
 }
 
