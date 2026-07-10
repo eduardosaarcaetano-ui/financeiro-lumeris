@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-saldo-total1" />
+    <link rel="stylesheet" href="styles.css?v=20260709-cliente-projeto1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -381,7 +381,10 @@
                 <input id="projectName" required maxlength="200" />
               </label>
               <label>Cliente
-                <select id="projectCustomer"></select>
+                <div class="inline-control">
+                  <select id="projectCustomer"></select>
+                  <button class="secondary-btn" id="newProjectCustomerBtn" type="button">Novo cliente</button>
+                </div>
               </label>
               <label>Status
                 <select id="projectStatus">
@@ -1901,6 +1904,6 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260709-saldo-total1"></script>
+    <script src="app.js?v=20260709-cliente-projeto1"></script>
   </body>
 </html>

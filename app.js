@@ -404,6 +404,7 @@ const els = {
   projectId: document.querySelector("#projectId"),
   projectName: document.querySelector("#projectName"),
   projectCustomer: document.querySelector("#projectCustomer"),
+  newProjectCustomerBtn: document.querySelector("#newProjectCustomerBtn"),
   projectStatus: document.querySelector("#projectStatus"),
   projectStartDate: document.querySelector("#projectStartDate"),
   projectEndDate: document.querySelector("#projectEndDate"),
@@ -495,6 +496,8 @@ const dreGroups = [
   { key: "retirada", label: "Retirada", sign: -1 },
   { key: "outros", label: "Outros", sign: 1 },
 ];
+
+let quickPersonTarget = "transaction";
 
 boot().catch((error) => {
   console.error("Falha ao iniciar o sistema:", error);
@@ -808,6 +811,7 @@ function bindEvents() {
     event.preventDefault();
     saveProject();
   });
+  els.newProjectCustomerBtn.addEventListener("click", createPersonFromProjectForm);
   els.quickProjectForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (event.submitter?.value === "cancel") {
@@ -5085,9 +5089,19 @@ function hydratePersonOptions() {
 function createPersonFromTransactionDialog() {
   const type = els.transactionType.value === "receber" ? "cliente" : "fornecedor";
   const name = personName(els.transactionPerson.value);
+  quickPersonTarget = "transaction";
   els.quickPersonForm.reset();
   els.quickPersonType.value = type;
   els.quickPersonName.value = name === "Não informado" ? "" : name;
+  els.quickPersonDialog.showModal();
+  els.quickPersonName.focus();
+}
+
+function createPersonFromProjectForm() {
+  quickPersonTarget = "project";
+  els.quickPersonForm.reset();
+  els.quickPersonType.value = "cliente";
+  els.quickPersonName.value = "";
   els.quickPersonDialog.showModal();
   els.quickPersonName.focus();
 }
@@ -5108,9 +5122,15 @@ function saveQuickPersonFromTransaction() {
   hydrateProjectOptions();
   hydrateInvoicePersonOptions();
   renderPeople();
-  els.transactionPerson.value = person.id;
+  if (quickPersonTarget === "project") {
+    els.projectCustomer.value = person.id;
+    refreshSearchableSelect(els.projectCustomer);
+  } else {
+    els.transactionPerson.value = person.id;
+  }
   els.quickPersonDialog.close();
-  toast("Cadastro salvo e selecionado no lançamento.");
+  quickPersonTarget = "transaction";
+  toast("Cadastro salvo e selecionado.");
 }
 
 function createProjectFromTransactionDialog() {
