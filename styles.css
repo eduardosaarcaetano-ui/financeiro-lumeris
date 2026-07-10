@@ -928,6 +928,11 @@ textarea {
   max-width: 190px;
 }
 
+.invoice-xml-btn {
+  margin-left: auto;
+  cursor: pointer;
+}
+
 .table-wrap {
   overflow-x: auto;
   background: var(--surface);
