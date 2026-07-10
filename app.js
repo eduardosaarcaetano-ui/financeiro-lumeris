@@ -374,6 +374,7 @@ const els = {
   bankCategory: document.querySelector("#bankCategory"),
   bankDreGroup: document.querySelector("#bankDreGroup"),
   bankProject: document.querySelector("#bankProject"),
+  newBankProjectBtn: document.querySelector("#newBankProjectBtn"),
   bankMatchTransaction: document.querySelector("#bankMatchTransaction"),
   bankNotes: document.querySelector("#bankNotes"),
   bankBalanceList: document.querySelector("#bankBalanceList"),
@@ -463,6 +464,8 @@ const dreGroups = [
   { key: "despesas_operacionais", label: "Despesas operacionais", sign: -1 },
   { key: "despesas_financeiras", label: "Despesas financeiras", sign: -1 },
   { key: "impostos", label: "Impostos", sign: -1 },
+  { key: "transitoria", label: "Transitória", sign: 0 },
+  { key: "retirada", label: "Retirada", sign: -1 },
   { key: "outros", label: "Outros", sign: 1 },
 ];
 
@@ -752,6 +755,7 @@ function bindEvents() {
     }
     saveBankClassification();
   });
+  els.newBankProjectBtn.addEventListener("click", createProjectFromBankDialog);
 
   els.bankSyncProvider.addEventListener("change", updateBankSyncHint);
   els.bankSyncForm.addEventListener("submit", (event) => {
@@ -3319,6 +3323,39 @@ function openBankDialog(movement) {
   hydrateBankInvoiceMatches(movement);
   els.bankMatchInvoice.value = movement.invoiceId || "";
   els.bankDialog.showModal();
+}
+
+function createProjectFromBankDialog() {
+  if (!guardViewAccess("projetos")) return;
+  const movement = state.bankMovements.find((item) => item.id === els.bankMovementId.value);
+  const suggestedName = movement?.description ? movement.description.slice(0, 80) : "";
+  const name = window.prompt("Nome do novo projeto:", suggestedName);
+  if (!name || !name.trim()) return;
+
+  const project = {
+    id: crypto.randomUUID(),
+    code: "",
+    name: name.trim(),
+    customerId: "",
+    status: "ativo",
+    startDate: todayIso,
+    endDate: "",
+    contractValue: movement?.type === "entrada" ? Number(movement.amount || 0) : 0,
+    expectedCosts: movement?.type === "saida" ? Number(movement.amount || 0) : 0,
+    targetMargin: 20,
+    costCenterId: crypto.randomUUID(),
+    notes: movement ? `Criado durante conciliação bancária: ${movement.description}` : "Criado durante conciliação bancária.",
+  };
+
+  state.projects.push(project);
+  upsertCostCenter(project);
+  persist();
+  hydrateProjectOptions();
+  els.bankProject.value = project.id;
+  renderProjects();
+  renderProjectReports();
+  renderHomologation();
+  toast("Projeto criado e selecionado na conciliação.");
 }
 
 function hydrateBankInvoiceMatches(movement) {

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-logo1" />
+    <link rel="stylesheet" href="styles.css?v=20260709-bankproject1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -1320,6 +1320,8 @@
               <option value="despesas_operacionais">Despesas operacionais</option>
               <option value="despesas_financeiras">Despesas financeiras</option>
               <option value="impostos">Impostos</option>
+              <option value="transitoria">Transitória</option>
+              <option value="retirada">Retirada</option>
               <option value="outros">Outros</option>
             </select>
           </label>
@@ -1481,6 +1483,8 @@
           <label>Grupo DRE
             <select id="saleDreGroup" required>
               <option value="receita_bruta">Receita bruta</option>
+              <option value="transitoria">Transitória</option>
+              <option value="retirada">Retirada</option>
               <option value="outros">Outros</option>
             </select>
           </label>
@@ -1517,11 +1521,16 @@
               <option value="despesas_operacionais">Despesas operacionais</option>
               <option value="despesas_financeiras">Despesas financeiras</option>
               <option value="impostos">Impostos</option>
+              <option value="transitoria">Transitória</option>
+              <option value="retirada">Retirada</option>
               <option value="outros">Outros</option>
             </select>
           </label>
           <label>Projeto / centro de custo
-            <select id="bankProject"></select>
+            <div class="inline-control">
+              <select id="bankProject"></select>
+              <button class="secondary-btn" id="newBankProjectBtn" type="button">Novo projeto</button>
+            </div>
           </label>
           <label class="full">Conciliar com conta
             <select id="bankMatchTransaction"></select>
@@ -1776,6 +1785,6 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260709-logo1"></script>
+    <script src="app.js?v=20260709-bankproject1"></script>
   </body>
 </html>

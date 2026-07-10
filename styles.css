@@ -1058,6 +1058,17 @@ dialog::backdrop {
   gap: 12px;
 }
 
+.inline-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.inline-control .secondary-btn {
+  white-space: nowrap;
+}
+
 .full {
   grid-column: 1 / -1;
 }
@@ -1319,6 +1330,10 @@ dialog::backdrop {
   }
 
   .allocation-row {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-control {
     grid-template-columns: 1fr;
   }
 
