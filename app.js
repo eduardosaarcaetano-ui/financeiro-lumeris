@@ -2605,6 +2605,7 @@ function handleProjectAction(action, id) {
 
   els.projectReportSelect.value = id;
   renderProjectReports();
+  document.querySelector(".project-toolbar").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function hydrateProjectOptions() {
