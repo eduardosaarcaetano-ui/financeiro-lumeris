@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-estoque-detalhe-saida1" />
+    <link rel="stylesheet" href="styles.css?v=20260710-estoque-lista-total1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -811,8 +811,38 @@
           </section>
 
           <div class="stock-panel" data-stock-panel="itens">
-            <div class="split">
-              <form class="panel form-panel" id="stockItemForm">
+            <div class="stock-items-layout">
+              <section class="panel stock-items-panel">
+                <div class="panel-head stock-items-head">
+                  <div>
+                    <h2>Itens cadastrados</h2>
+                    <small class="muted" id="stockItemCount">0 itens em estoque</small>
+                  </div>
+                  <input id="stockItemSearch" type="search" placeholder="Buscar código, nome, descrição, categoria" />
+                </div>
+                <div class="table-wrap stock-items-wrap">
+                  <table class="stock-items-table">
+                    <thead>
+                      <tr>
+                        <th>Código</th>
+                        <th>Descrição do item</th>
+                        <th>Categoria</th>
+                        <th>Unidade</th>
+                        <th class="money">Saldo</th>
+                        <th class="money">Mínimo</th>
+                        <th class="money">Máximo</th>
+                        <th class="money">Custo médio</th>
+                        <th class="money">Valor total</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody id="stockItemTable"></tbody>
+                  </table>
+                </div>
+              </section>
+
+              <form class="panel form-panel stock-item-form-panel" id="stockItemForm">
                 <h2 id="stockItemFormTitle">Novo item</h2>
                 <input type="hidden" id="stockItemId" />
                 <label>Código interno
@@ -874,31 +904,6 @@
                 </label>
                 <button class="primary-btn" type="submit">Salvar item</button>
               </form>
-
-              <section class="panel">
-                <div class="panel-head">
-                  <h2>Itens cadastrados</h2>
-                  <input id="stockItemSearch" type="search" placeholder="Buscar código, nome, categoria" />
-                </div>
-                <div class="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Item</th>
-                        <th>Categoria</th>
-                        <th class="money">Estoque</th>
-                        <th class="money">Mínimo</th>
-                        <th class="money">Máximo</th>
-                        <th class="money">Custo médio</th>
-                        <th class="money">Valor total</th>
-                        <th>Status</th>
-                        <th>Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody id="stockItemTable"></tbody>
-                  </table>
-                </div>
-              </section>
             </div>
           </div>
 
@@ -1998,8 +2003,8 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-detalhe-saida1"></script>
+    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-lista-total1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260710-estoque-detalhe-saida1"></script>
+    <script src="app.js?v=20260710-estoque-lista-total1"></script>
   </body>
 </html>

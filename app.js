@@ -211,6 +211,7 @@ const els = {
   stockActive: document.querySelector("#stockActive"),
   stockNotes: document.querySelector("#stockNotes"),
   stockItemSearch: document.querySelector("#stockItemSearch"),
+  stockItemCount: document.querySelector("#stockItemCount"),
   stockItemTable: document.querySelector("#stockItemTable"),
   importIluminarStockBtn: document.querySelector("#importIluminarStockBtn"),
   stockTotalValue: document.querySelector("#stockTotalValue"),
@@ -2821,7 +2822,7 @@ function projectAllocations(projectId) {
     const allocations = normalizeAllocations(transaction);
     return allocations
       .filter((allocation) => allocation.projectId === projectId)
-      .map((allocation) => ({ transaction, amount: allocation.amount }));
+      .map((allocation) => ({ transaction, amount: allocation.amount, kind: "transaction", refId: transaction.id }));
   });
 
   const bankEntries = state.bankMovements
@@ -2836,6 +2837,8 @@ function projectAllocations(projectId) {
         paidDate: movement.date,
       },
       amount: movement.amount,
+      kind: "bank",
+      refId: movement.id,
     }));
 
   return [...transactionEntries, ...bankEntries];
@@ -2893,9 +2896,10 @@ function renderProjectCategoryCosts(projectId) {
     .filter((entry) => entry.transaction.type === "pagar")
     .forEach((entry) => {
       const key = entry.transaction.category || "Sem categoria";
-      const row = rows.get(key) || { category: key, total: 0, count: 0 };
+      const row = rows.get(key) || { category: key, total: 0, count: 0, entries: [] };
       row.total += entry.amount;
       row.count += 1;
+      row.entries.push(entry);
       rows.set(key, row);
     });
 
@@ -2905,8 +2909,27 @@ function renderProjectCategoryCosts(projectId) {
       <article class="report-item">
         <strong><span>${escapeHtml(row.category)}</span><span>${money(row.total)}</span></strong>
         <span class="muted">${row.count} lançamento(s)</span>
+        <div class="category-cost-entries">
+          ${row.entries
+            .map(
+              (entry) => `
+            <button type="button" class="category-cost-entry" data-view-${entry.kind === "bank" ? "bank" : "transaction"}="${entry.refId}">
+              <span>${escapeHtml(entry.transaction.description || "Sem descrição")}${entry.kind === "bank" ? " · movimento bancário" : ""}</span>
+              <span class="muted">${formatDate(entry.transaction.dueDate)}</span>
+              <span class="money">${money(entry.amount)}</span>
+            </button>`
+            )
+            .join("")}
+        </div>
       </article>`).join("")
     : emptyMessage("Sem custos vinculados ao projeto.");
+
+  document.querySelectorAll("#projectCategoryCosts [data-view-transaction]").forEach((button) => {
+    button.addEventListener("click", () => handleTransactionAction("edit", button.dataset.viewTransaction));
+  });
+  document.querySelectorAll("#projectCategoryCosts [data-view-bank]").forEach((button) => {
+    button.addEventListener("click", () => handleBankAction("classify", button.dataset.viewBank));
+  });
 }
 
 function renderProjectComparison(summaries) {
@@ -4110,12 +4133,27 @@ function saveStockItem(event) {
 function renderStockItems() {
   const search = els.stockItemSearch.value.toLowerCase().trim();
   const items = state.stockItems
-    .filter((item) => `${item.internalCode} ${item.name} ${item.category} ${item.barcode}`.toLowerCase().includes(search))
+    .filter((item) =>
+      [
+        item.internalCode,
+        item.barcode,
+        item.name,
+        item.description,
+        item.category,
+        item.subcategory,
+        item.brand,
+        item.model,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(search)
+    )
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  els.stockItemCount.textContent = `${items.length} de ${state.stockItems.length} item(ns) em estoque`;
   els.stockItemTable.innerHTML = items.length
     ? items.map(stockItemRow).join("")
-    : `<tr><td colspan="9">${emptyMessage("Nenhum item cadastrado.")}</td></tr>`;
+    : `<tr><td colspan="11">${emptyMessage("Nenhum item cadastrado.")}</td></tr>`;
 
   document.querySelectorAll("[data-stock-item-action]").forEach((button) => {
     button.addEventListener("click", () => handleStockItemAction(button.dataset.stockItemAction, button.dataset.id));
@@ -4125,13 +4163,17 @@ function renderStockItems() {
 function stockItemRow(item) {
   const totalValue = item.quantity * item.averageCost;
   const alertLevel = stockAlertLevel(item);
+  const details = [item.description, item.brand, item.model, item.barcode ? `Barras: ${item.barcode}` : ""].filter(Boolean);
+  const categoryDetails = [item.category || "Sem categoria", item.subcategory].filter(Boolean);
   return `
     <tr class="${alertLevel ? `stock-alert-${alertLevel}` : ""}">
-      <td>
+      <td class="stock-item-code">${escapeHtml(item.internalCode || "Sem código")}</td>
+      <td class="stock-item-description">
         <strong>${escapeHtml(item.name)}</strong>
-        <span class="muted block">${escapeHtml(item.internalCode || "sem código")} · ${STOCK_UNIT_LABELS[item.unit] || item.unit}</span>
+        <span class="muted block">${escapeHtml(details.join(" · ") || "Sem descrição complementar")}</span>
       </td>
-      <td>${escapeHtml(item.category || "-")}</td>
+      <td class="stock-category-cell">${escapeHtml(categoryDetails[0])}${categoryDetails[1] ? `<span class="muted">${escapeHtml(categoryDetails[1])}</span>` : ""}</td>
+      <td>${escapeHtml(STOCK_UNIT_LABELS[item.unit] || item.unit)}</td>
       <td class="money">${formatQuantity(item.quantity)}</td>
       <td class="money">${formatQuantity(item.minQuantity)}</td>
       <td class="money">${formatQuantity(item.maxQuantity)}</td>
