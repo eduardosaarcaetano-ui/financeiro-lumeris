@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-estoque-fornecedor1" />
+    <link rel="stylesheet" href="styles.css?v=20260710-estoque-edicao1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -902,7 +902,10 @@
                 <label class="full">Observações
                   <textarea id="stockNotes" rows="2" maxlength="300"></textarea>
                 </label>
-                <button class="primary-btn" type="submit">Salvar item</button>
+                <div class="form-actions">
+                  <button class="secondary-btn hidden" id="cancelStockItemEditBtn" type="button">Cancelar edição</button>
+                  <button class="primary-btn" id="saveStockItemBtn" type="submit">Salvar item</button>
+                </div>
               </form>
             </div>
           </div>
@@ -2006,8 +2009,8 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-fornecedor1"></script>
+    <script src="assets/estoque-iluminar-data.js?v=20260710-estoque-edicao1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260710-estoque-fornecedor1"></script>
+    <script src="app.js?v=20260710-estoque-edicao1"></script>
   </body>
 </html>

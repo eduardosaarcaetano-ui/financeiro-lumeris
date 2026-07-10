@@ -1074,6 +1074,18 @@ table {
   max-width: none;
 }
 
+.stock-item-form-panel.editing {
+  border-color: var(--primary);
+  box-shadow: 0 10px 28px rgba(18, 98, 82, 0.14);
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 th,
 td {
   padding: 13px 14px;

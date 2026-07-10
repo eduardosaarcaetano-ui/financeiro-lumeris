@@ -195,6 +195,8 @@ const els = {
   stockItemForm: document.querySelector("#stockItemForm"),
   stockItemFormTitle: document.querySelector("#stockItemFormTitle"),
   stockItemId: document.querySelector("#stockItemId"),
+  cancelStockItemEditBtn: document.querySelector("#cancelStockItemEditBtn"),
+  saveStockItemBtn: document.querySelector("#saveStockItemBtn"),
   stockInternalCode: document.querySelector("#stockInternalCode"),
   stockBarcode: document.querySelector("#stockBarcode"),
   stockName: document.querySelector("#stockName"),
@@ -591,6 +593,7 @@ function bindEvents() {
     button.addEventListener("click", () => setStockTab(button.dataset.stockTab));
   });
   els.stockItemForm.addEventListener("submit", saveStockItem);
+  els.cancelStockItemEditBtn.addEventListener("click", resetStockItemForm);
   els.stockItemSearch.addEventListener("input", renderStockItems);
   els.importIluminarStockBtn.addEventListener("click", importIluminarStock);
   [els.stockFilterStart, els.stockFilterEnd, els.stockFilterType, els.stockFilterProject, els.stockFilterItem].forEach((field) => {
@@ -4090,6 +4093,9 @@ function resetStockItemForm() {
   els.stockItemForm.reset();
   els.stockItemId.value = "";
   els.stockItemFormTitle.textContent = "Novo item";
+  els.saveStockItemBtn.textContent = "Salvar item";
+  els.cancelStockItemEditBtn.classList.add("hidden");
+  els.stockItemForm.classList.remove("editing");
   els.stockActive.checked = true;
 }
 
@@ -4214,6 +4220,11 @@ function handleStockItemAction(action, id) {
     els.stockActive.checked = item.active;
     els.stockNotes.value = item.notes;
     els.stockItemFormTitle.textContent = `Editar item · ${item.name}`;
+    els.saveStockItemBtn.textContent = "Salvar alterações";
+    els.cancelStockItemEditBtn.classList.remove("hidden");
+    els.stockItemForm.classList.add("editing");
+    els.stockItemForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    setTimeout(() => els.stockName.focus(), 250);
     return;
   }
 
