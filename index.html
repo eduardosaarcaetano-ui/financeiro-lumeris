@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260709-cancel1" />
+    <link rel="stylesheet" href="styles.css?v=20260709-projeto-modal1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -1341,17 +1341,17 @@
             <input id="transactionPaidDate" type="date" />
           </label>
           <label>Vínculo com projeto
-            <select id="transactionProjectMode">
-              <option value="none">Sem projeto</option>
-              <option value="single">Projeto único</option>
-              <option value="split">Ratear entre projetos</option>
-            </select>
-          </label>
-          <label id="transactionProjectWrap">Projeto / centro de custo
             <div class="inline-control">
-              <select id="transactionProject"></select>
+              <select id="transactionProjectMode">
+                <option value="none">Sem projeto</option>
+                <option value="single">Projeto único</option>
+                <option value="split">Ratear entre projetos</option>
+              </select>
               <button class="secondary-btn" id="newTransactionProjectBtn" type="button">Novo projeto</button>
             </div>
+          </label>
+          <label id="transactionProjectWrap">Projeto / centro de custo
+            <select id="transactionProject"></select>
           </label>
           <label class="checkbox-line">
             <input id="transactionDirectProjectCost" type="checkbox" />
@@ -1401,6 +1401,55 @@
         <menu class="modal-actions">
           <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" id="saveTransactionBtn" value="default" type="submit">Salvar</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="quickProjectDialog">
+      <form method="dialog" class="modal" id="quickProjectForm">
+        <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
+        <div class="modal-head">
+          <h2>Novo projeto</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
+        </div>
+        <div class="form-grid">
+          <label class="full">Nome do projeto
+            <input id="quickProjectName" required maxlength="200" />
+          </label>
+          <label>Cliente
+            <select id="quickProjectCustomer"></select>
+          </label>
+          <label>Status
+            <select id="quickProjectStatus">
+              <option value="ativo">Ativo</option>
+              <option value="orcamento">Orçamento</option>
+              <option value="homologacao">Homologação</option>
+              <option value="concluido">Concluído</option>
+              <option value="pausado">Pausado</option>
+            </select>
+          </label>
+          <label>Início
+            <input id="quickProjectStartDate" type="date" />
+          </label>
+          <label>Fim previsto
+            <input id="quickProjectEndDate" type="date" />
+          </label>
+          <label>Receita contratada
+            <input id="quickProjectContractValue" type="number" min="0" step="0.01" value="0" />
+          </label>
+          <label>Custos previstos
+            <input id="quickProjectExpectedCosts" type="number" min="0" step="0.01" value="0" />
+          </label>
+          <label>Margem mínima (%)
+            <input id="quickProjectTargetMargin" type="number" min="-100" max="100" step="0.1" value="20" />
+          </label>
+          <label class="full">Observações
+            <textarea id="quickProjectNotes" rows="3" maxlength="300"></textarea>
+          </label>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Salvar projeto</button>
         </menu>
       </form>
     </dialog>
@@ -1820,7 +1869,6 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="app.js?v=20260709-cancel1"></script>
+    <script src="app.js?v=20260709-projeto-modal1"></script>
   </body>
 </html>
-

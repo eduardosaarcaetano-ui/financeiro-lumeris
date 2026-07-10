@@ -411,6 +411,17 @@ const els = {
   projectExpectedCosts: document.querySelector("#projectExpectedCosts"),
   projectTargetMargin: document.querySelector("#projectTargetMargin"),
   projectNotes: document.querySelector("#projectNotes"),
+  quickProjectDialog: document.querySelector("#quickProjectDialog"),
+  quickProjectForm: document.querySelector("#quickProjectForm"),
+  quickProjectName: document.querySelector("#quickProjectName"),
+  quickProjectCustomer: document.querySelector("#quickProjectCustomer"),
+  quickProjectStatus: document.querySelector("#quickProjectStatus"),
+  quickProjectStartDate: document.querySelector("#quickProjectStartDate"),
+  quickProjectEndDate: document.querySelector("#quickProjectEndDate"),
+  quickProjectContractValue: document.querySelector("#quickProjectContractValue"),
+  quickProjectExpectedCosts: document.querySelector("#quickProjectExpectedCosts"),
+  quickProjectTargetMargin: document.querySelector("#quickProjectTargetMargin"),
+  quickProjectNotes: document.querySelector("#quickProjectNotes"),
   projectReportSelect: document.querySelector("#projectReportSelect"),
   homologationTable: document.querySelector("#homologationTable"),
   installationForm: document.querySelector("#installationForm"),
@@ -790,6 +801,14 @@ function bindEvents() {
   els.projectForm.addEventListener("submit", (event) => {
     event.preventDefault();
     saveProject();
+  });
+  els.quickProjectForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.quickProjectDialog.close();
+      return;
+    }
+    saveQuickProjectFromTransaction();
   });
 
   document.querySelector("#projectSearch").addEventListener("input", renderProjects);
@@ -2497,10 +2516,12 @@ function hydrateProjectOptions() {
     .filter((person) => person.type === "cliente" || person.type === "ambos")
     .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
     .join("")}`;
-  els.projectCustomer.innerHTML = `<option value="">Sem cliente vinculado</option>${state.people
+  const customerOptions = `<option value="">Sem cliente vinculado</option>${state.people
     .filter((person) => person.type === "cliente" || person.type === "ambos")
     .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
     .join("")}`;
+  els.projectCustomer.innerHTML = customerOptions;
+  els.quickProjectCustomer.innerHTML = customerOptions;
   refreshSearchableSelect(els.projectCustomer);
 }
 
@@ -5055,21 +5076,49 @@ function createProjectFromTransactionDialog() {
   if (!guardViewAccess("projetos")) return;
   const suggested = els.transactionDescription.value || personName(els.transactionPerson.value);
   const amount = Number(els.transactionAmount.value || 0);
-  els.transactionDialog.close();
-  setView("projetos");
-  els.projectForm.reset();
-  els.projectId.value = "";
-  els.projectName.value = suggested === "Não informado" ? "" : suggested;
-  els.projectCustomer.value = els.transactionType.value === "receber" ? els.transactionPerson.value : "";
-  refreshSearchableSelect(els.projectCustomer);
-  els.projectStatus.value = "ativo";
-  els.projectStartDate.value = todayIso;
-  els.projectContractValue.value = els.transactionType.value === "receber" ? amount : 0;
-  els.projectExpectedCosts.value = els.transactionType.value === "pagar" ? amount : 0;
-  els.projectTargetMargin.value = 20;
-  els.projectNotes.value = "Criado a partir do fluxo financeiro.";
-  els.projectName.focus();
-  toast("Preencha o cadastro completo do projeto e salve. Depois volte ao lançamento.");
+  hydrateProjectOptions();
+  els.quickProjectForm.reset();
+  els.quickProjectName.value = suggested === "Não informado" ? "" : suggested;
+  els.quickProjectCustomer.value = els.transactionType.value === "receber" ? els.transactionPerson.value : "";
+  els.quickProjectStatus.value = "ativo";
+  els.quickProjectStartDate.value = todayIso;
+  els.quickProjectContractValue.value = els.transactionType.value === "receber" ? amount : 0;
+  els.quickProjectExpectedCosts.value = els.transactionType.value === "pagar" ? amount : 0;
+  els.quickProjectTargetMargin.value = 20;
+  els.quickProjectNotes.value = "Criado a partir do lançamento financeiro.";
+  els.quickProjectDialog.showModal();
+  els.quickProjectName.focus();
+}
+
+function saveQuickProjectFromTransaction() {
+  const id = crypto.randomUUID();
+  const project = {
+    id,
+    code: "",
+    name: els.quickProjectName.value.trim(),
+    customerId: els.quickProjectCustomer.value,
+    status: els.quickProjectStatus.value,
+    startDate: els.quickProjectStartDate.value,
+    endDate: els.quickProjectEndDate.value,
+    contractValue: Number(els.quickProjectContractValue.value || 0),
+    expectedCosts: Number(els.quickProjectExpectedCosts.value || 0),
+    targetMargin: Number(els.quickProjectTargetMargin.value || 0),
+    costCenterId: crypto.randomUUID(),
+    notes: els.quickProjectNotes.value.trim(),
+  };
+
+  state.projects.push(project);
+  upsertCostCenter(project);
+  persist();
+  hydrateProjectOptions();
+  els.transactionProjectMode.value = "single";
+  els.transactionProject.value = project.id;
+  renderAllocationControls();
+  renderProjects();
+  renderProjectReports();
+  renderHomologation();
+  els.quickProjectDialog.close();
+  toast("Projeto cadastrado e selecionado no lançamento.");
 }
 
 function updateTransactionInstallmentUi() {
