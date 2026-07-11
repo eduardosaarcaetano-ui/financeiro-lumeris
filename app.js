@@ -1330,11 +1330,12 @@ async function initRemoteSync() {
     remoteUpdatedAt = result.updatedAt || "";
     if (result.data) {
       const remoteState = normalizeState(result.data);
-      Object.assign(state, remoteState);
+      const localBankMerge = mergeLocalBankDataIntoRemote(remoteState, state);
+      Object.assign(state, localBankMerge.state);
       const stockImport = importIluminarStock({ silent: true, includeMovements: false });
       const vendasImport = importVendas2026Receivables();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      if (stockImport.changed || vendasImport.changed) scheduleRemoteSync();
+      if (stockImport.changed || vendasImport.changed || localBankMerge.changed) scheduleRemoteSync();
       renderAll();
     }
     setSyncStatus("Sincronizado com o Google Sheets", "ok");
@@ -1348,6 +1349,42 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => window.clearTimeout(timeout));
+}
+
+function mergeLocalBankDataIntoRemote(remoteState, localState) {
+  const merged = normalizeState(remoteState);
+  let changed = false;
+
+  const remoteMovementKeys = new Set(
+    merged.bankMovements.flatMap((movement) => [movement.id, movement.importKey, movement.naturalKey].filter(Boolean))
+  );
+  const rescuedMovements = (localState.bankMovements || []).filter((movement) => {
+    const keys = [movement.id, movement.importKey, movement.naturalKey].filter(Boolean);
+    return keys.length && keys.every((key) => !remoteMovementKeys.has(key));
+  });
+
+  if (rescuedMovements.length) {
+    merged.bankMovements.push(...rescuedMovements);
+    hydrateBankMovementNaturalKeys(merged.bankMovements);
+    changed = true;
+  }
+
+  (localState.bankAccounts || []).forEach((localAccount) => {
+    const localKey = localAccount.accountKey || `${localAccount.bankId || "Banco"}-${localAccount.accountId || ""}`;
+    const index = merged.bankAccounts.findIndex((remoteAccount) => (remoteAccount.accountKey || `${remoteAccount.bankId}-${remoteAccount.accountId}`) === localKey);
+    if (index < 0) {
+      merged.bankAccounts.push(localAccount);
+      changed = true;
+      return;
+    }
+    const remoteAccount = merged.bankAccounts[index];
+    if ((localAccount.balanceDate || "") > (remoteAccount.balanceDate || "")) {
+      merged.bankAccounts[index] = { ...remoteAccount, ...localAccount };
+      changed = true;
+    }
+  });
+
+  return { state: merged, changed };
 }
 
 function scheduleRemoteSync() {
