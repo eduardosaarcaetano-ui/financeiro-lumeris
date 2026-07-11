@@ -1594,8 +1594,6 @@ function updateSessionUi() {
   els.navItems.forEach((item) => {
     item.classList.toggle("hidden", !canAccessView(item.dataset.view));
   });
-  document.querySelector("#newTransactionBtn")?.classList.toggle("hidden", !canAccessView("receber") && !canAccessView("pagar"));
-  document.querySelector("#newSaleBtn")?.classList.toggle("hidden", !canAccessView("vendas") && !canAccessView("crm"));
   document.querySelector("#newSaleInlineBtn")?.classList.toggle("hidden", !canAccessView("vendas") && !canAccessView("crm"));
 }
 
@@ -1933,6 +1931,9 @@ function setView(view) {
   els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
   els.views.forEach((section) => section.classList.toggle("active", section.id === view));
   els.viewTitle.textContent = viewNames[view];
+  const isFinancialEntryView = view === "receber" || view === "pagar";
+  document.querySelector("#newSaleBtn")?.classList.toggle("hidden", !isFinancialEntryView || !canAccessView("receber"));
+  document.querySelector("#newTransactionBtn")?.classList.toggle("hidden", !isFinancialEntryView || (!canAccessView("receber") && !canAccessView("pagar")));
 }
 
 function renderAll() {
