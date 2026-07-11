@@ -68,18 +68,25 @@ const MOCK_DESCRIPTIONS = {
 // só acessam as views listadas aqui. Este é o único lugar que decide isso — setView() e
 // updateSessionUi() (menu) consultam a mesma função canAccessView(), então não existe
 // como uma tela ficar acessível por engano num lugar e bloqueada em outro.
-const ROLE_ALLOWED_VIEWS = {
-  administrador: null,
-  usuario: ["dashboard", "receber", "pagar", "vendas", "projetos", "homologacao", "instalacoes", "banco", "notasfiscais", "pessoas", "relatorios", "estoque", "crm"],
-  estoque: ["estoque"],
+const SECTOR_ALLOWED_VIEWS = {
+  financeiro: ["dashboard", "receber", "pagar", "banco", "notasfiscais", "estoque", "relatorios", "pessoas"],
+  vendas: ["dashboard", "crm", "vendas"],
+  projetos: ["dashboard", "projetos", "homologacao", "instalacoes"],
 };
 
 const ROLE_LABELS = {
   administrador: "Administrador",
   estoque: "Estoque",
-  usuario: "Usuário",
+  usuario: "Usuario",
 };
 
+const SECTOR_LABELS = {
+  financeiro: "Financeiro",
+  vendas: "Vendas",
+  projetos: "Projetos",
+};
+
+const DEFAULT_USER_SECTORS = Object.keys(SECTOR_ALLOWED_VIEWS);
 let currentStockTab = "itens";
 
 const STOCK_UNIT_LABELS = {
@@ -157,6 +164,7 @@ const els = {
   userUsername: document.querySelector("#userUsername"),
   userPassword: document.querySelector("#userPassword"),
   userRole: document.querySelector("#userRole"),
+  userSectorFields: Array.from(document.querySelectorAll("[data-user-sector]")),
   userActive: document.querySelector("#userActive"),
   usersList: document.querySelector("#usersList"),
   invoiceForm: document.querySelector("#invoiceForm"),
@@ -571,6 +579,7 @@ function bindEvents() {
   els.loginForm.addEventListener("submit", handleLogin);
   els.logoutBtn.addEventListener("click", handleLogout);
   els.userForm.addEventListener("submit", saveUser);
+  els.userRole.addEventListener("change", updateUserSectorUi);
   enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente…" });
   enhanceSearchableSelect(els.bankProject, { placeholder: "Buscar projeto…" });
 
@@ -1139,10 +1148,18 @@ function normalizeState(data) {
     passwordHash: "",
     salt: "",
     role: "usuario",
+    sectors: null,
     active: true,
     createdAt: "",
     ...item,
-  }));
+  })).map((user) => {
+    const sectors = normalizeUserSectors(user);
+    return {
+      ...user,
+      role: user.role === "administrador" ? "administrador" : "usuario",
+      sectors,
+    };
+  });
 
   if (!normalized.crmUnits.length) {
     normalized.crmUnits = [
@@ -1446,6 +1463,7 @@ async function ensureMasterUser() {
     master.username !== MASTER_USERNAME ||
     passwordNeedsReset ||
     master.role !== "administrador" ||
+    JSON.stringify(normalizeUserSectors(master)) !== JSON.stringify(DEFAULT_USER_SECTORS) ||
     master.active !== true
   ) {
     Object.assign(master, {
@@ -1454,6 +1472,7 @@ async function ensureMasterUser() {
       passwordHash,
       salt,
       role: "administrador",
+      sectors: DEFAULT_USER_SECTORS.slice(),
       active: true,
     });
     changed = true;
@@ -1492,33 +1511,57 @@ function isAdmin() {
   return currentSessionUser()?.role === "administrador";
 }
 
-function currentRole() {
-  return currentSessionUser()?.role || "usuario";
+function normalizeUserSectors(user) {
+  if (user?.role === "administrador") return DEFAULT_USER_SECTORS.slice();
+  if (Array.isArray(user?.sectors)) {
+    const valid = user.sectors.filter((sector) => SECTOR_ALLOWED_VIEWS[sector]);
+    if (valid.length) return [...new Set(valid)];
+  }
+  if (user?.role === "estoque") return ["financeiro"];
+  return DEFAULT_USER_SECTORS.slice();
+}
+
+function currentUserSectors() {
+  const user = currentSessionUser();
+  if (!user) return [];
+  return normalizeUserSectors(user);
+}
+
+function allowedViewsForSectors(sectors) {
+  return [...new Set(sectors.flatMap((sector) => SECTOR_ALLOWED_VIEWS[sector] || []))];
 }
 
 function canAccessView(view) {
-  const allowed = ROLE_ALLOWED_VIEWS[currentRole()];
-  if (allowed === null) return true;
-  return (allowed || ROLE_ALLOWED_VIEWS.usuario).includes(view);
+  if (isAdmin()) return true;
+  if (view === "usuarios") return false;
+  return allowedViewsForSectors(currentUserSectors()).includes(view);
 }
 
 function defaultViewForRole() {
-  return currentRole() === "estoque" ? "estoque" : "dashboard";
+  if (isAdmin()) return "dashboard";
+  const allowed = allowedViewsForSectors(currentUserSectors()).filter((view) => view !== "dashboard");
+  return allowed[0] || "dashboard";
 }
 
-// Segunda camada de proteção: além de bloquear a navegação em setView(), as funções que
-// gravam dados financeiros/administrativos também se recusam a rodar se chamadas direto
-// (ex.: pelo console do navegador), não só quando acionadas pela tela.
+// Segunda camada de protecao: alem de bloquear a navegacao em setView(), as funcoes que
+// gravam dados financeiros/administrativos tambem se recusam a rodar se chamadas direto
+// (ex.: pelo console do navegador), nao so quando acionadas pela tela.
 function guardViewAccess(view) {
   if (canAccessView(view)) return true;
   toast("Acesso restrito para o seu perfil.");
   return false;
 }
 
-function roleLabel(role) {
-  return ROLE_LABELS[role] || "Usuário";
+function userAccessLabel(user) {
+  if (user?.role === "administrador") return "Administrador";
+  return normalizeUserSectors(user)
+    .map((sector) => SECTOR_LABELS[sector] || sector)
+    .join(", ") || "Sem setor";
 }
 
+function roleLabel(role) {
+  return ROLE_LABELS[role] || "Usuario";
+}
 function restoreSessionOrShowLogin() {
   if (currentSessionUser()) {
     showApp();
@@ -1547,10 +1590,13 @@ function updateSessionUi() {
   const user = currentSessionUser();
   if (!user) return;
   els.sessionUserName.textContent = user.name || user.username;
-  els.sessionUserRole.textContent = roleLabel(user.role);
+  els.sessionUserRole.textContent = userAccessLabel(user);
   els.navItems.forEach((item) => {
     item.classList.toggle("hidden", !canAccessView(item.dataset.view));
   });
+  document.querySelector("#newTransactionBtn")?.classList.toggle("hidden", !canAccessView("receber") && !canAccessView("pagar"));
+  document.querySelector("#newSaleBtn")?.classList.toggle("hidden", !canAccessView("vendas") && !canAccessView("crm"));
+  document.querySelector("#newSaleInlineBtn")?.classList.toggle("hidden", !canAccessView("vendas") && !canAccessView("crm"));
 }
 
 function isMasterCredentials(username, password) {
@@ -1600,13 +1646,32 @@ function handleLogout() {
   showLogin();
 }
 
+function selectedUserSectors() {
+  return els.userSectorFields.filter((field) => field.checked).map((field) => field.dataset.userSector);
+}
+
+function setUserSectorFields(sectors) {
+  const selected = new Set(sectors);
+  els.userSectorFields.forEach((field) => {
+    field.checked = selected.has(field.dataset.userSector);
+  });
+}
+
+function updateUserSectorUi() {
+  const isAdministrator = els.userRole.value === "administrador";
+  els.userSectorFields.forEach((field) => {
+    field.disabled = isAdministrator;
+    if (isAdministrator) field.checked = true;
+  });
+}
+
 function renderUsers() {
   const users = [...state.users].sort((a, b) => a.username.localeCompare(b.username));
   els.usersList.innerHTML = users.length
     ? users.map((user) => `
       <article class="person-item">
-        <strong><span>${escapeHtml(user.name || user.username)}</span><span>${roleLabel(user.role)}</span></strong>
-        <span class="muted">@${escapeHtml(user.username)} · ${user.active ? "Ativo" : "Inativo"}</span>
+        <strong><span>${escapeHtml(user.name || user.username)}</span><span>${escapeHtml(userAccessLabel(user))}</span></strong>
+        <span class="muted">@${escapeHtml(user.username)} · ${roleLabel(user.role)} · ${user.active ? "Ativo" : "Inativo"}</span>
         <div class="row-actions">
           <button type="button" data-user-action="edit" data-id="${user.id}">Editar</button>
           <button type="button" data-user-action="delete" data-id="${user.id}">Excluir</button>
@@ -1641,6 +1706,12 @@ async function saveUser(event) {
     return;
   }
 
+  const sectors = els.userRole.value === "administrador" ? DEFAULT_USER_SECTORS.slice() : selectedUserSectors();
+  if (els.userRole.value !== "administrador" && !sectors.length) {
+    toast("Selecione pelo menos um setor para o usuário.");
+    return;
+  }
+
   let passwordHash = existing?.passwordHash || "";
   let salt = existing?.salt || "";
   if (password) {
@@ -1655,6 +1726,7 @@ async function saveUser(event) {
     passwordHash,
     salt,
     role: els.userRole.value,
+    sectors,
     active: els.userActive.checked,
     createdAt: existing?.createdAt || new Date().toISOString(),
   };
@@ -1666,6 +1738,8 @@ async function saveUser(event) {
   els.userForm.reset();
   els.userId.value = "";
   els.userActive.checked = true;
+  setUserSectorFields(DEFAULT_USER_SECTORS);
+  updateUserSectorUi();
   persist();
   renderUsers();
   updateSessionUi();
@@ -1686,6 +1760,8 @@ function handleUserAction(action, id) {
     els.userUsername.value = user.username;
     els.userPassword.value = "";
     els.userRole.value = user.role;
+    setUserSectorFields(normalizeUserSectors(user));
+    updateUserSectorUi();
     els.userActive.checked = user.active;
     return;
   }
@@ -2452,6 +2528,10 @@ function saleRow(sale) {
 }
 
 function openSaleDialog() {
+  if (!canAccessView("vendas") && !canAccessView("crm")) {
+    toast("Acesso restrito para o seu perfil.");
+    return;
+  }
   els.saleForm.reset();
   els.saleCategory.value = "Vendas";
   els.saleInstallments.value = 1;
@@ -2465,6 +2545,10 @@ function openSaleDialog() {
 }
 
 function saveSale() {
+  if (!canAccessView("vendas") && !canAccessView("crm")) {
+    toast("Acesso restrito para o seu perfil.");
+    return;
+  }
   const total = Number(els.saleTotal.value);
   const installmentsCount = Number(els.saleInstallments.value);
   const installments = buildInstallments(total, installmentsCount, els.saleFirstDueDate.value, els.saleInterval.value, Number(els.saleCustomDays.value));

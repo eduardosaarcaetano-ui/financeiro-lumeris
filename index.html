@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260710-sync-fila1" />
+    <link rel="stylesheet" href="styles.css?v=20260711-acesso-setores1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -1223,9 +1223,24 @@
                 <select id="userRole">
                   <option value="usuario">Usuário</option>
                   <option value="administrador">Administrador</option>
-                  <option value="estoque">Estoque (acesso restrito ao módulo de estoque)</option>
                 </select>
               </label>
+              <fieldset class="sector-access-box">
+                <legend>Acessos por setor</legend>
+                <label class="checkbox-line">
+                  <input type="checkbox" data-user-sector="financeiro" checked />
+                  Financeiro
+                </label>
+                <label class="checkbox-line">
+                  <input type="checkbox" data-user-sector="vendas" checked />
+                  Vendas
+                </label>
+                <label class="checkbox-line">
+                  <input type="checkbox" data-user-sector="projetos" checked />
+                  Projetos
+                </label>
+                <small class="muted">O administrador acessa todos os setores automaticamente.</small>
+              </fieldset>
               <label class="checkbox-line">
                 <input id="userActive" type="checkbox" checked />
                 Ativo
@@ -2028,8 +2043,8 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="assets/estoque-iluminar-data.js?v=20260710-sync-fila1"></script>
+    <script src="assets/estoque-iluminar-data.js?v=20260711-acesso-setores1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260710-sync-fila1"></script>
+    <script src="app.js?v=20260711-acesso-setores1"></script>
   </body>
 </html>
