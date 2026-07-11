@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260711-preserva-ofx1" />
+    <link rel="stylesheet" href="styles.css?v=20260711-api-bancos1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -52,6 +52,7 @@
             <button class="nav-item" data-view="receber" type="button">A Receber</button>
             <button class="nav-item" data-view="pagar" type="button">A Pagar</button>
             <button class="nav-item" data-view="banco" type="button">Bancos</button>
+            <button class="nav-item" data-view="apisbancarias" type="button">APIs Bancárias</button>
             <button class="nav-item" data-view="notasfiscais" type="button">Notas Fiscais</button>
             <button class="nav-item" data-view="estoque" type="button">Estoque</button>
             <button class="nav-item" data-view="relatorios" type="button">Relatórios</button>
@@ -664,6 +665,54 @@
               </thead>
               <tbody id="bankTable"></tbody>
             </table>
+          </div>
+        </section>
+
+        <section class="view" id="apisbancarias">
+          <div class="split">
+            <form class="panel form-panel" id="bankApiForm">
+              <h2>Configuração de API bancária</h2>
+              <input type="hidden" id="bankApiConfigId" />
+              <label>Banco
+                <select id="bankApiProvider">
+                  <option value="inter">Banco Inter</option>
+                  <option value="santander">Santander</option>
+                </select>
+              </label>
+              <label>Conta bancária
+                <select id="bankApiAccount"></select>
+              </label>
+              <label class="full">URL do backend seguro
+                <input id="bankApiEndpoint" type="url" maxlength="220" placeholder="https://seu-backend.exemplo.com" required />
+              </label>
+              <label>Dias para buscar
+                <input id="bankApiLookbackDays" type="number" min="1" max="90" step="1" value="1" />
+              </label>
+              <label class="checkbox-line">
+                <input id="bankApiAutoDaily" type="checkbox" checked />
+                Baixar automaticamente 1 vez por dia ao abrir o ERP
+              </label>
+              <label class="checkbox-line">
+                <input id="bankApiActive" type="checkbox" checked />
+                Integração ativa
+              </label>
+              <label class="full">Observações
+                <textarea id="bankApiNotes" rows="3" maxlength="300" placeholder="Ex.: credenciais cadastradas no backend, certificado instalado, ambiente produção"></textarea>
+              </label>
+              <p class="muted full">As chaves secretas do banco não devem ficar no GitHub Pages. Cadastre client secret, certificado e token no backend seguro; aqui fica apenas a URL de conexão.</p>
+              <div class="form-actions full">
+                <button class="secondary-btn" id="syncBankApiNowBtn" type="button">Baixar extrato agora</button>
+                <button class="primary-btn" type="submit">Salvar configuração</button>
+              </div>
+            </form>
+
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Integrações configuradas</h2>
+                <small class="muted">Inter e Santander inicialmente; novos bancos podem seguir o mesmo padrão.</small>
+              </div>
+              <div class="report-list" id="bankApiConfigList"></div>
+            </section>
           </div>
         </section>
 
@@ -2043,8 +2092,8 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="assets/estoque-iluminar-data.js?v=20260711-preserva-ofx1"></script>
+    <script src="assets/estoque-iluminar-data.js?v=20260711-api-bancos1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260711-preserva-ofx1"></script>
+    <script src="app.js?v=20260711-api-bancos1"></script>
   </body>
 </html>

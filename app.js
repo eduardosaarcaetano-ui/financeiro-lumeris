@@ -69,7 +69,7 @@ const MOCK_DESCRIPTIONS = {
 // updateSessionUi() (menu) consultam a mesma função canAccessView(), então não existe
 // como uma tela ficar acessível por engano num lugar e bloqueada em outro.
 const SECTOR_ALLOWED_VIEWS = {
-  financeiro: ["dashboard", "receber", "pagar", "banco", "notasfiscais", "estoque", "relatorios", "pessoas"],
+  financeiro: ["dashboard", "receber", "pagar", "banco", "apisbancarias", "notasfiscais", "estoque", "relatorios", "pessoas"],
   vendas: ["dashboard", "crm", "vendas"],
   projetos: ["dashboard", "projetos", "homologacao", "instalacoes"],
 };
@@ -88,6 +88,7 @@ const SECTOR_LABELS = {
 
 const DEFAULT_USER_SECTORS = Object.keys(SECTOR_ALLOWED_VIEWS);
 let currentStockTab = "itens";
+let bankApiAutoSyncRunning = false;
 
 const STOCK_UNIT_LABELS = {
   unidade: "Unidade",
@@ -438,6 +439,17 @@ const els = {
   bankSyncEndpoint: document.querySelector("#bankSyncEndpoint"),
   bankSyncHint: document.querySelector("#bankSyncHint"),
   bankSyncSubmit: document.querySelector("#bankSyncSubmit"),
+  bankApiForm: document.querySelector("#bankApiForm"),
+  bankApiConfigId: document.querySelector("#bankApiConfigId"),
+  bankApiProvider: document.querySelector("#bankApiProvider"),
+  bankApiAccount: document.querySelector("#bankApiAccount"),
+  bankApiEndpoint: document.querySelector("#bankApiEndpoint"),
+  bankApiLookbackDays: document.querySelector("#bankApiLookbackDays"),
+  bankApiAutoDaily: document.querySelector("#bankApiAutoDaily"),
+  bankApiActive: document.querySelector("#bankApiActive"),
+  bankApiNotes: document.querySelector("#bankApiNotes"),
+  syncBankApiNowBtn: document.querySelector("#syncBankApiNowBtn"),
+  bankApiConfigList: document.querySelector("#bankApiConfigList"),
   projectForm: document.querySelector("#projectForm"),
   projectId: document.querySelector("#projectId"),
   projectName: document.querySelector("#projectName"),
@@ -503,6 +515,7 @@ const viewNames = {
   homologacao: "Homologação",
   instalacoes: "Instalações",
   banco: "Conciliação bancária",
+  apisbancarias: "APIs bancárias",
   notasfiscais: "Notas Fiscais",
   estoque: "Estoque",
   crm: "CRM",
@@ -883,6 +896,8 @@ function bindEvents() {
     }
     handleBankSyncSubmit();
   });
+  els.bankApiForm.addEventListener("submit", saveBankApiConfig);
+  els.syncBankApiNowBtn.addEventListener("click", syncBankApiConfigFromForm);
 
   els.projectForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -940,6 +955,7 @@ function loadState() {
     costCenters: [],
     bankAccounts: [],
     bankMovements: [],
+    bankApiConfigs: [],
     transactions: [],
     users: [],
     invoices: [],
@@ -967,6 +983,7 @@ function normalizeState(data) {
     costCenters: Array.isArray(data.costCenters) ? data.costCenters : [],
     bankAccounts: Array.isArray(data.bankAccounts) ? data.bankAccounts : [],
     bankMovements: Array.isArray(data.bankMovements) ? data.bankMovements : [],
+    bankApiConfigs: Array.isArray(data.bankApiConfigs) ? data.bankApiConfigs : [],
     transactions: Array.isArray(data.transactions) ? data.transactions : [],
     users: Array.isArray(data.users) ? data.users : [],
     invoices: Array.isArray(data.invoices) ? data.invoices : [],
@@ -1285,6 +1302,23 @@ function normalizeState(data) {
     ...item,
   }));
 
+  normalized.bankApiConfigs = normalized.bankApiConfigs.map((item) => ({
+    id: crypto.randomUUID(),
+    provider: "inter",
+    accountKey: "",
+    endpoint: "",
+    lookbackDays: 1,
+    autoDaily: true,
+    active: true,
+    lastSyncedAt: "",
+    lastAutoSyncDate: "",
+    lastResult: "",
+    notes: "",
+    createdAt: "",
+    updatedAt: "",
+    ...item,
+  }));
+
   if (!normalized.bankAccounts.length && normalized.bankMovements.length) {
     const inferred = new Map();
     normalized.bankMovements.forEach((movement) => {
@@ -1380,6 +1414,15 @@ function mergeLocalBankDataIntoRemote(remoteState, localState) {
     const remoteAccount = merged.bankAccounts[index];
     if ((localAccount.balanceDate || "") > (remoteAccount.balanceDate || "")) {
       merged.bankAccounts[index] = { ...remoteAccount, ...localAccount };
+      changed = true;
+    }
+  });
+
+  const remoteConfigKeys = new Set(merged.bankApiConfigs.map((config) => `${config.provider}:${config.accountKey}`));
+  (localState.bankApiConfigs || []).forEach((localConfig) => {
+    const key = `${localConfig.provider}:${localConfig.accountKey}`;
+    if (!remoteConfigKeys.has(key)) {
+      merged.bankApiConfigs.push(localConfig);
       changed = true;
     }
   });
@@ -1992,6 +2035,7 @@ function renderAll() {
   renderPeople();
   renderInvoices();
   renderStock();
+  renderBankApiConfigs();
   renderCrm();
   renderReports();
   hydratePersonOptions();
@@ -1999,6 +2043,7 @@ function renderAll() {
   hydrateProjectOptions();
   hydrateInvoicePersonOptions();
   hydrateStatusOptions();
+  runDailyBankApiSync();
 }
 
 function hydrateCrmOptions() {
@@ -3496,6 +3541,224 @@ function renderBankSyncList() {
 
   document.querySelectorAll("[data-sync-account]").forEach((button) => {
     button.addEventListener("click", () => openBankSyncDialog(button.dataset.syncAccount));
+  });
+}
+
+function bankAccountDisplayName(account) {
+  if (!account) return "Conta não encontrada";
+  return `${account.bankId || "Banco"} · Conta ${account.accountId || "não identificada"}`;
+}
+
+function hydrateBankApiAccountOptions() {
+  const current = els.bankApiAccount.value;
+  const accounts = latestBankAccounts();
+  els.bankApiAccount.innerHTML = accounts.length
+    ? accounts.map((account) => {
+        const key = account.accountKey || `${account.bankId}-${account.accountId}`;
+        return `<option value="${escapeHtml(key)}">${escapeHtml(bankAccountDisplayName(account))}</option>`;
+      }).join("")
+    : `<option value="">Importe um OFX para cadastrar a conta primeiro</option>`;
+  if (accounts.some((account) => (account.accountKey || `${account.bankId}-${account.accountId}`) === current)) {
+    els.bankApiAccount.value = current;
+  }
+}
+
+function accountByKey(accountKey) {
+  return state.bankAccounts.find((account) => (account.accountKey || `${account.bankId}-${account.accountId}`) === accountKey);
+}
+
+function resetBankApiForm() {
+  els.bankApiForm.reset();
+  els.bankApiConfigId.value = "";
+  els.bankApiProvider.value = "inter";
+  els.bankApiLookbackDays.value = 1;
+  els.bankApiAutoDaily.checked = true;
+  els.bankApiActive.checked = true;
+  hydrateBankApiAccountOptions();
+}
+
+function saveBankApiConfig(event) {
+  event.preventDefault();
+  if (!guardViewAccess("apisbancarias")) return;
+  const accountKey = els.bankApiAccount.value;
+  const account = accountByKey(accountKey);
+  if (!account) {
+    toast("Importe um OFX para cadastrar a conta antes de configurar a API.");
+    return;
+  }
+
+  const id = els.bankApiConfigId.value || crypto.randomUUID();
+  const existing = state.bankApiConfigs.find((config) => config.id === id);
+  const duplicate = state.bankApiConfigs.some((config) => config.id !== id && config.provider === els.bankApiProvider.value && config.accountKey === accountKey);
+  if (duplicate) {
+    toast("Já existe configuração dessa API para essa conta.");
+    return;
+  }
+
+  const config = {
+    id,
+    provider: els.bankApiProvider.value,
+    accountKey,
+    endpoint: els.bankApiEndpoint.value.trim(),
+    lookbackDays: Math.max(1, Math.min(90, Number(els.bankApiLookbackDays.value || 1))),
+    autoDaily: els.bankApiAutoDaily.checked,
+    active: els.bankApiActive.checked,
+    lastSyncedAt: existing?.lastSyncedAt || "",
+    lastAutoSyncDate: existing?.lastAutoSyncDate || "",
+    lastResult: existing?.lastResult || "",
+    notes: els.bankApiNotes.value.trim(),
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const index = state.bankApiConfigs.findIndex((item) => item.id === id);
+  if (index >= 0) state.bankApiConfigs[index] = config;
+  else state.bankApiConfigs.push(config);
+
+  applyBankApiConfigToAccount(config);
+  persist();
+  renderAll();
+  resetBankApiForm();
+  toast("Configuração de API bancária salva.");
+}
+
+function applyBankApiConfigToAccount(config) {
+  const account = accountByKey(config.accountKey);
+  if (!account) return;
+  account.syncProvider = config.provider;
+  account.syncEndpoint = config.endpoint;
+}
+
+function renderBankApiConfigs() {
+  hydrateBankApiAccountOptions();
+  const rows = [...state.bankApiConfigs].sort((a, b) => a.provider.localeCompare(b.provider) || a.accountKey.localeCompare(b.accountKey));
+  els.bankApiConfigList.innerHTML = rows.length
+    ? rows.map((config) => {
+        const account = accountByKey(config.accountKey);
+        const provider = BANK_PROVIDERS[config.provider] || { label: config.provider };
+        return `
+      <article class="report-item">
+        <strong><span>${escapeHtml(provider.label)} · ${escapeHtml(bankAccountDisplayName(account))}</span><span>${config.active ? "Ativa" : "Inativa"}</span></strong>
+        <span class="muted">${config.autoDaily ? `Automático diário · últimos ${config.lookbackDays} dia(s)` : "Automático desligado"} · ${config.lastSyncedAt ? `Última baixa: ${new Date(config.lastSyncedAt).toLocaleString("pt-BR")}` : "Nunca baixou extrato"}</span>
+        <span class="muted">${escapeHtml(config.lastResult || config.notes || "Credenciais protegidas no backend seguro.")}</span>
+        <div class="row-actions">
+          <button type="button" data-bank-api-action="sync" data-id="${config.id}">Baixar agora</button>
+          <button type="button" data-bank-api-action="edit" data-id="${config.id}">Editar</button>
+          <button type="button" data-bank-api-action="delete" data-id="${config.id}">Excluir</button>
+        </div>
+      </article>`;
+      }).join("")
+    : emptyMessage("Nenhuma API bancária configurada.");
+
+  document.querySelectorAll("[data-bank-api-action]").forEach((button) => {
+    button.addEventListener("click", () => handleBankApiAction(button.dataset.bankApiAction, button.dataset.id));
+  });
+}
+
+function handleBankApiAction(action, id) {
+  const config = state.bankApiConfigs.find((item) => item.id === id);
+  if (!config) return;
+  if (action === "sync") {
+    syncBankApiConfig(config, { manual: true });
+    return;
+  }
+  if (action === "edit") {
+    els.bankApiConfigId.value = config.id;
+    els.bankApiProvider.value = config.provider;
+    hydrateBankApiAccountOptions();
+    els.bankApiAccount.value = config.accountKey;
+    els.bankApiEndpoint.value = config.endpoint;
+    els.bankApiLookbackDays.value = config.lookbackDays;
+    els.bankApiAutoDaily.checked = config.autoDaily;
+    els.bankApiActive.checked = config.active;
+    els.bankApiNotes.value = config.notes;
+    setView("apisbancarias");
+    els.bankApiForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "delete") {
+    state.bankApiConfigs = state.bankApiConfigs.filter((item) => item.id !== id);
+    persist();
+    renderAll();
+    toast("Configuração removida.");
+  }
+}
+
+function syncBankApiConfigFromForm() {
+  if (!guardViewAccess("apisbancarias")) return;
+  const accountKey = els.bankApiAccount.value;
+  const account = accountByKey(accountKey);
+  if (!account) {
+    toast("Selecione uma conta cadastrada por OFX.");
+    return;
+  }
+  const config = {
+    id: els.bankApiConfigId.value || "form-preview",
+    provider: els.bankApiProvider.value,
+    accountKey,
+    endpoint: els.bankApiEndpoint.value.trim(),
+    lookbackDays: Math.max(1, Math.min(90, Number(els.bankApiLookbackDays.value || 1))),
+    autoDaily: els.bankApiAutoDaily.checked,
+    active: els.bankApiActive.checked,
+    notes: els.bankApiNotes.value.trim(),
+  };
+  syncBankApiConfig(config, { manual: true });
+}
+
+async function syncBankApiConfig(config, { manual = false, auto = false } = {}) {
+  if (!config.active && !manual) return;
+  const account = accountByKey(config.accountKey);
+  if (!account) {
+    if (manual) toast("Conta bancária não encontrada para essa configuração.");
+    return;
+  }
+
+  applyBankApiConfigToAccount(config);
+  const provider = BANK_PROVIDERS[config.provider];
+  if (!provider || !provider.fetchStatement) {
+    if (manual) toast("Provedor bancário ainda não implementado.");
+    return;
+  }
+  if (provider.requiresEndpoint && !config.endpoint) {
+    if (manual) toast("Informe a URL do backend seguro para essa API.");
+    return;
+  }
+
+  const end = todayIso;
+  const start = toIso(addDays(today, -Math.max(1, Number(config.lookbackDays || 1)) + 1));
+  try {
+    const movements = await provider.fetchStatement(account, { start, end });
+    const { added, duplicates } = mergeBankMovements(movements);
+    const stored = state.bankApiConfigs.find((item) => item.id === config.id);
+    if (stored) {
+      stored.lastSyncedAt = new Date().toISOString();
+      if (auto) stored.lastAutoSyncDate = todayIso;
+      stored.lastResult = `${added} importado(s), ${duplicates} duplicado(s) ignorado(s)`;
+      applyBankApiConfigToAccount(stored);
+    }
+    account.lastSyncedAt = new Date().toISOString();
+    persist();
+    renderAll();
+    if (manual) toast(`${added} movimento(s) importado(s). ${duplicates} duplicado(s) ignorado(s).`);
+  } catch (error) {
+    console.error(error);
+    const stored = state.bankApiConfigs.find((item) => item.id === config.id);
+    if (stored) {
+      stored.lastResult = error.message || "Falha ao baixar extrato";
+      persist();
+      renderBankApiConfigs();
+    }
+    if (manual) toast(error.message || "Não foi possível baixar o extrato.");
+  }
+}
+
+function runDailyBankApiSync() {
+  if (bankApiAutoSyncRunning) return;
+  const due = state.bankApiConfigs.filter((config) => config.active && config.autoDaily && config.lastAutoSyncDate !== todayIso);
+  if (!due.length) return;
+  bankApiAutoSyncRunning = true;
+  Promise.allSettled(due.map((config) => syncBankApiConfig(config, { auto: true }))).finally(() => {
+    bankApiAutoSyncRunning = false;
   });
 }
 
@@ -6640,6 +6903,7 @@ function importBackup(event) {
     state.costCenters = data.costCenters;
     state.bankAccounts = data.bankAccounts;
     state.bankMovements = data.bankMovements;
+    state.bankApiConfigs = data.bankApiConfigs;
     state.transactions = data.transactions;
     state.invoices = data.invoices;
     state.stockItems = data.stockItems;
