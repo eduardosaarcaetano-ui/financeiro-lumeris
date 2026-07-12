@@ -1,75 +1,100 @@
-# Backend de integração bancária (Inter / Santander)
+# Backend local de integracao bancaria
 
-Este diretório é um **esqueleto de referência**, não é publicado no GitHub Pages e não roda
-sozinho no site estático. Ele existe para documentar o contrato que o campo "URL do backend
-de integração" (tela Banco > Contas conectadas > Sincronizar extrato) espera, e para servir de
-ponto de partida quando você tiver as credenciais/certificado reais do Inter e do Santander.
+Este backend roda no seu computador e serve como ponte segura entre o ERP Lumeris e a API do Banco Inter.
 
-## Por que precisa de um backend separado
+O ERP esta publicado em GitHub Pages, entao ele nao pode guardar `client_secret`, certificado ou chave privada. Por isso a conexao real com o banco precisa passar por um backend local ou hospedado em servidor privado.
 
-O `app.js` do sistema roda 100% no navegador de quem usa (GitHub Pages é hospedagem estática).
-Um site assim **não tem onde guardar segredo com segurança** e **não consegue apresentar
-certificado cliente (mTLS)** — e a API do Banco Inter exige mTLS em toda chamada. Por isso,
-"conectar de verdade" exige um servidor à parte (rodando em algum lugar seu: uma VPS, um
-serviço de nuvem que suporte certificados, etc.) que guarda o certificado/segredos e conversa
-com o banco por trás. O frontend só chama esse backend, nunca o banco diretamente.
+## Como testar com Banco Inter
 
-## Contrato esperado pelo frontend
+1. Copie o arquivo de exemplo:
 
-Para cada banco, o frontend faz:
-
-```
-POST {syncEndpoint}/inter/extrato
-POST {syncEndpoint}/santander/extrato
-Content-Type: text/plain (corpo é JSON serializado, para evitar preflight de CORS)
-
-{ "accountId": "...", "bankId": "077", "start": "2026-06-01", "end": "2026-07-01" }
+```powershell
+Copy-Item .env.example .env
 ```
 
-Resposta esperada:
+2. Edite o arquivo `.env` e preencha:
+
+- `INTER_CLIENT_ID`
+- `INTER_CLIENT_SECRET`
+- `INTER_CERT_PATH` e `INTER_KEY_PATH`, ou `INTER_PFX_PATH`
+- `INTER_CA_PATH`, se o Inter fornecer um arquivo de CA separado
+- `INTER_CONTA_CORRENTE`, se o Inter exigir o header da conta
+
+3. Rode o backend:
+
+```powershell
+node server.js
+```
+
+4. Confira se esta funcionando:
+
+```powershell
+Invoke-RestMethod http://localhost:8787/health
+```
+
+5. No ERP, abra:
+
+`Financeiro > APIs Bancarias`
+
+6. Cadastre a conta do Banco Inter usando:
+
+```text
+URL do backend: http://localhost:8787
+Banco: Banco Inter
+Conta: selecione a conta cadastrada no ERP
+```
+
+7. Clique em `Salvar configuracao` e depois em `Sincronizar agora`.
+
+## Contrato usado pelo ERP
+
+O ERP chama:
+
+```http
+POST http://localhost:8787/inter/extrato
+```
+
+Com corpo:
+
+```json
+{
+  "accountId": "numero-da-conta",
+  "bankId": "077",
+  "start": "2026-07-01",
+  "end": "2026-07-11"
+}
+```
+
+O backend responde:
 
 ```json
 {
   "ok": true,
   "movements": [
     {
-      "fitid": "identificador único do banco para essa transação",
-      "date": "2026-06-15",
-      "description": "Pix recebido - Fulano",
-      "amount": 150.5,
+      "fitid": "id-unico-do-banco",
+      "date": "2026-07-10",
+      "description": "PIX RECEBIDO",
+      "amount": 100,
       "type": "entrada",
-      "documentNumber": "opcional"
+      "documentNumber": "123"
     }
   ]
 }
 ```
 
-Em caso de erro: `{ "ok": false, "error": "mensagem para mostrar ao usuário" }`.
+## Observacoes importantes
 
-O `fitid` é o identificador único que o banco atribui à transação — é ele que garante que o
-mesmo lançamento não seja importado duas vezes, então **sempre inclua o identificador real
-que o banco retornar**, nunca um valor gerado por você.
+- Nunca coloque dados reais no GitHub.
+- O arquivo `.env` esta ignorado pelo Git.
+- Certificados `.crt`, `.key`, `.pem`, `.pfx` e `.p12` tambem devem ficar fora do repositorio.
+- Se o Inter alterar o caminho do endpoint de extrato, ajuste `INTER_EXTRATO_PATH` no `.env`.
+- Para usar em varios computadores/usuarios, depois substituimos `localhost` por uma URL hospedada em servidor seguro.
 
-## Estrutura sugerida
+## Rotas disponiveis
 
+```text
+GET  /health
+POST /inter/extrato
+POST /santander/extrato  (reservada, ainda nao implementada)
 ```
-backend-integration/
-  .env.example       # variáveis sensíveis (nunca commitar o .env real)
-  server.example.js  # servidor Express mínimo, só como referência
-  providers/
-    inter.js         # adaptador do Banco Inter (mTLS + OAuth2)
-    santander.js      # adaptador do Santander (OAuth2)
-```
-
-Cada arquivo em `providers/` é isolado por banco — para adicionar um banco novo no futuro,
-basta criar `providers/novo-banco.js` com a mesma assinatura (`fetchStatement(accountId, start, end)`)
-e uma nova rota `POST /novo-banco/extrato`, sem tocar nos outros.
-
-## Antes de usar de verdade
-
-- Baixe o certificado cliente e as credenciais no portal de desenvolvedores do Inter/Santander.
-- Nunca coloque o certificado, a chave privada ou os segredos dentro deste repositório do site
-  (`financeiro-lumeris`) — eles devem existir só no servidor do backend, fora do controle de
-  versão público, referenciados via `.env`.
-- Habilite CORS no backend apenas para o domínio do GitHub Pages
-  (`https://eduardosaarcaetano-ui.github.io`), não para "qualquer origem".

@@ -1,5 +1,8 @@
 backend-integration/.env
 backend-integration/node_modules/
+backend-integration/certs/
 backend-integration/*.crt
 backend-integration/*.key
 backend-integration/*.pem
+backend-integration/*.pfx
+backend-integration/*.p12
