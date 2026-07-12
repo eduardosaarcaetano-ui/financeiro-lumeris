@@ -71,7 +71,9 @@ const MOCK_DESCRIPTIONS = {
 const SECTOR_ALLOWED_VIEWS = {
   financeiro: ["dashboard", "receber", "pagar", "banco", "apisbancarias", "notasfiscais", "estoque", "relatorios", "pessoas"],
   vendas: ["dashboard", "crm", "vendas"],
-  projetos: ["dashboard", "projetos", "homologacao", "instalacoes"],
+  projetos: ["dashboard", "projetos", "protocolos", "instalacoes"],
+  engenharia: ["dashboard", "projetos", "protocolos", "instalacoes"],
+  diretoria: ["dashboard", "projetos", "protocolos", "instalacoes", "crm", "vendas", "relatorios"],
 };
 
 const ROLE_LABELS = {
@@ -84,11 +86,80 @@ const SECTOR_LABELS = {
   financeiro: "Financeiro",
   vendas: "Vendas",
   projetos: "Projetos",
+  engenharia: "Engenharia",
+  diretoria: "Diretoria",
 };
 
 const DEFAULT_USER_SECTORS = Object.keys(SECTOR_ALLOWED_VIEWS);
 let currentStockTab = "itens";
 let bankApiAutoSyncRunning = false;
+
+// Central de Protocolos: cadastro de concessionárias e tipos de atividade usa ids fixos
+// nos itens padrão (em vez de crypto.randomUUID()) para que PROTOCOL_CHECKLIST_TEMPLATES
+// consiga referenciar o tipo de forma estável entre instalações diferentes do app.
+const UTILITY_COMPANY_DEFAULTS = [
+  { id: "cpfl_piratininga", name: "CPFL Piratininga" },
+  { id: "cpfl_paulista", name: "CPFL Paulista" },
+  { id: "cetril", name: "Cetril" },
+  { id: "elektro", name: "Elektro" },
+  { id: "seripa", name: "Seripa" },
+  { id: "enel", name: "Enel" },
+];
+
+const PROTOCOL_ACTIVITY_TYPE_DEFAULTS = [
+  { id: "consulta_viabilidade", name: "Consulta de viabilidade" },
+  { id: "homologacao", name: "Homologação" },
+  { id: "revisao_projeto", name: "Revisão de projeto" },
+  { id: "troca_medidor", name: "Troca de medidor" },
+  { id: "troca_titularidade", name: "Troca de titularidade" },
+  { id: "ligacao_nova", name: "Ligação nova" },
+  { id: "aumento_carga", name: "Aumento de carga" },
+  { id: "alteracao_demanda", name: "Alteração de demanda" },
+  { id: "migracao_tarifaria", name: "Migração tarifária" },
+  { id: "vistoria", name: "Vistoria" },
+  { id: "pendencia_documental", name: "Pendência documental" },
+  { id: "analise_tecnica", name: "Análise técnica" },
+  { id: "outro", name: "Outro" },
+];
+
+// Cada item de checklist funciona também como controle de documento (status
+// pendente/enviado/aprovado/rejeitado), evitando manter listas separadas de
+// "documentos enviados"/"documentos pendentes" que duplicariam a mesma informação.
+const PROTOCOL_CHECKLIST_TEMPLATES = {
+  homologacao: ["ART", "Projeto elétrico", "Procuração", "Documento do cliente", "Conta de energia", "Memorial descritivo", "Formulários da concessionária"],
+};
+
+const PROTOCOL_STATUSES = [
+  { id: "novo", label: "Novo", tone: "neutral" },
+  { id: "em_preparacao", label: "Em preparação", tone: "neutral" },
+  { id: "protocolado", label: "Protocolado", tone: "warn" },
+  { id: "em_analise", label: "Em análise", tone: "warn" },
+  { id: "aguardando_documentos", label: "Aguardando documentos", tone: "warn" },
+  { id: "aguardando_cliente", label: "Aguardando cliente", tone: "warn" },
+  { id: "aguardando_concessionaria", label: "Aguardando concessionária", tone: "warn" },
+  { id: "pendencia_tecnica", label: "Pendência técnica", tone: "danger" },
+  { id: "projeto_aprovado", label: "Projeto aprovado", tone: "ok" },
+  { id: "projeto_reprovado", label: "Projeto reprovado", tone: "danger" },
+  { id: "instalacao_liberada", label: "Instalação liberada", tone: "ok" },
+  { id: "concluido", label: "Concluído", tone: "ok" },
+  { id: "cancelado", label: "Cancelado", tone: "danger" },
+];
+
+// Status que encerram o acompanhamento de prazo (não faz sentido mostrar "vencido"
+// para um ticket já concluído, cancelado, reprovado ou liberado).
+const PROTOCOL_CLOSED_STATUSES = ["projeto_reprovado", "instalacao_liberada", "concluido", "cancelado"];
+const PROTOCOL_RELEASE_STATUS = "instalacao_liberada";
+const PROJECT_STATUS_RELEASED_FOR_INSTALLATION = "liberado_instalacao";
+
+const PROTOCOL_STALE_DAYS = 10;
+const PROTOCOL_ALERT_CATEGORIES = [
+  { key: "vencidos", label: "Vencidos", apply: () => { els.protocolFilterDeadline.value = "atraso"; } },
+  { key: "venceHoje", label: "Prazo termina hoje", apply: () => { els.protocolFilterDeadline.value = "hoje"; } },
+  { key: "venceAmanha", label: "Prazo termina amanhã", apply: () => { els.protocolFilterDeadline.value = "semana"; } },
+  { key: "aguardandoCliente", label: "Cliente aguardando resposta", apply: () => { els.protocolFilterStatus.value = "aguardando_cliente"; } },
+  { key: "aguardandoDocumentos", label: "Concessionária aguardando documentos", apply: () => { els.protocolFilterStatus.value = "aguardando_documentos"; } },
+  { key: "paradoHaMuitosDias", label: `Parado há mais de ${PROTOCOL_STALE_DAYS} dias`, apply: () => {} },
+];
 
 const STOCK_UNIT_LABELS = {
   unidade: "Unidade",
@@ -474,7 +545,45 @@ const els = {
   quickProjectTargetMargin: document.querySelector("#quickProjectTargetMargin"),
   quickProjectNotes: document.querySelector("#quickProjectNotes"),
   projectReportSelect: document.querySelector("#projectReportSelect"),
-  homologationTable: document.querySelector("#homologationTable"),
+  protocolsTable: document.querySelector("#protocolsTable"),
+  protocolSearch: document.querySelector("#protocolSearch"),
+  protocolFilterUtility: document.querySelector("#protocolFilterUtility"),
+  protocolFilterActivityType: document.querySelector("#protocolFilterActivityType"),
+  protocolFilterStatus: document.querySelector("#protocolFilterStatus"),
+  protocolFilterResponsible: document.querySelector("#protocolFilterResponsible"),
+  protocolFilterCity: document.querySelector("#protocolFilterCity"),
+  protocolFilterProject: document.querySelector("#protocolFilterProject"),
+  protocolFilterDeadline: document.querySelector("#protocolFilterDeadline"),
+  protocolFilterPriority: document.querySelector("#protocolFilterPriority"),
+  protocolFilterPeriod: document.querySelector("#protocolFilterPeriod"),
+  protocolDialog: document.querySelector("#protocolDialog"),
+  protocolForm: document.querySelector("#protocolForm"),
+  protocolDialogTitle: document.querySelector("#protocolDialogTitle"),
+  protocolId: document.querySelector("#protocolId"),
+  protocolInternalNumber: document.querySelector("#protocolInternalNumber"),
+  protocolNumber: document.querySelector("#protocolNumber"),
+  protocolActivityType: document.querySelector("#protocolActivityType"),
+  protocolUtility: document.querySelector("#protocolUtility"),
+  protocolCustomer: document.querySelector("#protocolCustomer"),
+  newProtocolCustomerBtn: document.querySelector("#newProtocolCustomerBtn"),
+  protocolCity: document.querySelector("#protocolCity"),
+  protocolConsumerUnit: document.querySelector("#protocolConsumerUnit"),
+  protocolProject: document.querySelector("#protocolProject"),
+  protocolStatus: document.querySelector("#protocolStatus"),
+  protocolResponsible: document.querySelector("#protocolResponsible"),
+  protocolOpenedAt: document.querySelector("#protocolOpenedAt"),
+  protocolDeadline: document.querySelector("#protocolDeadline"),
+  protocolExpectedDate: document.querySelector("#protocolExpectedDate"),
+  protocolPriority: document.querySelector("#protocolPriority"),
+  protocolNotes: document.querySelector("#protocolNotes"),
+  protocolDrawerContent: document.querySelector("#protocolDrawerContent"),
+  protocolSettingsDialog: document.querySelector("#protocolSettingsDialog"),
+  utilityCompanyList: document.querySelector("#utilityCompanyList"),
+  utilityCompanyNameInput: document.querySelector("#utilityCompanyNameInput"),
+  addUtilityCompanyBtn: document.querySelector("#addUtilityCompanyBtn"),
+  activityTypeList: document.querySelector("#activityTypeList"),
+  activityTypeNameInput: document.querySelector("#activityTypeNameInput"),
+  addActivityTypeBtn: document.querySelector("#addActivityTypeBtn"),
   installationForm: document.querySelector("#installationForm"),
   installationId: document.querySelector("#installationId"),
   installationProject: document.querySelector("#installationProject"),
@@ -512,7 +621,7 @@ const viewNames = {
   pagar: "Contas a pagar",
   vendas: "Vendas parceladas",
   projetos: "Projetos e centros de custo",
-  homologacao: "Homologação",
+  protocolos: "Central de Protocolos",
   instalacoes: "Instalações",
   banco: "Conciliação bancária",
   apisbancarias: "APIs bancárias",
@@ -915,10 +1024,49 @@ function bindEvents() {
   });
 
   document.querySelector("#projectSearch").addEventListener("input", renderProjects);
+  document.querySelectorAll("#projetos .project-filters input, #projetos .project-filters select").forEach((field) => {
+    field.addEventListener("input", renderProjectDashboard);
+    field.addEventListener("change", renderProjectDashboard);
+  });
+  document.querySelector("#clearProjectDashboardFilters").addEventListener("click", clearProjectDashboardFilters);
+  document.querySelector("#exportProjectDashboardCsv").addEventListener("click", exportProjectDashboardCsv);
+  document.querySelector("#printProjectDashboard").addEventListener("click", () => window.print());
+  document.querySelectorAll("[data-close-project-drawer]").forEach((item) => item.addEventListener("click", closeProjectDrawer));
   els.projectReportSelect.addEventListener("input", renderProjectReports);
   document.querySelector("#exportProjectCsv").addEventListener("click", exportProjectsCsv);
   els.installationForm.addEventListener("submit", saveInstallation);
   els.installationSearch.addEventListener("input", renderInstallations);
+
+  document.querySelector("#newProtocolBtn")?.addEventListener("click", () => openProtocolDialog());
+  document.querySelector("#protocolSettingsBtn")?.addEventListener("click", openProtocolSettingsDialog);
+  els.protocolForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (event.submitter?.value === "cancel") {
+      els.protocolDialog.close();
+      return;
+    }
+    saveProtocol();
+  });
+  els.newProtocolCustomerBtn.addEventListener("click", createPersonFromProtocolDialog);
+  [
+    els.protocolSearch,
+    els.protocolFilterUtility,
+    els.protocolFilterActivityType,
+    els.protocolFilterStatus,
+    els.protocolFilterResponsible,
+    els.protocolFilterCity,
+    els.protocolFilterProject,
+    els.protocolFilterDeadline,
+    els.protocolFilterPriority,
+    els.protocolFilterPeriod,
+  ].forEach((field) => field?.addEventListener("input", renderProtocols));
+  document.querySelector("#clearProtocolFilters")?.addEventListener("click", clearProtocolFilters);
+  document.querySelectorAll("[data-close-protocol-drawer]").forEach((item) => item.addEventListener("click", closeProtocolDrawer));
+  document.querySelectorAll("[data-protocol-tab]").forEach((button) => {
+    button.addEventListener("click", () => setProtocolTab(button.dataset.protocolTab));
+  });
+  els.addUtilityCompanyBtn.addEventListener("click", addUtilityCompany);
+  els.addActivityTypeBtn.addEventListener("click", addActivityType);
 
   els.personForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -967,6 +1115,10 @@ function loadState() {
     interactions: [],
     tasks: [],
     sellers: [],
+    utilityCompanies: [],
+    protocolActivityTypes: [],
+    protocols: [],
+    protocolHistory: [],
   });
 }
 
@@ -995,6 +1147,10 @@ function normalizeState(data) {
     interactions: Array.isArray(data.interactions) ? data.interactions : [],
     tasks: Array.isArray(data.tasks) ? data.tasks : [],
     sellers: Array.isArray(data.sellers) ? data.sellers : [],
+    utilityCompanies: Array.isArray(data.utilityCompanies) ? data.utilityCompanies : [],
+    protocolActivityTypes: Array.isArray(data.protocolActivityTypes) ? data.protocolActivityTypes : [],
+    protocols: Array.isArray(data.protocols) ? data.protocols : [],
+    protocolHistory: Array.isArray(data.protocolHistory) ? data.protocolHistory : [],
   };
 
   normalized.sellers = normalized.sellers.map((item) => ({
@@ -1259,6 +1415,62 @@ function normalizeState(data) {
     ...item,
   }));
 
+  normalized.utilityCompanies = normalized.utilityCompanies.map((item) => ({
+    id: crypto.randomUUID(),
+    name: "",
+    active: true,
+    ...item,
+  }));
+  if (!normalized.utilityCompanies.length) {
+    normalized.utilityCompanies = UTILITY_COMPANY_DEFAULTS.map((item) => ({ ...item, active: true }));
+  }
+
+  normalized.protocolActivityTypes = normalized.protocolActivityTypes.map((item) => ({
+    id: crypto.randomUUID(),
+    name: "",
+    active: true,
+    ...item,
+  }));
+  if (!normalized.protocolActivityTypes.length) {
+    normalized.protocolActivityTypes = PROTOCOL_ACTIVITY_TYPE_DEFAULTS.map((item) => ({ ...item, active: true }));
+  }
+
+  normalized.protocols = normalized.protocols.map((item) => ({
+    id: crypto.randomUUID(),
+    internalNumber: "",
+    protocolNumber: "",
+    activityTypeId: "",
+    utilityCompanyId: "",
+    customerId: "",
+    city: "",
+    consumerUnit: "",
+    projectId: "",
+    status: "novo",
+    responsibleUserId: "",
+    openedAt: "",
+    utilityDeadline: "",
+    expectedDate: "",
+    lastMovementAt: "",
+    priority: "media",
+    notes: "",
+    checklist: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    ...item,
+  }));
+
+  normalized.protocolHistory = normalized.protocolHistory.map((item) => ({
+    id: crypto.randomUUID(),
+    protocolId: "",
+    action: "registro",
+    fromStatus: "",
+    toStatus: "",
+    user: "",
+    createdAt: new Date().toISOString(),
+    notes: "",
+    ...item,
+  }));
+
   normalized.transactions = normalized.transactions.map((item) => ({
     dreGroup: defaultDreGroup(item.type),
     saleId: "",
@@ -1283,6 +1495,7 @@ function normalizeState(data) {
     notes: "",
     transactionId: "",
     invoiceId: "",
+    reconciliationHistory: [],
     ...item,
   }));
   hydrateBankMovementNaturalKeys(normalized.bankMovements);
@@ -1294,6 +1507,9 @@ function normalizeState(data) {
     bankId: item.bankId || "Banco",
     balance: Number(item.balance || 0),
     balanceDate: item.balanceDate || "",
+    investmentBalance: Number(item.investmentBalance || 0),
+    investmentDate: item.investmentDate || "",
+    investmentSource: item.investmentSource || "",
     source: item.source || "ofx",
     updatedAt: item.updatedAt || "",
     syncProvider: item.syncProvider || "mock",
@@ -2029,7 +2245,7 @@ function renderAll() {
   renderSales();
   renderProjects();
   renderProjectReports();
-  renderHomologation();
+  renderProtocols();
   renderInstallations();
   renderBank();
   renderPeople();
@@ -2375,27 +2591,70 @@ function renderSectorOverview(receberAberto, pagarAberto) {
   document.querySelector("#dashboardInvoicesSmall").textContent = `${monthInvoices.length} NF emitida(s) no mês`;
 }
 
+
+function bankBalanceSourceLabel(account) {
+  const source = account.source || "";
+  if (source === "ofx") return "saldo do OFX";
+  if (source === "inter_api") return "saldo da API Inter";
+  if (source.endsWith("_api")) return "saldo da API bancária";
+  return "saldo dos movimentos";
+}
+
+function accountTotalBalance(account) {
+  return Number(account.balance || 0) + Number(account.investmentBalance || 0);
+}
+
+function isInterAccount(account) {
+  return account.syncProvider === "inter" || account.source === "inter_api" || account.bankId === "077";
+}
+
 function renderBankBalances() {
   const accounts = latestBankAccounts();
-  const totalBalance = accounts.reduce((total, account) => total + Number(account.balance || 0), 0);
+  const totalBalance = accounts.reduce((total, account) => total + accountTotalBalance(account), 0);
   els.bankBalanceList.innerHTML = accounts.length
     ? `
       <article class="bank-balance-item bank-balance-total">
         <div>
           <strong>Saldo total bancário</strong>
-          <span class="muted">${accounts.length} conta(s) somadas pelo saldo mais atual</span>
+          <span class="muted">${accounts.length} conta(s) somadas pelo saldo mais atual, incluindo investimentos vinculados</span>
         </div>
         <strong class="money">${money(totalBalance)}</strong>
       </article>
-      ${accounts.map((account) => `
+      ${accounts.map(renderBankBalanceItem).join("")}`
+    : emptyMessage("Importe um arquivo OFX na aba Banco para exibir os saldos das contas.");
+}
+
+function renderBankBalanceItem(account) {
+  if (!isInterAccount(account)) {
+    return `
       <article class="bank-balance-item">
         <div>
           <strong>${escapeHtml(account.bankId)}</strong>
-          <span class="muted">Conta ${escapeHtml(account.accountId || "não identificada")} · ${account.balanceDate ? formatDate(account.balanceDate) : "sem data"} · ${account.source === "ofx" ? "saldo do OFX" : "saldo dos movimentos"}</span>
+          <span class="muted">Conta ${escapeHtml(account.accountId || "não identificada")} · ${account.balanceDate ? formatDate(account.balanceDate) : "sem data"} · ${bankBalanceSourceLabel(account)}</span>
         </div>
         <strong class="money">${money(account.balance)}</strong>
-      </article>`).join("")}`
-    : emptyMessage("Importe um arquivo OFX na aba Banco para exibir os saldos das contas.");
+      </article>`;
+  }
+
+  const investmentDate = account.investmentDate || account.balanceDate;
+  return `
+      <article class="bank-balance-item bank-balance-detail">
+        <div>
+          <strong>Inter · Conta ${escapeHtml(account.accountId || "não identificada")}</strong>
+          <span class="muted">${account.balanceDate ? formatDate(account.balanceDate) : "sem data"} · ${bankBalanceSourceLabel(account)}</span>
+        </div>
+        <strong class="money">${money(account.balance)}</strong>
+        <div>
+          <strong>Investimentos Inter</strong>
+          <span class="muted">${investmentDate ? formatDate(investmentDate) : "sem data"} · ${account.investmentSource ? "saldo de investimentos" : "aguardando API/valor configurado"}</span>
+        </div>
+        <strong class="money">${money(account.investmentBalance || 0)}</strong>
+        <div>
+          <strong>Saldo total Inter</strong>
+          <span class="muted">Conta corrente + investimentos</span>
+        </div>
+        <strong class="money">${money(accountTotalBalance(account))}</strong>
+      </article>`;
 }
 
 function latestBankAccounts() {
@@ -2745,6 +3004,7 @@ function renderProjects() {
   document.querySelectorAll("[data-project-action]").forEach((button) => {
     button.addEventListener("click", () => handleProjectAction(button.dataset.projectAction, button.dataset.id));
   });
+  renderProjectDashboard();
 }
 
 function saveProject() {
@@ -2861,47 +3121,1324 @@ function projectStatusLabel(status) {
   return { ativo: "Ativo", orcamento: "Orçamento", homologacao: "Homologação", concluido: "Concluído", pausado: "Pausado" }[status] || status;
 }
 
+function projectStatusLabel(status) {
+  const labels = {
+    ativo: "Ativo",
+    orcamento: "Orcamento",
+    negociacao: "Em negociacao",
+    contrato_assinado: "Contrato assinado",
+    aguardando_documentacao: "Aguardando documentacao",
+    homologacao: "Em homologacao",
+    aguardando_instalacao: "Aguardando instalacao",
+    instalacao_agendada: "Instalacao agendada",
+    em_instalacao: "Em instalacao",
+    aguardando_vistoria: "Aguardando vistoria",
+    aguardando_faturamento: "Aguardando faturamento",
+    liberado_instalacao: "Liberado para instalação",
+    concluido: "Concluido",
+    cancelado: "Cancelado",
+    pausado: "Pausado",
+  };
+  return labels[status] || status || "Sem status";
+}
+
+function renderProjectDashboard() {
+  const kpis = document.querySelector("#projectDashboardKpis");
+  const table = document.querySelector("#projectDashboardTable");
+  if (!kpis || !table) return;
+  const rows = sortProjectDashboardRows(filteredProjectDashboardRows());
+  renderProjectDashboardKpis(rows);
+  renderProjectDashboardPanels(rows);
+  renderProjectDashboardCharts(rows);
+  renderProjectDashboardTable(rows);
+}
+
+function projectDashboardRows() {
+  return state.projects.map((project) => {
+    const summary = projectSummary(project.id);
+    const transactions = projectTransactions(project.id);
+    const installation = latestProjectInstallation(project.id);
+    const customer = state.people.find((person) => person.id === project.customerId);
+    const city = project.city || customer?.city || projectFieldFromNotes(project.notes, "cidade") || "";
+    const responsible =
+      project.responsible ||
+      installation?.team ||
+      projectFieldFromNotes(project.notes, "responsavel") ||
+      projectFieldFromNotes(project.notes, "responsavel tecnico") ||
+      "";
+    const execution = projectExecutionPercent(project, installation, summary);
+    const priority = projectPriority(project, installation, summary);
+    const health = projectHealthScore(project, installation, summary, execution);
+    const daysToInstallation = installation?.scheduledDate ? daysBetween(installation.scheduledDate, todayIso) : null;
+    return {
+      project,
+      summary,
+      customer,
+      transactions,
+      installation,
+      city,
+      responsible,
+      execution,
+      priority,
+      health,
+      daysToInstallation,
+      financeSituation: projectFinancialSituation(summary, project),
+      installSituation: projectInstallSituation(project, installation),
+      costsOverBudget: projectCostsOverBudget(summary),
+    };
+  });
+}
+
+function filteredProjectDashboardRows() {
+  return projectDashboardRows().filter(matchesProjectDashboardFilters);
+}
+
+function projectTransactions(projectId) {
+  return state.transactions.filter((transaction) => transaction.projectId === projectId || transaction.costCenterId === projectId);
+}
+
+function latestProjectInstallation(projectId) {
+  return state.installations
+    .filter((installation) => installation.projectId === projectId)
+    .sort((a, b) => (b.scheduledDate || b.createdAt || "").localeCompare(a.scheduledDate || a.createdAt || ""))[0];
+}
+
+function projectFieldFromNotes(notes, field) {
+  if (!notes) return "";
+  const normalized = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(notes).match(new RegExp(`${normalized}\\s*[:=-]\\s*([^\\n;]+)`, "i"));
+  return match?.[1]?.trim() || "";
+}
+
+function projectExecutionPercent(project, installation, summary) {
+  if (project.status === "concluido") return 100;
+  if (installation?.status === "concluida") return 100;
+  if (["em_instalacao", "aguardando_vistoria"].includes(project.status) || installation?.status === "em_execucao") return 75;
+  if (["instalacao_agendada", "aguardando_instalacao"].includes(project.status) || installation?.scheduledDate) return 55;
+  if (["homologacao", "aguardando_documentacao"].includes(project.status)) return 35;
+  if ((summary.invoiced || summary.contracted) > 0) return 20;
+  return project.status === "orcamento" ? 10 : 0;
+}
+
+function projectPriority(project, installation, summary) {
+  if (project.status === "cancelado") return "baixa";
+  if (project.status === "pausado") return "media";
+  if (isProjectInstallationLate(installation)) return "alta";
+  if (summary.receivable > 0 && summary.received === 0 && (summary.invoiced || summary.contracted) > 0) return "alta";
+  if (projectCostsOverBudget(summary)) return "alta";
+  if (summary.payable > 0) return "media";
+  return "baixa";
+}
+
+function projectHealthScore(project, installation, summary, execution) {
+  let score = 100;
+  if (summary.contracted > 0 && summary.marginPercent < (Number(project.minMargin) || 20)) score -= 24;
+  if (summary.receivable > 0 && summary.received === 0 && summary.invoiced > 0) score -= 18;
+  if (summary.payable > 0) score -= 10;
+  if (projectCostsOverBudget(summary)) score -= 18;
+  if (isProjectInstallationLate(installation)) score -= 18;
+  if (project.status === "pausado") score -= 18;
+  if (project.status === "cancelado") score = 0;
+  if (project.status === "concluido" && execution === 100) score += 5;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function projectCostsOverBudget(summary) {
+  return summary.expectedCosts > 0 && summary.costs > summary.expectedCosts;
+}
+
+function isProjectInstallationLate(installation) {
+  return Boolean(installation?.scheduledDate && installation.scheduledDate < todayIso && installation.status !== "concluida");
+}
+
+function projectFinancialSituation(summary, project) {
+  if (summary.receivable > 0 && summary.received === 0 && (summary.invoiced || summary.contracted) > 0) return "sem_recebimento";
+  if (summary.receivable > 0) return "saldo_receber";
+  if (summary.payable > 0) return "saldo_pagar";
+  if (projectCostsOverBudget(summary)) return "custos_pendentes";
+  if (summary.received > 0 || project.status === "concluido") return "em_dia";
+  return "sem_movimento";
+}
+
+function projectInstallSituation(project, installation) {
+  if (project.status === "homologacao") return "aguardando_homologacao";
+  if (!installation) return "nao_iniciado";
+  if (isProjectInstallationLate(installation)) return "atrasado";
+  if (installation.status === "agendada") return "agendado";
+  if (installation.status === "em_execucao") return "em_execucao";
+  if (installation.status === "concluida") return "concluido";
+  return "nao_iniciado";
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function formatCurrency(value) {
+  return money(value);
+}
+
+function formatPercent(value) {
+  return `${Number(value || 0).toFixed(1).replace(".", ",")}%`;
+}
+
+function isoDate(date) {
+  return toIso(date);
+}
+
+function matchesProjectDashboardFilters(row) {
+  const status = document.querySelector("#projectFilterStatus")?.value || "todos";
+  const finance = document.querySelector("#projectFilterFinance")?.value || "todos";
+  const install = document.querySelector("#projectFilterInstall")?.value || "todos";
+  const period = document.querySelector("#projectFilterPeriod")?.value || "todos";
+  const dateField = document.querySelector("#projectFilterDateField")?.value || "inicio";
+  const valueFilter = document.querySelector("#projectFilterValue")?.value || "todos";
+  const client = normalizeText(document.querySelector("#projectFilterClient")?.value || "");
+  const city = normalizeText(document.querySelector("#projectFilterCity")?.value || "");
+  const responsible = normalizeText(document.querySelector("#projectFilterResponsible")?.value || "");
+
+  if (status !== "todos" && row.project.status !== status) return false;
+  if (finance !== "todos") {
+    const hasOverdueReceivable = row.transactions.some((item) => item.type === "receber" && isOverdue(item));
+    const receivingOk = row.summary.receivable === 0 && row.summary.received > 0;
+    const lowMargin = row.summary.contracted > 0 && row.summary.marginPercent < (Number(row.project.minMargin) || 20);
+    const financeMatches = {
+      parcelas_vencidas: hasOverdueReceivable,
+      recebimento_em_dia: receivingOk,
+      pagamentos_pendentes: row.summary.payable > 0,
+      custos_pendentes: row.costsOverBudget,
+      lucro_negativo: row.summary.expectedResult < 0,
+      margem_abaixo_meta: lowMargin,
+      saldo_receber: row.financeSituation === "saldo_receber",
+      saldo_pagar: row.financeSituation === "saldo_pagar",
+      sem_recebimento: row.financeSituation === "sem_recebimento",
+      em_dia: row.financeSituation === "em_dia",
+    };
+    if (!financeMatches[finance]) return false;
+  }
+  if (install !== "todos") {
+    const installMatches = {
+      nao_iniciado: row.installSituation === "nao_iniciado",
+      prioridade_alta: row.priority === "alta",
+      prioridade_media: row.priority === "media",
+      prioridade_baixa: row.priority === "baixa",
+      em_andamento: row.installSituation === "em_execucao",
+      atrasado: row.installSituation === "atrasado",
+      finalizado: row.installSituation === "concluido",
+      agendado: row.installSituation === "agendado",
+      concluido: row.installSituation === "concluido",
+    };
+    if (!installMatches[install]) return false;
+  }
+  if (!matchesProjectPeriod(row, period, dateField)) return false;
+  if (!matchesProjectValueFilter(row.summary.contracted || row.summary.invoiced || 0, valueFilter)) return false;
+  if (client && !normalizeText(personName(row.project.customerId)).includes(client)) return false;
+  if (city && !normalizeText(row.city).includes(city)) return false;
+  if (responsible && !normalizeText(row.responsible).includes(responsible)) return false;
+  return true;
+}
+
+function matchesProjectValueFilter(amount, filter) {
+  if (filter === "todos") return true;
+  if (filter === "ate_20000") return amount <= 20000;
+  if (filter === "20000_50000") return amount > 20000 && amount <= 50000;
+  if (filter === "50000_100000") return amount > 50000 && amount <= 100000;
+  if (filter === "100000_300000") return amount > 100000 && amount <= 300000;
+  if (filter === "acima_300000") return amount > 300000;
+  if (filter === "ate_50") return amount <= 50000;
+  if (filter === "50_100") return amount > 50000 && amount <= 100000;
+  if (filter === "100_300") return amount > 100000 && amount <= 300000;
+  if (filter === "acima_300") return amount > 300000;
+  return true;
+}
+
+function matchesProjectPeriod(row, period, dateField) {
+  if (period === "todos") return true;
+  const date = projectFilterDate(row, dateField);
+  if (!date) return false;
+  const range = projectPeriodRange(period);
+  return date >= range.start && date <= range.end;
+}
+
+function projectFilterDate(row, dateField) {
+  if (dateField === "sale") return row.project.saleDate || row.project.contractDate || row.project.startDate || "";
+  if (dateField === "installation") return row.installation?.scheduledDate || row.project.endDate || "";
+  if (dateField === "conclusion") return row.installation?.completedDate || row.project.completedDate || "";
+  if (dateField === "contrato") return row.project.contractDate || row.project.startDate || "";
+  if (dateField === "homologacao") return row.project.homologationDate || row.project.startDate || "";
+  if (dateField === "instalacao") return row.installation?.scheduledDate || row.project.endDate || "";
+  if (dateField === "previsao") return row.project.endDate || row.installation?.scheduledDate || "";
+  return row.project.startDate || row.project.createdAt || "";
+}
+
+function projectPeriodRange(period) {
+  const now = new Date(todayIso + "T00:00:00");
+  if (period === "hoje") return { start: todayIso, end: todayIso };
+  if (period === "ontem") {
+    const yesterday = isoDate(addDays(now, -1));
+    return { start: yesterday, end: yesterday };
+  }
+  if (period === "7dias") return { start: isoDate(addDays(now, -6)), end: todayIso };
+  if (period === "30dias") return { start: isoDate(addDays(now, -29)), end: todayIso };
+  if (period === "mes_atual") return { start: todayIso.slice(0, 8) + "01", end: todayIso };
+  if (period === "mes_anterior" || period === "mes_passado") {
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0);
+    return { start: isoDate(start), end: isoDate(end) };
+  }
+  if (period === "trimestre") {
+    const quarterStart = Math.floor(now.getMonth() / 3) * 3;
+    return { start: isoDate(new Date(now.getFullYear(), quarterStart, 1)), end: todayIso };
+  }
+  if (period === "ano") return { start: `${now.getFullYear()}-01-01`, end: `${now.getFullYear()}-12-31` };
+  return { start: "1900-01-01", end: "2999-12-31" };
+}
+
+function sortProjectDashboardRows(rows) {
+  const sort = document.querySelector("#projectSort")?.value || "nome";
+  const sorted = [...rows];
+  const value = {
+    nome: (row) => normalizeText(projectLabel(row.project)),
+    maior_receita: (row) => row.summary.contracted || row.summary.invoiced || 0,
+    menor_receita: (row) => -(row.summary.contracted || row.summary.invoiced || 0),
+    maior_lucro: (row) => row.summary.expectedResult || 0,
+    menor_lucro: (row) => -(row.summary.expectedResult || 0),
+    maior_custo: (row) => row.summary.costs || 0,
+    menor_custo: (row) => -(row.summary.costs || 0),
+    maior_margem: (row) => row.summary.marginPercent || 0,
+    menor_margem: (row) => -(row.summary.marginPercent || 0),
+    mais_recente: (row) => {
+      const date = projectFilterDate(row, "sale") || row.project.createdAt || "";
+      return date ? parseDate(date.slice(0, 10)).getTime() : 0;
+    },
+    mais_antigo: (row) => {
+      const date = projectFilterDate(row, "sale") || row.project.createdAt || "";
+      return date ? -parseDate(date).getTime() : 0;
+    },
+    maior_prioridade: (row) => ({ alta: 3, media: 2, baixa: 1 }[row.priority] || 0),
+    maior_execucao: (row) => row.execution,
+    valor_desc: (row) => row.summary.contracted || row.summary.invoiced || 0,
+    margem_desc: (row) => row.summary.marginPercent || 0,
+    lucro_desc: (row) => row.summary.expectedResult || 0,
+    mais_atrasado: (row) => (row.daysToInstallation === null ? -9999 : -row.daysToInstallation),
+    saude_desc: (row) => row.health,
+  }[sort];
+  sorted.sort((a, b) => {
+    const aValue = value(a);
+    const bValue = value(b);
+    if (typeof aValue === "string") return aValue.localeCompare(bValue);
+    return bValue - aValue;
+  });
+  return sorted;
+}
+
+function renderProjectDashboardKpis(rows) {
+  const totals = rows.reduce(
+    (acc, row) => {
+      acc.projects += 1;
+      acc.contracted += row.summary.contracted || row.summary.invoiced || 0;
+      acc.received += row.summary.received;
+      acc.receivable += row.summary.receivable;
+      acc.costs += row.summary.costs;
+      acc.expectedResult += row.summary.expectedResult;
+      acc.realizedResult += row.summary.realizedResult;
+      acc.late += row.installSituation === "atrasado" ? 1 : 0;
+      acc.lowMargin += row.summary.contracted > 0 && row.summary.marginPercent < (Number(row.project.minMargin) || 20) ? 1 : 0;
+      acc.health += row.health;
+      return acc;
+    },
+    { projects: 0, contracted: 0, received: 0, receivable: 0, costs: 0, expectedResult: 0, realizedResult: 0, late: 0, lowMargin: 0, health: 0 }
+  );
+  const avgMargin = totals.contracted ? ((totals.expectedResult / totals.contracted) * 100) : 0;
+  const avgHealth = totals.projects ? totals.health / totals.projects : 0;
+  document.querySelector("#projectDashboardKpis").innerHTML = [
+    projectKpiCard("Projetos filtrados", totals.projects, "Carteira conforme filtros"),
+    projectKpiCard("Receita contratada", formatCurrency(totals.contracted), "Valor total vendido"),
+    projectKpiCard("Receita recebida", formatCurrency(totals.received), `${formatCurrency(totals.receivable)} a receber`),
+    projectKpiCard("Custos realizados", formatCurrency(totals.costs), "Custos diretos vinculados"),
+    projectKpiCard("Resultado previsto", formatCurrency(totals.expectedResult), `Margem media ${formatPercent(avgMargin)}`),
+    projectKpiCard("Resultado realizado", formatCurrency(totals.realizedResult), "Recebido menos custos pagos"),
+    projectKpiCard("Projetos atrasados", totals.late, "Instalacao ou prazo vencido", totals.late ? "danger" : "ok"),
+    projectKpiCard("Saude media", `${avgHealth.toFixed(0)}%`, `${totals.lowMargin} com margem baixa`, avgHealth < 65 ? "danger" : avgHealth < 80 ? "warn" : "ok"),
+  ].join("");
+}
+
+function projectKpiCard(label, value, hint, tone = "") {
+  return `<article class="project-mini-kpi ${tone}">
+    <span>${escapeHtml(label)}</span>
+    <strong>${escapeHtml(String(value))}</strong>
+    <small>${escapeHtml(hint)}</small>
+  </article>`;
+}
+
+function renderProjectDashboardPanels(rows) {
+  const highPriority = rows.filter((row) => row.priority === "alta").length;
+  const waitingHomologation = rows.filter((row) => row.installSituation === "aguardando_homologacao").length;
+  const waitingInstall = rows.filter((row) => ["nao_iniciado", "agendado"].includes(row.installSituation)).length;
+  const late = rows.filter((row) => row.installSituation === "atrasado").length;
+  const payable = rows.reduce((sum, row) => sum + row.summary.payable, 0);
+  const receivable = rows.reduce((sum, row) => sum + row.summary.receivable, 0);
+  const topRevenue = [...rows].sort((a, b) => (b.summary.invoiced || b.summary.contracted) - (a.summary.invoiced || a.summary.contracted))[0];
+  const lowMargin = rows.filter((row) => row.summary.contracted > 0 && row.summary.marginPercent < (Number(row.project.minMargin) || 20)).length;
+  document.querySelector("#projectSupervisorChips").innerHTML = [
+    projectChip("Prioridade alta", highPriority, highPriority ? "danger" : "ok"),
+    projectChip("Aguardando homologacao", waitingHomologation, waitingHomologation ? "warn" : "ok"),
+    projectChip("Aguardando instalacao", waitingInstall, waitingInstall ? "warn" : "ok"),
+    projectChip("Atrasados", late, late ? "danger" : "ok"),
+  ].join("");
+  document.querySelector("#projectFinanceChips").innerHTML = [
+    projectChip("A receber", formatCurrency(receivable), receivable ? "warn" : "ok"),
+    projectChip("A pagar", formatCurrency(payable), payable ? "warn" : "ok"),
+    projectChip("Margem baixa", lowMargin, lowMargin ? "danger" : "ok"),
+    projectChip("Maior faturamento", topRevenue ? projectLabel(topRevenue.project) : "-", "neutral"),
+  ].join("");
+}
+
+function projectChip(label, value, tone) {
+  return `<div class="project-chip ${tone}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value))}</strong></div>`;
+}
+
+function renderProjectDashboardCharts(rows) {
+  const topRevenue = [...rows].sort((a, b) => (b.summary.contracted || b.summary.invoiced) - (a.summary.contracted || a.summary.invoiced)).slice(0, 6);
+  const topProfit = [...rows].sort((a, b) => b.summary.expectedResult - a.summary.expectedResult).slice(0, 6);
+  const topMargin = [...rows].filter((row) => row.summary.contracted > 0).sort((a, b) => b.summary.marginPercent - a.summary.marginPercent).slice(0, 6);
+  const topCost = [...rows].sort((a, b) => b.summary.costs - a.summary.costs).slice(0, 6);
+  renderProjectBars("#projectRevenueChart", topRevenue, (row) => row.summary.contracted || row.summary.invoiced, formatCurrency);
+  renderProjectBars("#projectProfitChart", topProfit, (row) => row.summary.expectedResult, formatCurrency);
+  renderProjectBars("#projectMarginChart", topMargin, (row) => row.summary.marginPercent, (value) => formatPercent(value));
+  renderProjectBars("#projectCostChart", topCost, (row) => row.summary.costs, formatCurrency);
+}
+
+function renderProjectBars(selector, rows, valueGetter, formatter) {
+  const container = document.querySelector(selector);
+  if (!container) return;
+  const max = Math.max(...rows.map(valueGetter).map((value) => Math.abs(value)), 1);
+  container.innerHTML = rows.length
+    ? rows.map((row) => {
+        const value = valueGetter(row);
+        const width = Math.max(4, Math.min(100, Math.abs(value) / max * 100));
+        return `<button type="button" class="project-bar-row" data-project-id="${row.project.id}">
+          <span>${escapeHtml(projectLabel(row.project))}</span>
+          <div class="project-bar-track"><i style="width:${width}%"></i></div>
+          <strong>${escapeHtml(formatter(value))}</strong>
+        </button>`;
+      }).join("")
+    : emptyMessage("Sem dados para exibir.");
+  container.querySelectorAll("[data-project-id]").forEach((button) => {
+    button.addEventListener("click", () => openProjectDrawer(button.dataset.projectId));
+  });
+}
+
+function renderProjectDashboardTable(rows) {
+  document.querySelector("#projectDashboardTable").innerHTML = rows.length
+    ? rows.map((row) => `<tr class="project-dashboard-row" data-project-id="${row.project.id}">
+      <td>
+        <strong>${escapeHtml(projectLabel(row.project))}</strong>
+      </td>
+      <td>${escapeHtml(personName(row.project.customerId))}</td>
+      <td>${escapeHtml(row.city || "-")}</td>
+      <td>${escapeHtml(row.responsible || "-")}</td>
+      <td>${formatCurrency(row.summary.contracted || row.summary.invoiced)}</td>
+      <td>${formatCurrency(row.summary.received)}</td>
+      <td>${formatCurrency(row.summary.receivable)}</td>
+      <td>${formatCurrency(row.summary.expectedCosts)}</td>
+      <td>${formatCurrency(row.summary.costs)}</td>
+      <td>${formatCurrency(row.summary.expectedResult)}</td>
+      <td>${formatPercent(row.summary.marginPercent)}</td>
+      <td>
+        <div class="project-progress"><i style="width:${row.execution}%"></i></div>
+        <small>${row.execution}%</small>
+      </td>
+      <td>${projectBadge(projectInstallLabel(row.installSituation), installTone(row.installSituation))}</td>
+      <td>${projectBadge(projectStatusLabel(row.project.status), statusTone(row.project.status))}</td>
+      <td>${projectBadge(priorityLabel(row.priority), priorityTone(row.priority))}</td>
+      <td><strong>${row.health}%</strong></td>
+      <td>${formatDate((row.project.updatedAt || row.project.createdAt || "").slice(0, 10))}</td>
+    </tr>`).join("")
+    : `<tr><td colspan="17">${emptyMessage("Nenhum projeto encontrado com os filtros atuais.")}</td></tr>`;
+  document.querySelectorAll(".project-dashboard-row").forEach((row) => {
+    row.addEventListener("click", () => openProjectDrawer(row.dataset.projectId));
+  });
+}
+
+function projectBadge(label, tone = "neutral") {
+  return `<span class="project-badge ${tone}">${escapeHtml(label)}</span>`;
+}
+
+function statusTone(status) {
+  if (["concluido", "liberado_instalacao"].includes(status)) return "ok";
+  if (["cancelado", "pausado"].includes(status)) return "danger";
+  if (["instalacao_agendada", "em_instalacao", "homologacao"].includes(status)) return "warn";
+  return "neutral";
+}
+
+function priorityTone(priority) {
+  if (priority === "alta") return "danger";
+  if (priority === "media") return "warn";
+  return "ok";
+}
+
+function priorityLabel(priority) {
+  return { alta: "Alta", media: "Media", baixa: "Baixa" }[priority] || "Baixa";
+}
+
+function projectInstallLabel(situation) {
+  return {
+    aguardando_homologacao: "Aguardando homologacao",
+    nao_iniciado: "Nao iniciado",
+    atrasado: "Atrasado",
+    agendado: "Agendado",
+    em_execucao: "Em andamento",
+    concluido: "Finalizado",
+  }[situation] || situation || "-";
+}
+
+function installTone(situation) {
+  if (situation === "concluido") return "ok";
+  if (situation === "atrasado") return "danger";
+  if (["agendado", "em_execucao", "aguardando_homologacao"].includes(situation)) return "warn";
+  return "neutral";
+}
+
+function clearProjectDashboardFilters() {
+  ["#projectFilterClient", "#projectFilterCity", "#projectFilterResponsible"].forEach((selector) => {
+    const field = document.querySelector(selector);
+    if (field) field.value = "";
+  });
+  [
+    ["#projectFilterStatus", "todos"],
+    ["#projectFilterFinance", "todos"],
+    ["#projectFilterInstall", "todos"],
+    ["#projectFilterPeriod", "todos"],
+    ["#projectFilterDateField", "inicio"],
+    ["#projectFilterValue", "todos"],
+    ["#projectSort", "nome"],
+  ].forEach(([selector, value]) => {
+    const field = document.querySelector(selector);
+    if (field) field.value = value;
+  });
+  renderProjectDashboard();
+}
+
+function exportProjectDashboardCsv() {
+  const rows = filteredProjectDashboardRows();
+  const headers = ["Projeto", "Cliente", "Status", "Responsavel", "Cidade", "Receita contratada", "Receita recebida", "Custos", "Resultado previsto", "Margem", "Execucao", "Prioridade", "Saude"];
+  const csvRows = rows.map((row) => [
+    projectLabel(row.project),
+    personName(row.project.customerId),
+    projectStatusLabel(row.project.status),
+    row.responsible,
+    row.city,
+    row.summary.contracted || row.summary.invoiced,
+    row.summary.received,
+    row.summary.costs,
+    row.summary.expectedResult,
+    row.summary.marginPercent,
+    row.execution,
+    priorityLabel(row.priority),
+    row.health,
+  ]);
+  downloadCsv(`projetos-dashboard-${todayIso}.csv`, [headers, ...csvRows]);
+}
+
+function openProjectDrawer(projectId) {
+  const row = projectDashboardRows().find((item) => item.project.id === projectId);
+  const drawer = document.querySelector("#projectDrawer");
+  const content = document.querySelector("#projectDrawerContent");
+  if (!row || !drawer || !content) return;
+  content.innerHTML = `
+    <div class="drawer-header">
+      <div>
+        <small>${escapeHtml(personName(row.project.customerId))}</small>
+        <h3 id="projectDrawerTitle">${escapeHtml(projectLabel(row.project))}</h3>
+      </div>
+      ${projectBadge(priorityLabel(row.priority), priorityTone(row.priority))}
+    </div>
+    <div class="drawer-grid">
+      ${drawerMetric("Receita contratada", formatCurrency(row.summary.contracted || row.summary.invoiced))}
+      ${drawerMetric("Recebido", formatCurrency(row.summary.received))}
+      ${drawerMetric("A receber", formatCurrency(row.summary.receivable))}
+      ${drawerMetric("Custos", formatCurrency(row.summary.costs))}
+      ${drawerMetric("Resultado previsto", formatCurrency(row.summary.expectedResult))}
+      ${drawerMetric("Saude", `${row.health}%`)}
+    </div>
+    ${drawerSection("Dados do projeto", [
+      ["Status", projectStatusLabel(row.project.status)],
+      ["Responsavel", row.responsible || "-"],
+      ["Cidade", row.city || "-"],
+      ["Inicio", formatDate(row.project.startDate)],
+      ["Previsao", formatDate(row.project.endDate)],
+      ["Centro de custo", costCenterName(row.project.costCenterId)],
+    ])}
+    ${drawerSection("Instalacao", [
+      ["Situacao", row.installation ? statusLabel(row.installation.status) : "Nao programada"],
+      ["Data prevista", formatDate(row.installation?.scheduledDate)],
+      ["Equipe", row.installation?.team || "-"],
+      ["Conclusao", formatDate(row.installation?.completedDate)],
+    ])}
+    ${drawerList("Lancamentos financeiros", row.transactions.slice(0, 8).map((transaction) =>
+      `${formatDate(transaction.dueDate)} - ${transaction.type === "receber" ? "Receber" : "Pagar"} - ${formatCurrency(accountingValueOf(transaction))} - ${statusLabel(transaction.status)}`
+    ))}
+    ${protocolProjectSectionHtml(row.project.id)}
+  `;
+  drawer.classList.add("open");
+  drawer.setAttribute("aria-hidden", "false");
+  document.querySelectorAll("[data-open-protocol]").forEach((button) => {
+    button.addEventListener("click", () => {
+      closeProjectDrawer();
+      openProtocolDrawer(button.dataset.openProtocol);
+    });
+  });
+}
+
+function drawerMetric(label, value) {
+  return `<article class="drawer-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></article>`;
+}
+
+function drawerSection(title, rows) {
+  return `<section class="drawer-section"><h4>${escapeHtml(title)}</h4>${rows.map(([label, value]) =>
+    `<p><span>${escapeHtml(label)}</span><strong>${escapeHtml(String(value || "-"))}</strong></p>`
+  ).join("")}</section>`;
+}
+
+function drawerList(title, rows) {
+  return `<section class="drawer-section"><h4>${escapeHtml(title)}</h4>${rows.length ? rows.map((row) => `<p>${escapeHtml(row)}</p>`).join("") : `<p>${emptyMessage("Sem lancamentos vinculados.")}</p>`}</section>`;
+}
+
+function closeProjectDrawer() {
+  const drawer = document.querySelector("#projectDrawer");
+  if (!drawer) return;
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+}
+
 function costCenterName(costCenterId) {
   return state.costCenters.find((item) => item.id === costCenterId)?.name || "Não criado";
 }
 
-function renderHomologation() {
-  const rows = state.projects
-    .filter((project) => ["homologacao", "orcamento", "ativo"].includes(project.status))
-    .sort((a, b) => (a.startDate || "").localeCompare(b.startDate || ""));
+// ===================== Central de Protocolos e Concessionárias =====================
 
-  els.homologationTable.innerHTML = rows.length
-    ? rows.map((project) => `
-      <tr>
-        <td>${escapeHtml(projectLabel(project))}</td>
-        <td>${escapeHtml(personName(project.customerId))}</td>
-        <td>${projectStatusLabel(project.status)}</td>
-        <td>${formatDate(project.startDate)}</td>
-        <td>${formatDate(project.endDate)}</td>
-        <td>
-          <button type="button" data-homologation-action="edit" data-id="${project.id}">Editar projeto</button>
-          <button type="button" data-homologation-action="installation" data-id="${project.id}">Programar instalação</button>
-        </td>
-      </tr>`).join("")
-    : `<tr><td colspan="6">${emptyMessage("Nenhum projeto em homologação.")}</td></tr>`;
+function hydrateProtocolOptions() {
+  const utilityOptions = state.utilityCompanies
+    .filter((item) => item.active !== false)
+    .map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`)
+    .join("");
+  const activityTypeOptions = state.protocolActivityTypes
+    .filter((item) => item.active !== false)
+    .map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`)
+    .join("");
+  const projectOptions = state.projects.map((project) => `<option value="${project.id}">${escapeHtml(projectLabel(project))}</option>`).join("");
+  const customerOptions = state.people
+    .filter((person) => person.type === "cliente" || person.type === "ambos")
+    .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
+    .join("");
+  const responsibleOptions = state.users
+    .filter((user) => user.active)
+    .map((user) => `<option value="${user.id}">${escapeHtml(user.name || user.username)}</option>`)
+    .join("");
+  const statusOptions = PROTOCOL_STATUSES.map((status) => `<option value="${status.id}">${escapeHtml(status.label)}</option>`).join("");
 
-  document.querySelectorAll("[data-homologation-action]").forEach((button) => {
-    button.addEventListener("click", () => handleHomologationAction(button.dataset.homologationAction, button.dataset.id));
+  if (els.protocolUtility) setSelectOptions(els.protocolUtility, utilityOptions);
+  if (els.protocolActivityType) setSelectOptions(els.protocolActivityType, activityTypeOptions);
+  if (els.protocolProject) setSelectOptions(els.protocolProject, `<option value="">Nenhum (sem projeto)</option>${projectOptions}`);
+  if (els.protocolCustomer) setSelectOptions(els.protocolCustomer, customerOptions || `<option value="">Cadastre um cliente primeiro</option>`);
+  if (els.protocolResponsible) setSelectOptions(els.protocolResponsible, `<option value="">Sem responsável</option>${responsibleOptions}`);
+  if (els.protocolStatus) setSelectOptions(els.protocolStatus, statusOptions);
+
+  if (els.protocolFilterUtility) setSelectOptions(els.protocolFilterUtility, `<option value="todos">Todas</option>${utilityOptions}`);
+  if (els.protocolFilterActivityType) setSelectOptions(els.protocolFilterActivityType, `<option value="todos">Todos</option>${activityTypeOptions}`);
+  if (els.protocolFilterStatus) setSelectOptions(els.protocolFilterStatus, `<option value="todos">Todos</option>${statusOptions}`);
+  if (els.protocolFilterResponsible) setSelectOptions(els.protocolFilterResponsible, `<option value="todos">Todos</option>${responsibleOptions}`);
+  if (els.protocolFilterProject) setSelectOptions(els.protocolFilterProject, `<option value="todos">Todos</option><option value="com">Com projeto</option><option value="sem">Sem projeto</option>${projectOptions}`);
+}
+
+function protocolStatusInfo(statusId) {
+  return PROTOCOL_STATUSES.find((status) => status.id === statusId) || PROTOCOL_STATUSES[0];
+}
+
+function protocolStatusLabel(statusId) {
+  return protocolStatusInfo(statusId).label;
+}
+
+function utilityCompanyName(id) {
+  return state.utilityCompanies.find((item) => item.id === id)?.name || "Não informado";
+}
+
+function activityTypeName(id) {
+  return state.protocolActivityTypes.find((item) => item.id === id)?.name || "Não informado";
+}
+
+function userName(id) {
+  const user = state.users.find((item) => item.id === id);
+  return user ? (user.name || user.username) : "Sem responsável";
+}
+
+function nextProtocolInternalNumber() {
+  return `PRT-${String(state.protocols.length + 1).padStart(4, "0")}`;
+}
+
+function checklistStatusLabel(status) {
+  return { pendente: "Pendente", enviado: "Enviado", aprovado: "Aprovado", rejeitado: "Rejeitado" }[status] || status;
+}
+
+function protocolIsOpen(protocol) {
+  return !PROTOCOL_CLOSED_STATUSES.includes(protocol.status);
+}
+
+function protocolDaysRemaining(protocol) {
+  if (!protocol.utilityDeadline || !protocolIsOpen(protocol)) return null;
+  return daysBetween(protocol.utilityDeadline, todayIso);
+}
+
+function protocolDeadlineInfo(protocol) {
+  const daysRemaining = protocolDaysRemaining(protocol);
+  if (daysRemaining === null) return { tone: "neutral", label: "Sem prazo" };
+  if (daysRemaining < 0) return { tone: "danger", label: `Vencido há ${Math.abs(daysRemaining)} dia(s)` };
+  if (daysRemaining === 0) return { tone: "danger", label: "Vence hoje" };
+  if (daysRemaining <= 7) return { tone: "warn", label: `Vence em ${daysRemaining} dia(s)` };
+  return { tone: "ok", label: `Faltam ${daysRemaining} dia(s)` };
+}
+
+function matchesProtocolFilters(protocol) {
+  const search = normalizeText(els.protocolSearch?.value || "");
+  const utility = els.protocolFilterUtility?.value || "todos";
+  const activityType = els.protocolFilterActivityType?.value || "todos";
+  const status = els.protocolFilterStatus?.value || "todos";
+  const responsible = els.protocolFilterResponsible?.value || "todos";
+  const city = normalizeText(els.protocolFilterCity?.value || "");
+  const projectFilter = els.protocolFilterProject?.value || "todos";
+  const deadlineFilter = els.protocolFilterDeadline?.value || "todos";
+  const priorityFilter = els.protocolFilterPriority?.value || "todos";
+  const period = els.protocolFilterPeriod?.value || "todos";
+
+  if (period !== "todos" && !matchesProtocolPeriod(protocol, period)) return false;
+  if (utility !== "todos" && protocol.utilityCompanyId !== utility) return false;
+  if (activityType !== "todos" && protocol.activityTypeId !== activityType) return false;
+  if (status !== "todos" && protocol.status !== status) return false;
+  if (responsible !== "todos" && protocol.responsibleUserId !== responsible) return false;
+  if (city && !normalizeText(protocol.city).includes(city)) return false;
+  if (priorityFilter !== "todos" && protocol.priority !== priorityFilter) return false;
+  if (projectFilter === "com" && !protocol.projectId) return false;
+  if (projectFilter === "sem" && protocol.projectId) return false;
+  if (!["todos", "com", "sem"].includes(projectFilter) && protocol.projectId !== projectFilter) return false;
+  if (deadlineFilter !== "todos") {
+    const daysRemaining = protocolDaysRemaining(protocol);
+    if (deadlineFilter === "atraso" && !(daysRemaining !== null && daysRemaining < 0)) return false;
+    if (deadlineFilter === "hoje" && daysRemaining !== 0) return false;
+    if (deadlineFilter === "semana" && !(daysRemaining !== null && daysRemaining >= 0 && daysRemaining <= 7)) return false;
+    if (deadlineFilter === "dentro" && !(daysRemaining !== null && daysRemaining > 7)) return false;
+  }
+  if (search) {
+    const haystack = normalizeText([
+      personName(protocol.customerId),
+      protocol.protocolNumber,
+      protocol.internalNumber,
+      protocol.consumerUnit,
+      protocol.city,
+    ].join(" "));
+    if (!haystack.includes(search)) return false;
+  }
+  return true;
+}
+
+function matchesProtocolPeriod(protocol, period) {
+  if (!protocol.openedAt) return false;
+  const range = projectPeriodRange(period);
+  return protocol.openedAt >= range.start && protocol.openedAt <= range.end;
+}
+
+function filteredProtocols() {
+  return state.protocols
+    .filter(matchesProtocolFilters)
+    .sort((a, b) => (a.utilityDeadline || "9999-99-99").localeCompare(b.utilityDeadline || "9999-99-99"));
+}
+
+function renderProtocols() {
+  hydrateProtocolOptions();
+  const rows = filteredProtocols();
+  els.protocolsTable.innerHTML = rows.length
+    ? rows.map(protocolRow).join("")
+    : `<tr><td colspan="10">${emptyMessage("Nenhum protocolo encontrado com os filtros atuais.")}</td></tr>`;
+  document.querySelectorAll("[data-protocol-open]").forEach((row) => {
+    row.addEventListener("click", () => openProtocolDrawer(row.dataset.protocolOpen));
+  });
+  renderProtocolKanban(rows);
+  renderProtocolKpis();
+  renderProtocolAlerts();
+}
+
+let currentProtocolTab = "tabela";
+
+function setProtocolTab(tab) {
+  currentProtocolTab = tab;
+  document.querySelectorAll("[data-protocol-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.protocolTab === tab);
+  });
+  document.querySelectorAll("[data-protocol-panel]").forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.protocolPanel !== tab);
   });
 }
 
-function handleHomologationAction(action, projectId) {
-  const project = state.projects.find((item) => item.id === projectId);
-  if (!project) return;
-  if (action === "edit") {
-    setView("projetos");
-    handleProjectAction("edit", projectId);
-    return;
-  }
-  if (action === "installation") {
-    openInstallationForProject(project);
-  }
+function computeProtocolKpis() {
+  const all = state.protocols;
+  const period = els.protocolFilterPeriod?.value || "todos";
+  const totalInPeriod = period === "todos" ? all.length : all.filter((p) => matchesProtocolPeriod(p, period)).length;
+  const open = all.filter(protocolIsOpen);
+  const overdue = open.filter((p) => { const d = protocolDaysRemaining(p); return d !== null && d < 0; });
+  const dueThisWeek = open.filter((p) => { const d = protocolDaysRemaining(p); return d !== null && d >= 0 && d <= 7; });
+  const homologacoes = open.filter((p) => p.activityTypeId === "homologacao");
+  const viabilidade = open.filter((p) => p.activityTypeId === "consulta_viabilidade");
+  const aguardandoCliente = all.filter((p) => p.status === "aguardando_cliente");
+  const aguardandoConcessionaria = all.filter((p) => p.status === "aguardando_concessionaria");
+  const projetosLiberados = all.filter((p) => p.status === PROTOCOL_RELEASE_STATUS && p.projectId);
+  const projetosConcluidos = all.filter((p) => p.status === "concluido" && p.projectId);
+
+  const approvalStatuses = ["projeto_aprovado", "instalacao_liberada", "concluido"];
+  const approvalDurations = [];
+  all.forEach((protocol) => {
+    if (!protocol.openedAt) return;
+    const milestone = state.protocolHistory
+      .filter((item) => item.protocolId === protocol.id && approvalStatuses.includes(item.toStatus))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+    if (milestone) approvalDurations.push(daysBetween(milestone.createdAt.slice(0, 10), protocol.openedAt));
+  });
+  const avgApprovalDays = approvalDurations.length
+    ? Math.round(approvalDurations.reduce((sum, value) => sum + value, 0) / approvalDurations.length)
+    : null;
+
+  return {
+    totalInPeriod,
+    open: open.length,
+    overdue: overdue.length,
+    dueThisWeek: dueThisWeek.length,
+    homologacoes: homologacoes.length,
+    viabilidade: viabilidade.length,
+    aguardandoCliente: aguardandoCliente.length,
+    aguardandoConcessionaria: aguardandoConcessionaria.length,
+    projetosLiberados: projetosLiberados.length,
+    projetosConcluidos: projetosConcluidos.length,
+    avgApprovalDays,
+  };
 }
+
+function renderProtocolKpis() {
+  const container = document.querySelector("#protocolKpis");
+  if (!container) return;
+  const kpis = computeProtocolKpis();
+  container.innerHTML = [
+    projectKpiCard("Protocolos no período", kpis.totalInPeriod, "Todos os status, inclusive concluídos"),
+    projectKpiCard("Tickets abertos", kpis.open, "Em andamento agora"),
+    projectKpiCard("Tickets em atraso", kpis.overdue, "Prazo da concessionária vencido", kpis.overdue ? "danger" : "ok"),
+    projectKpiCard("Tickets desta semana", kpis.dueThisWeek, "Vencem nos próximos 7 dias", kpis.dueThisWeek ? "warn" : "ok"),
+    projectKpiCard("Homologações em andamento", kpis.homologacoes, "Tipo: Homologação"),
+    projectKpiCard("Consultas de viabilidade", kpis.viabilidade, "Tipo: Consulta de viabilidade"),
+    projectKpiCard("Aguardando cliente", kpis.aguardandoCliente, "Ticket parado por resposta do cliente", kpis.aguardandoCliente ? "warn" : "ok"),
+    projectKpiCard("Aguardando concessionária", kpis.aguardandoConcessionaria, "Ticket parado na concessionária", kpis.aguardandoConcessionaria ? "warn" : "ok"),
+    projectKpiCard("Projetos liberados", kpis.projetosLiberados, "Protocolos que liberaram instalação"),
+    projectKpiCard("Projetos concluídos", kpis.projetosConcluidos, "Protocolos concluídos com projeto vinculado"),
+    projectKpiCard("Tempo médio de aprovação", kpis.avgApprovalDays === null ? "-" : `${kpis.avgApprovalDays} dia(s)`, "Da abertura até aprovação/liberação"),
+  ].join("");
+}
+
+function computeProtocolAlerts() {
+  const open = state.protocols.filter(protocolIsOpen);
+  return {
+    vencidos: open.filter((p) => { const d = protocolDaysRemaining(p); return d !== null && d < 0; }),
+    venceHoje: open.filter((p) => protocolDaysRemaining(p) === 0),
+    venceAmanha: open.filter((p) => protocolDaysRemaining(p) === 1),
+    aguardandoCliente: open.filter((p) => p.status === "aguardando_cliente"),
+    aguardandoDocumentos: open.filter((p) => p.status === "aguardando_documentos"),
+    paradoHaMuitosDias: open.filter((p) => {
+      const ref = (p.lastMovementAt || p.updatedAt || p.createdAt || "").slice(0, 10);
+      return ref && daysBetween(todayIso, ref) > PROTOCOL_STALE_DAYS;
+    }),
+  };
+}
+
+function renderProtocolAlerts() {
+  const container = document.querySelector("#protocolAlerts");
+  if (!container) return;
+  const alerts = computeProtocolAlerts();
+  container.innerHTML = PROTOCOL_ALERT_CATEGORIES.map((category) => {
+    const count = alerts[category.key].length;
+    return `<button type="button" class="project-chip ${count ? "danger" : "ok"}" data-protocol-alert="${category.key}">
+      <span>${escapeHtml(category.label)}</span>
+      <strong>${count}</strong>
+    </button>`;
+  }).join("");
+  document.querySelectorAll("[data-protocol-alert]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const category = PROTOCOL_ALERT_CATEGORIES.find((item) => item.key === button.dataset.protocolAlert);
+      clearProtocolFilters();
+      category.apply();
+      setProtocolTab("tabela");
+      renderProtocols();
+    });
+  });
+}
+
+function renderProtocolKanban(rows) {
+  const board = document.querySelector("#protocolKanbanBoard");
+  if (!board) return;
+  board.innerHTML = PROTOCOL_STATUSES.map((status) => protocolKanbanColumn(status, rows)).join("");
+  bindProtocolKanbanEvents();
+}
+
+function protocolKanbanColumn(status, rows) {
+  const items = rows.filter((protocol) => protocol.status === status.id);
+  return `
+    <section class="kanban-column" data-protocol-status="${status.id}">
+      <header class="kanban-head">
+        <strong>${escapeHtml(status.label)}</strong>
+        <span>${items.length} ticket(s)</span>
+      </header>
+      <div class="kanban-cards" data-protocol-drop-status="${status.id}">
+        ${items.slice(0, 60).map(protocolKanbanCard).join("")}
+        ${items.length > 60 ? `<div class="muted kanban-limit">Mostrando 60 de ${items.length}</div>` : ""}
+      </div>
+    </section>`;
+}
+
+function protocolKanbanCard(protocol) {
+  const deadline = protocolDeadlineInfo(protocol);
+  return `
+    <article class="opportunity-card" draggable="true" data-protocol-id="${protocol.id}">
+      <strong>${escapeHtml(personName(protocol.customerId))}</strong>
+      <span class="muted">${escapeHtml(utilityCompanyName(protocol.utilityCompanyId))} · ${escapeHtml(activityTypeName(protocol.activityTypeId))}</span>
+      <span class="muted">${protocol.projectId ? escapeHtml(projectName(protocol.projectId)) : "Sem projeto"}</span>
+      ${projectBadge(deadline.label, deadline.tone)}
+    </article>`;
+}
+
+function bindProtocolKanbanEvents() {
+  document.querySelectorAll("#protocolKanbanBoard .opportunity-card").forEach((card) => {
+    card.addEventListener("dragstart", (event) => {
+      event.dataTransfer.setData("text/plain", card.dataset.protocolId);
+      card.classList.add("dragging");
+    });
+    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+    card.addEventListener("click", () => openProtocolDrawer(card.dataset.protocolId));
+  });
+  document.querySelectorAll("#protocolKanbanBoard [data-protocol-drop-status]").forEach((dropZone) => {
+    dropZone.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      dropZone.classList.add("drop-active");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drop-active"));
+    dropZone.addEventListener("drop", (event) => {
+      event.preventDefault();
+      dropZone.classList.remove("drop-active");
+      changeProtocolStatus(event.dataTransfer.getData("text/plain"), dropZone.dataset.protocolDropStatus, { reopenDrawer: false });
+    });
+  });
+}
+
+function protocolRow(protocol) {
+  const deadline = protocolDeadlineInfo(protocol);
+  const statusInfo = protocolStatusInfo(protocol.status);
+  return `<tr class="protocol-row" data-protocol-open="${protocol.id}">
+    <td>${projectBadge(statusInfo.label, statusInfo.tone)}</td>
+    <td>${projectBadge(deadline.label, deadline.tone)}</td>
+    <td>${escapeHtml(utilityCompanyName(protocol.utilityCompanyId))}</td>
+    <td>${escapeHtml(personName(protocol.customerId))}</td>
+    <td>${protocol.projectId ? escapeHtml(projectName(protocol.projectId)) : "Sem projeto"}</td>
+    <td>${escapeHtml(protocol.protocolNumber || "-")}</td>
+    <td>${escapeHtml(userName(protocol.responsibleUserId))}</td>
+    <td>${escapeHtml(activityTypeName(protocol.activityTypeId))}</td>
+    <td>${formatDate((protocol.lastMovementAt || protocol.updatedAt || protocol.createdAt || "").slice(0, 10))}</td>
+    <td>${projectBadge(priorityLabel(protocol.priority), priorityTone(protocol.priority))}</td>
+  </tr>`;
+}
+
+function clearProtocolFilters() {
+  if (els.protocolSearch) els.protocolSearch.value = "";
+  if (els.protocolFilterCity) els.protocolFilterCity.value = "";
+  [
+    [els.protocolFilterUtility, "todos"],
+    [els.protocolFilterActivityType, "todos"],
+    [els.protocolFilterStatus, "todos"],
+    [els.protocolFilterResponsible, "todos"],
+    [els.protocolFilterProject, "todos"],
+    [els.protocolFilterDeadline, "todos"],
+    [els.protocolFilterPriority, "todos"],
+    [els.protocolFilterPeriod, "todos"],
+  ].forEach(([field, value]) => { if (field) field.value = value; });
+  renderProtocols();
+}
+
+function openProtocolDialog(protocol = null) {
+  els.protocolForm.reset();
+  hydrateProtocolOptions();
+  els.protocolId.value = protocol?.id || "";
+  els.protocolInternalNumber.value = protocol?.internalNumber || nextProtocolInternalNumber();
+  els.protocolNumber.value = protocol?.protocolNumber || "";
+  els.protocolActivityType.value = protocol?.activityTypeId || els.protocolActivityType.value;
+  els.protocolUtility.value = protocol?.utilityCompanyId || els.protocolUtility.value;
+  els.protocolCustomer.value = protocol?.customerId || "";
+  els.protocolCity.value = protocol?.city || "";
+  els.protocolConsumerUnit.value = protocol?.consumerUnit || "";
+  els.protocolProject.value = protocol?.projectId || "";
+  els.protocolStatus.value = protocol?.status || "novo";
+  els.protocolResponsible.value = protocol?.responsibleUserId || "";
+  els.protocolOpenedAt.value = protocol?.openedAt || todayIso;
+  els.protocolDeadline.value = protocol?.utilityDeadline || "";
+  els.protocolExpectedDate.value = protocol?.expectedDate || "";
+  els.protocolPriority.value = protocol?.priority || "media";
+  els.protocolNotes.value = protocol?.notes || "";
+  els.protocolDialogTitle.textContent = protocol ? "Editar protocolo" : "Novo protocolo";
+  els.protocolDialog.showModal();
+}
+
+function saveProtocol() {
+  const id = els.protocolId.value || crypto.randomUUID();
+  const existing = state.protocols.find((item) => item.id === id);
+  const now = new Date().toISOString();
+  const newStatus = els.protocolStatus.value;
+  const data = {
+    id,
+    internalNumber: existing?.internalNumber || els.protocolInternalNumber.value || nextProtocolInternalNumber(),
+    protocolNumber: els.protocolNumber.value.trim().slice(0, 15),
+    activityTypeId: els.protocolActivityType.value,
+    utilityCompanyId: els.protocolUtility.value,
+    customerId: els.protocolCustomer.value,
+    city: els.protocolCity.value.trim(),
+    consumerUnit: els.protocolConsumerUnit.value.trim(),
+    projectId: els.protocolProject.value,
+    status: newStatus,
+    responsibleUserId: els.protocolResponsible.value,
+    openedAt: els.protocolOpenedAt.value,
+    utilityDeadline: els.protocolDeadline.value,
+    expectedDate: els.protocolExpectedDate.value,
+    priority: els.protocolPriority.value,
+    notes: els.protocolNotes.value.trim(),
+    checklist: existing?.checklist || [],
+    lastMovementAt: now,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+
+  const index = state.protocols.findIndex((item) => item.id === id);
+  if (index >= 0) {
+    if (existing.status !== newStatus) addProtocolHistory(id, "Mudança de status", existing.status, newStatus);
+    state.protocols[index] = data;
+  } else {
+    if (!data.checklist.length && PROTOCOL_CHECKLIST_TEMPLATES[data.activityTypeId]) {
+      data.checklist = PROTOCOL_CHECKLIST_TEMPLATES[data.activityTypeId].map((label) => ({ id: crypto.randomUUID(), label, status: "pendente" }));
+    }
+    state.protocols.push(data);
+    addProtocolHistory(id, "Abertura do protocolo", "", newStatus);
+  }
+
+  if (newStatus === PROTOCOL_RELEASE_STATUS && data.projectId) {
+    releaseProjectFromHomologation(data.projectId);
+  }
+
+  persist();
+  renderAll();
+  els.protocolDialog.close();
+  toast("Protocolo salvo.");
+}
+
+function addProtocolHistory(protocolId, action, fromStatus, toStatus, notes = "") {
+  const user = currentSessionUser();
+  state.protocolHistory.push({
+    id: crypto.randomUUID(),
+    protocolId,
+    action,
+    fromStatus,
+    toStatus,
+    user: user ? (user.name || user.username) : "Usuário local",
+    createdAt: new Date().toISOString(),
+    notes,
+  });
+}
+
+function protocolHistoryHtml(protocolId) {
+  const rows = state.protocolHistory
+    .filter((item) => item.protocolId === protocolId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return rows.length
+    ? rows.map((row) => `
+      <article class="report-item">
+        <strong><span>${escapeHtml(row.action)}</span><span>${formatDate(row.createdAt.slice(0, 10))} ${escapeHtml(row.createdAt.slice(11, 16))}</span></strong>
+        <span class="muted">${row.fromStatus ? `${escapeHtml(protocolStatusLabel(row.fromStatus))} → ` : ""}${row.toStatus ? escapeHtml(protocolStatusLabel(row.toStatus)) : ""} · ${escapeHtml(row.user)}</span>
+        ${row.notes ? `<span class="muted">${escapeHtml(row.notes)}</span>` : ""}
+      </article>`).join("")
+    : emptyMessage("Sem histórico registrado.");
+}
+
+function protocolChecklistHtml(protocol) {
+  if (!protocol.checklist.length) return emptyMessage("Nenhum item de checklist.");
+  return protocol.checklist.map((item) => `
+    <div class="protocol-checklist-item">
+      <span>${escapeHtml(item.label)}</span>
+      <select data-checklist-status data-protocol-id="${protocol.id}" data-item-id="${item.id}">
+        ${["pendente", "enviado", "aprovado", "rejeitado"].map((status) => `<option value="${status}" ${item.status === status ? "selected" : ""}>${checklistStatusLabel(status)}</option>`).join("")}
+      </select>
+    </div>`).join("");
+}
+
+function openProtocolDrawer(protocolId) {
+  const protocol = state.protocols.find((item) => item.id === protocolId);
+  const drawer = document.querySelector("#protocolDrawer");
+  const content = els.protocolDrawerContent;
+  if (!protocol || !drawer || !content) return;
+  const deadline = protocolDeadlineInfo(protocol);
+  const statusInfo = protocolStatusInfo(protocol.status);
+  const project = protocol.projectId ? state.projects.find((item) => item.id === protocol.projectId) : null;
+
+  content.innerHTML = `
+    <div class="drawer-header">
+      <div>
+        <small>${escapeHtml(utilityCompanyName(protocol.utilityCompanyId))} · ${escapeHtml(protocol.internalNumber)}</small>
+        <h3>${escapeHtml(personName(protocol.customerId))}</h3>
+      </div>
+      ${projectBadge(deadline.label, deadline.tone)}
+    </div>
+    <div class="drawer-grid">
+      ${drawerMetric("Status", statusInfo.label)}
+      ${drawerMetric("Prioridade", priorityLabel(protocol.priority))}
+      ${drawerMetric("Protocolo", protocol.protocolNumber || "-")}
+      ${drawerMetric("UC", protocol.consumerUnit || "-")}
+    </div>
+    <section class="drawer-section">
+      <h4>Alterar status</h4>
+      <select id="protocolDrawerStatus" data-protocol-id="${protocol.id}">
+        ${PROTOCOL_STATUSES.map((status) => `<option value="${status.id}" ${protocol.status === status.id ? "selected" : ""}>${escapeHtml(status.label)}</option>`).join("")}
+      </select>
+    </section>
+    ${drawerSection("Dados do protocolo", [
+      ["Tipo de atividade", activityTypeName(protocol.activityTypeId)],
+      ["Cidade", protocol.city || "-"],
+      ["Responsável", userName(protocol.responsibleUserId)],
+      ["Abertura", formatDate(protocol.openedAt)],
+      ["Prazo da concessionária", formatDate(protocol.utilityDeadline)],
+      ["Previsão", formatDate(protocol.expectedDate)],
+      ["Última movimentação", formatDate((protocol.lastMovementAt || "").slice(0, 10))],
+      ["Projeto vinculado", project ? projectLabel(project) : "Sem projeto vinculado"],
+    ])}
+    ${protocol.notes ? `<section class="drawer-section"><h4>Observações</h4><p>${escapeHtml(protocol.notes)}</p></section>` : ""}
+    <section class="drawer-section">
+      <h4>Checklist / documentos</h4>
+      <div class="protocol-checklist">${protocolChecklistHtml(protocol)}</div>
+      <div class="inline-control">
+        <input type="text" id="protocolNewChecklistItem" placeholder="Novo item de checklist" maxlength="80" />
+        <button class="secondary-btn" type="button" id="addProtocolChecklistItemBtn" data-protocol-id="${protocol.id}">Adicionar</button>
+      </div>
+    </section>
+    <section class="drawer-section">
+      <h4>Histórico</h4>
+      <div class="protocol-history">${protocolHistoryHtml(protocol.id)}</div>
+      <div class="inline-control">
+        <input type="text" id="protocolNewNote" placeholder="Registrar observação/movimentação" maxlength="200" />
+        <button class="secondary-btn" type="button" id="addProtocolNoteBtn" data-protocol-id="${protocol.id}">Registrar</button>
+      </div>
+    </section>
+    <menu class="modal-actions">
+      <button class="secondary-btn" type="button" id="editProtocolFromDrawerBtn" data-protocol-id="${protocol.id}">Editar dados</button>
+      ${project ? `<button class="secondary-btn" type="button" id="openInstallationFromProtocolBtn" data-protocol-id="${protocol.id}">Programar instalação</button>` : ""}
+    </menu>
+  `;
+  drawer.classList.add("open");
+  drawer.setAttribute("aria-hidden", "false");
+  bindProtocolDrawerEvents();
+}
+
+function closeProtocolDrawer() {
+  const drawer = document.querySelector("#protocolDrawer");
+  if (!drawer) return;
+  drawer.classList.remove("open");
+  drawer.setAttribute("aria-hidden", "true");
+}
+
+function bindProtocolDrawerEvents() {
+  document.querySelector("#protocolDrawerStatus")?.addEventListener("change", (event) => {
+    changeProtocolStatus(event.target.dataset.protocolId, event.target.value);
+  });
+  document.querySelectorAll("[data-checklist-status]").forEach((select) => {
+    select.addEventListener("change", (event) => {
+      setChecklistItemStatus(event.target.dataset.protocolId, event.target.dataset.itemId, event.target.value);
+    });
+  });
+  document.querySelector("#addProtocolChecklistItemBtn")?.addEventListener("click", (event) => {
+    const input = document.querySelector("#protocolNewChecklistItem");
+    const label = input?.value.trim();
+    if (!label) return;
+    addChecklistItem(event.target.dataset.protocolId, label);
+    input.value = "";
+  });
+  document.querySelector("#addProtocolNoteBtn")?.addEventListener("click", (event) => {
+    const input = document.querySelector("#protocolNewNote");
+    const notes = input?.value.trim();
+    if (!notes) return;
+    const protocolId = event.target.dataset.protocolId;
+    addProtocolHistory(protocolId, "Observação registrada", "", "", notes);
+    persist();
+    renderProtocols();
+    openProtocolDrawer(protocolId);
+  });
+  document.querySelector("#editProtocolFromDrawerBtn")?.addEventListener("click", (event) => {
+    openProtocolDialog(state.protocols.find((item) => item.id === event.target.dataset.protocolId));
+  });
+  document.querySelector("#openInstallationFromProtocolBtn")?.addEventListener("click", (event) => {
+    const protocol = state.protocols.find((item) => item.id === event.target.dataset.protocolId);
+    const project = protocol ? state.projects.find((item) => item.id === protocol.projectId) : null;
+    if (project) openInstallationForProject(project);
+  });
+}
+
+function changeProtocolStatus(protocolId, newStatus, { reopenDrawer = true } = {}) {
+  const protocol = state.protocols.find((item) => item.id === protocolId);
+  if (!protocol || protocol.status === newStatus) return;
+  const previousStatus = protocol.status;
+  protocol.status = newStatus;
+  protocol.lastMovementAt = new Date().toISOString();
+  protocol.updatedAt = protocol.lastMovementAt;
+  addProtocolHistory(protocolId, "Mudança de status", previousStatus, newStatus);
+  if (newStatus === PROTOCOL_RELEASE_STATUS && protocol.projectId) {
+    releaseProjectFromHomologation(protocol.projectId);
+  }
+  persist();
+  renderProtocols();
+  if (reopenDrawer) openProtocolDrawer(protocolId);
+  toast("Status do protocolo atualizado.");
+}
+
+function setChecklistItemStatus(protocolId, itemId, status) {
+  const protocol = state.protocols.find((item) => item.id === protocolId);
+  const item = protocol?.checklist.find((entry) => entry.id === itemId);
+  if (!item) return;
+  item.status = status;
+  protocol.lastMovementAt = new Date().toISOString();
+  protocol.updatedAt = protocol.lastMovementAt;
+  addProtocolHistory(protocolId, "Checklist atualizado", "", "", `${item.label}: ${checklistStatusLabel(status)}`);
+  persist();
+  renderProtocols();
+  openProtocolDrawer(protocolId);
+}
+
+function addChecklistItem(protocolId, label) {
+  const protocol = state.protocols.find((item) => item.id === protocolId);
+  if (!protocol) return;
+  protocol.checklist.push({ id: crypto.randomUUID(), label, status: "pendente" });
+  protocol.lastMovementAt = new Date().toISOString();
+  protocol.updatedAt = protocol.lastMovementAt;
+  persist();
+  renderProtocols();
+  openProtocolDrawer(protocolId);
+}
+
+function releaseProjectFromHomologation(projectId) {
+  const project = state.projects.find((item) => item.id === projectId);
+  if (!project || project.status === PROJECT_STATUS_RELEASED_FOR_INSTALLATION) return;
+  project.status = PROJECT_STATUS_RELEASED_FOR_INSTALLATION;
+  upsertCostCenter(project);
+}
+
+function protocolProjectSectionHtml(projectId) {
+  const linked = state.protocols.filter((item) => item.projectId === projectId);
+  if (!linked.length) return "";
+  return `<section class="drawer-section"><h4>Protocolos na concessionária</h4>${linked.map((protocol) => {
+    const deadline = protocolDeadlineInfo(protocol);
+    const statusInfo = protocolStatusInfo(protocol.status);
+    return `<button type="button" class="protocol-link-row" data-open-protocol="${protocol.id}">
+      <span>${escapeHtml(utilityCompanyName(protocol.utilityCompanyId))} · ${escapeHtml(activityTypeName(protocol.activityTypeId))}</span>
+      ${projectBadge(statusInfo.label, statusInfo.tone)}
+      ${projectBadge(deadline.label, deadline.tone)}
+    </button>`;
+  }).join("")}</section>`;
+}
+
+function createPersonFromProtocolDialog() {
+  quickPersonTarget = "protocol";
+  els.quickPersonForm.reset();
+  els.quickPersonType.value = "cliente";
+  els.quickPersonName.value = "";
+  els.quickPersonDialog.showModal();
+  els.quickPersonName.focus();
+}
+
+function openProtocolSettingsDialog() {
+  renderUtilityCompanyList();
+  renderActivityTypeList();
+  els.protocolSettingsDialog.showModal();
+}
+
+function renderUtilityCompanyList() {
+  els.utilityCompanyList.innerHTML = state.utilityCompanies.length
+    ? state.utilityCompanies.map((item) => `
+      <article class="person-item">
+        <strong><span>${escapeHtml(item.name)}</span><span>${item.active ? "Ativa" : "Inativa"}</span></strong>
+        <div class="row-actions">
+          <button type="button" data-toggle-utility="${item.id}">${item.active ? "Inativar" : "Ativar"}</button>
+        </div>
+      </article>`).join("")
+    : emptyMessage("Nenhuma concessionária cadastrada.");
+  document.querySelectorAll("[data-toggle-utility]").forEach((button) => {
+    button.addEventListener("click", () => toggleUtilityCompanyActive(button.dataset.toggleUtility));
+  });
+}
+
+function addUtilityCompany() {
+  const name = els.utilityCompanyNameInput.value.trim();
+  if (!name) return;
+  state.utilityCompanies.push({ id: crypto.randomUUID(), name, active: true });
+  els.utilityCompanyNameInput.value = "";
+  persist();
+  renderUtilityCompanyList();
+  hydrateProtocolOptions();
+  toast("Concessionária adicionada.");
+}
+
+function toggleUtilityCompanyActive(id) {
+  const item = state.utilityCompanies.find((entry) => entry.id === id);
+  if (!item) return;
+  item.active = !item.active;
+  persist();
+  renderUtilityCompanyList();
+  hydrateProtocolOptions();
+}
+
+function renderActivityTypeList() {
+  els.activityTypeList.innerHTML = state.protocolActivityTypes.length
+    ? state.protocolActivityTypes.map((item) => `
+      <article class="person-item">
+        <strong><span>${escapeHtml(item.name)}</span><span>${item.active ? "Ativo" : "Inativo"}</span></strong>
+        <div class="row-actions">
+          <button type="button" data-toggle-activity-type="${item.id}">${item.active ? "Inativar" : "Ativar"}</button>
+        </div>
+      </article>`).join("")
+    : emptyMessage("Nenhum tipo cadastrado.");
+  document.querySelectorAll("[data-toggle-activity-type]").forEach((button) => {
+    button.addEventListener("click", () => toggleActivityTypeActive(button.dataset.toggleActivityType));
+  });
+}
+
+function addActivityType() {
+  const name = els.activityTypeNameInput.value.trim();
+  if (!name) return;
+  state.protocolActivityTypes.push({ id: crypto.randomUUID(), name, active: true });
+  els.activityTypeNameInput.value = "";
+  persist();
+  renderActivityTypeList();
+  hydrateProtocolOptions();
+  toast("Tipo de atividade adicionado.");
+}
+
+function toggleActivityTypeActive(id) {
+  const item = state.protocolActivityTypes.find((entry) => entry.id === id);
+  if (!item) return;
+  item.active = !item.active;
+  persist();
+  renderActivityTypeList();
+  hydrateProtocolOptions();
+}
+
+// ===================== fim Central de Protocolos =====================
 
 function openInstallationForProject(project) {
   setView("instalacoes");
@@ -3031,6 +4568,8 @@ function projectSummary(project) {
   const payable = sum(costAllocations.filter((entry) => entry.transaction.status === "aberto").map((entry) => entry.amount));
   const paid = sum(costAllocations.filter((entry) => entry.transaction.status === "pago").map((entry) => entry.amount));
   const grossResult = invoiced - costs;
+  const expectedResult = Number(project.contractValue || 0) - Number(project.expectedCosts || 0);
+  const realizedResult = received - paid;
   const marginPercent = invoiced ? (grossResult / invoiced) * 100 : 0;
 
   return {
@@ -3043,6 +4582,8 @@ function projectSummary(project) {
     costs,
     payable,
     paid,
+    expectedResult,
+    realizedResult,
     grossResult,
     marginAmount: grossResult,
     marginPercent,
@@ -3107,6 +4648,8 @@ function renderSelectedProjectSummary(summary) {
     ["Custos realizados", summary.costs],
     ["Contas a pagar", summary.payable],
     ["Valores pagos", summary.paid],
+    ["Resultado previsto", summary.expectedResult],
+    ["Resultado realizado", summary.realizedResult],
     ["Resultado bruto", summary.grossResult],
     ["Margem do projeto", summary.marginAmount],
   ].map(([label, value]) => `
@@ -3365,12 +4908,25 @@ async function fetchStatementViaBackend(bankKey, account, { start, end }) {
 
   const response = await fetch(`${endpoint}/${bankKey}/extrato`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ accountId: account.accountId, bankId: account.bankId, start, end }),
   });
   const result = await response.json();
   if (!result.ok) throw new Error(result.error || "Falha ao buscar extrato no backend.");
 
   const accountKey = account.accountKey || `${account.bankId}-${account.accountId}`;
+  if (result.balance && Number.isFinite(Number(result.balance.amount))) {
+    account.balance = Number(result.balance.amount);
+    account.balanceDate = result.balance.date || end;
+    account.source = `${bankKey}_api`;
+    account.updatedAt = new Date().toISOString();
+  }
+  if (result.investments && Number.isFinite(Number(result.investments.amount))) {
+    account.investmentBalance = Number(result.investments.amount);
+    account.investmentDate = result.investments.date || end;
+    account.investmentSource = `${bankKey}_api`;
+    account.updatedAt = new Date().toISOString();
+  }
   const movements = (result.movements || []).map((raw) => normalizeProviderMovement(raw, account, accountKey));
   hydrateBankMovementNaturalKeys(movements);
   movements.forEach((movement) => {
@@ -3629,6 +5185,14 @@ function applyBankApiConfigToAccount(config) {
   account.syncEndpoint = config.endpoint;
 }
 
+function updateBankApiSyncResult(account, providerKey, { added, duplicates }) {
+  const accountKey = account.accountKey || `${account.bankId}-${account.accountId}`;
+  const config = state.bankApiConfigs.find((item) => item.accountKey === accountKey && item.provider === providerKey);
+  if (!config) return;
+  config.lastSyncedAt = new Date().toISOString();
+  config.lastResult = `${added} importado(s), ${duplicates} duplicado(s) ignorado(s)`;
+}
+
 function renderBankApiConfigs() {
   hydrateBankApiAccountOptions();
   const rows = [...state.bankApiConfigs].sort((a, b) => a.provider.localeCompare(b.provider) || a.accountKey.localeCompare(b.accountKey));
@@ -3809,6 +5373,7 @@ async function handleBankSyncSubmit() {
     const movements = await provider.fetchStatement(account, { start, end });
     const { added, duplicates } = mergeBankMovements(movements);
     account.lastSyncedAt = new Date().toISOString();
+    updateBankApiSyncResult(account, providerKey, { added, duplicates });
     persist();
     renderAll();
     els.bankSyncDialog.close();
@@ -4033,10 +5598,15 @@ function saveBankClassification() {
   const movement = state.bankMovements.find((item) => item.id === els.bankMovementId.value);
   if (!movement) return;
 
-  unlinkBankMovement(movement);
   movement.category = els.bankCategory.value.trim();
   movement.dreGroup = els.bankDreGroup.value;
   const matchedTransaction = state.transactions.find((item) => item.id === els.bankMatchTransaction.value);
+  const validationMessage = validateBankReconciliation(movement, matchedTransaction);
+  if (validationMessage) {
+    toast(validationMessage);
+    return;
+  }
+  unlinkBankMovement(movement);
   const matchedAllocations = matchedTransaction ? normalizeAllocations(matchedTransaction) : [];
   movement.projectId = els.bankProject.value || (matchedAllocations.length === 1 ? matchedAllocations[0].projectId : "");
   movement.notes = els.bankNotes.value.trim();
@@ -4057,6 +5627,7 @@ function saveBankClassification() {
       transaction.bankMovementId = movement.id;
     }
   }
+  registerBankReconciliationHistory(movement, matchedTransaction, "conciliado");
 
   movement.invoiceId = els.bankMatchInvoice.value;
   if (movement.invoiceId) {
@@ -4072,6 +5643,42 @@ function saveBankClassification() {
   toast("Movimento bancário salvo.");
 }
 
+function validateBankReconciliation(movement, transaction) {
+  if (!transaction) return "";
+  const expectedType = movement.type === "entrada" ? "receber" : "pagar";
+  if (transaction.type !== expectedType) {
+    return movement.type === "entrada"
+      ? "Entrada bancaria so pode conciliar com conta a receber."
+      : "Saida bancaria so pode conciliar com conta a pagar.";
+  }
+  if (Math.abs(Number(movement.amount || 0) - Number(transaction.amount || 0)) > 0.02) {
+    return "O valor da movimentacao e diferente do lancamento financeiro.";
+  }
+  const linkedElsewhere = state.bankMovements.some((item) => item.id !== movement.id && item.transactionId === transaction.id);
+  if (linkedElsewhere || (transaction.bankMovementId && transaction.bankMovementId !== movement.id)) {
+    return "Este lancamento financeiro ja esta conciliado com outro movimento bancario.";
+  }
+  if (transaction.status !== "aberto" && transaction.bankMovementId !== movement.id) {
+    return "Este lancamento financeiro nao esta em aberto para conciliacao.";
+  }
+  return "";
+}
+
+function registerBankReconciliationHistory(movement, transaction, action) {
+  movement.reconciliationHistory = Array.isArray(movement.reconciliationHistory) ? movement.reconciliationHistory : [];
+  movement.reconciliationHistory.push({
+    id: crypto.randomUUID(),
+    action,
+    at: new Date().toISOString(),
+    user: currentCrmUser(),
+    bankId: movement.bankId || "",
+    accountId: movement.accountId || "",
+    projectId: movement.projectId || transaction?.projectId || "",
+    transactionId: transaction?.id || "",
+    amount: Number(movement.amount || 0),
+  });
+}
+
 function unlinkBankMovement(movement) {
   movement.invoiceId = "";
   if (!movement.transactionId) return;
@@ -4081,6 +5688,7 @@ function unlinkBankMovement(movement) {
     transaction.paidDate = "";
     transaction.bankMovementId = "";
   }
+  registerBankReconciliationHistory(movement, transaction, "desfeito");
   movement.transactionId = "";
 }
 
@@ -6358,6 +7966,9 @@ function saveQuickPersonFromTransaction() {
     refreshSearchableSelect(els.projectCustomer);
   } else if (quickPersonTarget === "stockEntrySupplier") {
     els.stockEntrySupplier.value = person.id;
+  } else if (quickPersonTarget === "protocol") {
+    hydrateProtocolOptions();
+    els.protocolCustomer.value = person.id;
   } else {
     els.transactionPerson.value = person.id;
   }
@@ -6910,6 +8521,10 @@ function importBackup(event) {
     state.stockMovements = data.stockMovements;
     state.stockLocations = data.stockLocations;
     state.installations = data.installations;
+    state.utilityCompanies = data.utilityCompanies;
+    state.protocolActivityTypes = data.protocolActivityTypes;
+    state.protocols = data.protocols;
+    state.protocolHistory = data.protocolHistory;
     persist();
     renderAll();
     toast("Backup importado.");

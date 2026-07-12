@@ -60,7 +60,7 @@
           <div class="nav-group">
             <span class="nav-group-title">Projetos</span>
             <button class="nav-item" data-view="projetos" type="button">Projetos</button>
-            <button class="nav-item" data-view="homologacao" type="button">Homologação</button>
+            <button class="nav-item" data-view="protocolos" type="button">Central de Protocolos</button>
             <button class="nav-item" data-view="instalacoes" type="button">Instalações</button>
           </div>
           <div class="nav-group">
@@ -411,6 +411,7 @@
                   <option value="ativo">Ativo</option>
                   <option value="orcamento">Orçamento</option>
                   <option value="homologacao">Homologação</option>
+                  <option value="liberado_instalacao">Liberado para instalação</option>
                   <option value="concluido">Concluído</option>
                   <option value="pausado">Pausado</option>
                 </select>
@@ -444,6 +445,181 @@
               <div class="people-list" id="projectList"></div>
             </section>
           </div>
+
+          <section class="panel project-command-center">
+            <div class="panel-head">
+              <div>
+                <h2>Dashboard gerencial de projetos</h2>
+                <small class="muted">Visão operacional, financeira e de instalação</small>
+              </div>
+              <div class="row-actions">
+                <button class="secondary-btn" id="exportProjectDashboardCsv" type="button">Exportar CSV</button>
+                <button class="secondary-btn" id="printProjectDashboard" type="button">Imprimir</button>
+              </div>
+            </div>
+
+            <div class="project-filters">
+              <label>Status
+                <select id="projectFilterStatus">
+                  <option value="todos">Todos</option>
+                  <option value="negociacao">Em negociação</option>
+                  <option value="contrato_assinado">Contrato assinado</option>
+                  <option value="aguardando_documentacao">Aguardando documentação</option>
+                  <option value="homologacao">Em homologação</option>
+                  <option value="aguardando_instalacao">Aguardando instalação</option>
+                  <option value="liberado_instalacao">Liberado para instalação</option>
+                  <option value="instalacao_agendada">Instalação agendada</option>
+                  <option value="em_instalacao">Em instalação</option>
+                  <option value="aguardando_vistoria">Aguardando vistoria</option>
+                  <option value="aguardando_faturamento">Aguardando faturamento</option>
+                  <option value="concluido">Concluído</option>
+                  <option value="cancelado">Cancelado</option>
+                  <option value="ativo">Ativo</option>
+                  <option value="orcamento">Orçamento</option>
+                  <option value="pausado">Pausado</option>
+                </select>
+              </label>
+              <label>Situação financeira
+                <select id="projectFilterFinance">
+                  <option value="todos">Todos</option>
+                  <option value="parcelas_vencidas">Parcelas vencidas</option>
+                  <option value="recebimento_em_dia">Recebimento em dia</option>
+                  <option value="pagamentos_pendentes">Pagamentos pendentes</option>
+                  <option value="custos_pendentes">Custos pendentes</option>
+                  <option value="lucro_negativo">Lucro negativo</option>
+                  <option value="margem_abaixo_meta">Margem abaixo da meta</option>
+                </select>
+              </label>
+              <label>Instalação
+                <select id="projectFilterInstall">
+                  <option value="todos">Todos</option>
+                  <option value="nao_iniciado">Não iniciado</option>
+                  <option value="prioridade_alta">Prioridade alta</option>
+                  <option value="prioridade_media">Prioridade média</option>
+                  <option value="prioridade_baixa">Prioridade baixa</option>
+                  <option value="em_andamento">Em andamento</option>
+                  <option value="atrasado">Atrasado</option>
+                  <option value="finalizado">Finalizado</option>
+                </select>
+              </label>
+              <label>Período
+                <select id="projectFilterPeriod">
+                  <option value="todos">Todos</option>
+                  <option value="hoje">Hoje</option>
+                  <option value="ontem">Ontem</option>
+                  <option value="7dias">Últimos 7 dias</option>
+                  <option value="30dias">Últimos 30 dias</option>
+                  <option value="mes_atual">Este mês</option>
+                  <option value="mes_passado">Mês passado</option>
+                  <option value="trimestre">Este trimestre</option>
+                  <option value="ano">Este ano</option>
+                </select>
+              </label>
+              <label>Data considerada
+                <select id="projectFilterDateField">
+                  <option value="sale">Data da venda</option>
+                  <option value="installation">Data prevista da instalação</option>
+                  <option value="conclusion">Data da conclusão</option>
+                </select>
+              </label>
+              <label>Valor
+                <select id="projectFilterValue">
+                  <option value="todos">Todos</option>
+                  <option value="ate_20000">Até R$ 20.000</option>
+                  <option value="20000_50000">R$ 20.000 a R$ 50.000</option>
+                  <option value="50000_100000">R$ 50.000 a R$ 100.000</option>
+                  <option value="100000_300000">R$ 100.000 a R$ 300.000</option>
+                  <option value="acima_300000">Acima de R$ 300.000</option>
+                </select>
+              </label>
+              <label>Cliente
+                <input id="projectFilterClient" type="search" placeholder="Buscar cliente" />
+              </label>
+              <label>Cidade
+                <input id="projectFilterCity" type="search" placeholder="Buscar cidade" />
+              </label>
+              <label>Responsável
+                <input id="projectFilterResponsible" type="search" placeholder="Vendedor, supervisor, equipe" />
+              </label>
+              <label>Ordenar por
+                <select id="projectSort">
+                  <option value="maior_receita">Maior receita</option>
+                  <option value="menor_receita">Menor receita</option>
+                  <option value="maior_lucro">Maior lucro</option>
+                  <option value="menor_lucro">Menor lucro</option>
+                  <option value="maior_custo">Maior custo</option>
+                  <option value="menor_custo">Menor custo</option>
+                  <option value="maior_margem">Maior margem</option>
+                  <option value="menor_margem">Menor margem</option>
+                  <option value="mais_atrasado">Mais atrasado</option>
+                  <option value="mais_recente">Mais recente</option>
+                  <option value="mais_antigo">Mais antigo</option>
+                  <option value="maior_prioridade">Maior prioridade</option>
+                  <option value="maior_execucao">Maior percentual executado</option>
+                </select>
+              </label>
+              <button class="secondary-btn" id="clearProjectDashboardFilters" type="button">Limpar filtros</button>
+            </div>
+
+            <div class="kpi-grid project-dashboard-kpis" id="projectDashboardKpis"></div>
+
+            <div class="project-quick-panels">
+              <section>
+                <h3>Supervisor de instalação</h3>
+                <div class="project-chip-row" id="projectSupervisorChips"></div>
+              </section>
+              <section>
+                <h3>Financeiro</h3>
+                <div class="project-chip-row" id="projectFinanceChips"></div>
+              </section>
+            </div>
+
+            <div class="project-charts-grid">
+              <section>
+                <h3>Receita por projeto</h3>
+                <div class="project-bars" id="projectRevenueChart"></div>
+              </section>
+              <section>
+                <h3>Lucro por projeto</h3>
+                <div class="project-bars" id="projectProfitChart"></div>
+              </section>
+              <section>
+                <h3>Margem por projeto</h3>
+                <div class="project-bars" id="projectMarginChart"></div>
+              </section>
+              <section>
+                <h3>Custos por projeto</h3>
+                <div class="project-bars" id="projectCostChart"></div>
+              </section>
+            </div>
+
+            <div class="table-wrap project-dashboard-table-wrap">
+              <table class="project-dashboard-table">
+                <thead>
+                  <tr>
+                    <th>Projeto</th>
+                    <th>Cliente</th>
+                    <th>Cidade</th>
+                    <th>Responsável</th>
+                    <th class="money">Venda</th>
+                    <th class="money">Recebido</th>
+                    <th class="money">A receber</th>
+                    <th class="money">Custos previstos</th>
+                    <th class="money">Custos realizados</th>
+                    <th class="money">Lucro</th>
+                    <th>Margem</th>
+                    <th>Execução</th>
+                    <th>Instalação</th>
+                    <th>Status</th>
+                    <th>Prioridade</th>
+                    <th>Saúde</th>
+                    <th>Atualização</th>
+                  </tr>
+                </thead>
+                <tbody id="projectDashboardTable"></tbody>
+              </table>
+            </div>
+          </section>
 
           <div class="toolbar project-toolbar">
             <label>Projeto analisado
@@ -527,30 +703,132 @@
               <div id="unallocatedExpenses" class="report-list"></div>
             </section>
           </div>
+
+          <aside class="project-drawer" id="projectDrawer" aria-hidden="true">
+            <div class="project-drawer-backdrop" data-close-project-drawer></div>
+            <section class="project-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="projectDrawerTitle">
+              <button class="icon-btn drawer-close" type="button" data-close-project-drawer>&times;</button>
+              <div id="projectDrawerContent"></div>
+            </section>
+          </aside>
         </section>
 
-        <section class="view" id="homologacao">
+        <section class="view" id="protocolos">
           <section class="panel">
             <div class="panel-head">
-              <h2>Homologação de projetos</h2>
-              <small class="muted">Projetos aguardando validação técnica, documentação ou liberação para instalação</small>
+              <div>
+                <h2>Central de Protocolos e Concessionárias</h2>
+                <small class="muted">Toda comunicação com as concessionárias, com ou sem projeto vinculado</small>
+              </div>
+              <div class="row-actions">
+                <button class="secondary-btn" id="protocolSettingsBtn" type="button">Concessionárias e tipos</button>
+                <button class="primary-btn" id="newProtocolBtn" type="button">Novo protocolo</button>
+              </div>
             </div>
-            <div class="table-wrap compact-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Projeto</th>
-                    <th>Cliente</th>
-                    <th>Status</th>
-                    <th>Início</th>
-                    <th>Previsão</th>
-                    <th>Ações</th>
-                  </tr>
-                </thead>
-                <tbody id="homologationTable"></tbody>
-              </table>
+
+            <div class="kpi-grid" id="protocolKpis"></div>
+
+            <div class="panel-head">
+              <h3>Alertas</h3>
+            </div>
+            <div class="project-chip-row" id="protocolAlerts"></div>
+          </section>
+
+          <section class="panel">
+            <div class="toolbar invoice-kind-tabs" id="protocolTabs">
+              <button type="button" class="chip-tab active" data-protocol-tab="tabela">Tabela</button>
+              <button type="button" class="chip-tab" data-protocol-tab="kanban">Kanban</button>
+            </div>
+
+            <div class="project-filters">
+              <label>Buscar
+                <input id="protocolSearch" type="search" placeholder="Cliente, protocolo, número interno, UC" />
+              </label>
+              <label>Concessionária
+                <select id="protocolFilterUtility"><option value="todos">Todas</option></select>
+              </label>
+              <label>Tipo de atividade
+                <select id="protocolFilterActivityType"><option value="todos">Todos</option></select>
+              </label>
+              <label>Status
+                <select id="protocolFilterStatus"><option value="todos">Todos</option></select>
+              </label>
+              <label>Responsável
+                <select id="protocolFilterResponsible"><option value="todos">Todos</option></select>
+              </label>
+              <label>Cidade
+                <input id="protocolFilterCity" type="text" placeholder="Cidade" />
+              </label>
+              <label>Projeto
+                <select id="protocolFilterProject"><option value="todos">Todos</option></select>
+              </label>
+              <label>Prazo
+                <select id="protocolFilterDeadline">
+                  <option value="todos">Todos</option>
+                  <option value="atraso">Em atraso</option>
+                  <option value="hoje">Vence hoje</option>
+                  <option value="semana">Vence esta semana</option>
+                  <option value="dentro">Dentro do prazo</option>
+                </select>
+              </label>
+              <label>Prioridade
+                <select id="protocolFilterPriority">
+                  <option value="todos">Todas</option>
+                  <option value="alta">Alta</option>
+                  <option value="media">Média</option>
+                  <option value="baixa">Baixa</option>
+                </select>
+              </label>
+              <label>Período de abertura
+                <select id="protocolFilterPeriod">
+                  <option value="todos">Todos</option>
+                  <option value="hoje">Hoje</option>
+                  <option value="ontem">Ontem</option>
+                  <option value="7dias">Últimos 7 dias</option>
+                  <option value="30dias">Últimos 30 dias</option>
+                  <option value="mes_atual">Mês atual</option>
+                  <option value="mes_anterior">Mês anterior</option>
+                  <option value="trimestre">Trimestre atual</option>
+                  <option value="ano">Ano atual</option>
+                </select>
+              </label>
+              <button class="secondary-btn" id="clearProtocolFilters" type="button">Limpar filtros</button>
+            </div>
+
+            <div class="crm-panel" data-protocol-panel="tabela">
+              <div class="table-wrap compact-table">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Prazo</th>
+                      <th>Concessionária</th>
+                      <th>Cliente</th>
+                      <th>Projeto</th>
+                      <th>Protocolo</th>
+                      <th>Responsável</th>
+                      <th>Tipo</th>
+                      <th>Última movimentação</th>
+                      <th>Prioridade</th>
+                    </tr>
+                  </thead>
+                  <tbody id="protocolsTable"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="crm-panel hidden" data-protocol-panel="kanban">
+              <div class="kanban-board" id="protocolKanbanBoard" aria-label="Protocolos por status"></div>
             </div>
           </section>
+
+          <aside class="project-drawer" id="protocolDrawer" aria-hidden="true">
+            <div class="project-drawer-backdrop" data-close-protocol-drawer></div>
+            <section class="project-drawer-panel" role="dialog" aria-modal="true" aria-labelledby="protocolDrawerTitle">
+              <button class="icon-btn drawer-close" type="button" data-close-protocol-drawer>&times;</button>
+              <div id="protocolDrawerContent"></div>
+            </section>
+          </aside>
         </section>
 
         <section class="view" id="instalacoes">
@@ -1288,6 +1566,14 @@
                   <input type="checkbox" data-user-sector="projetos" checked />
                   Projetos
                 </label>
+                <label class="checkbox-line">
+                  <input type="checkbox" data-user-sector="engenharia" checked />
+                  Engenharia
+                </label>
+                <label class="checkbox-line">
+                  <input type="checkbox" data-user-sector="diretoria" checked />
+                  Diretoria
+                </label>
                 <small class="muted">O administrador acessa todos os setores automaticamente.</small>
               </fieldset>
               <label class="checkbox-line">
@@ -2019,6 +2305,106 @@
         <menu class="modal-actions">
           <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Salvar tarefa</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="protocolDialog">
+      <form method="dialog" class="modal" id="protocolForm">
+        <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
+        <div class="modal-head">
+          <h2 id="protocolDialogTitle">Novo protocolo</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
+        </div>
+        <input type="hidden" id="protocolId" />
+        <div class="form-grid">
+          <label>Número interno
+            <input id="protocolInternalNumber" readonly />
+          </label>
+          <label>Número do protocolo na concessionária
+            <input id="protocolNumber" maxlength="15" placeholder="Até 15 caracteres" />
+          </label>
+          <label>Tipo de atividade
+            <select id="protocolActivityType"></select>
+          </label>
+          <label>Concessionária
+            <select id="protocolUtility"></select>
+          </label>
+          <label>Cliente
+            <div class="inline-control">
+              <select id="protocolCustomer"></select>
+              <button class="secondary-btn" id="newProtocolCustomerBtn" type="button">Novo cliente</button>
+            </div>
+          </label>
+          <label>Cidade
+            <input id="protocolCity" maxlength="80" />
+          </label>
+          <label>UC (Unidade Consumidora)
+            <input id="protocolConsumerUnit" maxlength="40" />
+          </label>
+          <label>Projeto vinculado (opcional)
+            <select id="protocolProject"></select>
+          </label>
+          <label>Status
+            <select id="protocolStatus"></select>
+          </label>
+          <label>Responsável
+            <select id="protocolResponsible"></select>
+          </label>
+          <label>Prioridade
+            <select id="protocolPriority">
+              <option value="baixa">Baixa</option>
+              <option value="media" selected>Média</option>
+              <option value="alta">Alta</option>
+            </select>
+          </label>
+          <label>Data de abertura
+            <input id="protocolOpenedAt" type="date" />
+          </label>
+          <label>Prazo informado pela concessionária
+            <input id="protocolDeadline" type="date" />
+          </label>
+          <label>Data prevista
+            <input id="protocolExpectedDate" type="date" />
+          </label>
+          <label class="full">Observações
+            <textarea id="protocolNotes" rows="3" maxlength="400"></textarea>
+          </label>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Salvar protocolo</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="protocolSettingsDialog">
+      <form method="dialog" class="modal">
+        <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
+        <div class="modal-head">
+          <h2>Concessionárias e tipos de atividade</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
+        </div>
+        <div class="form-grid">
+          <section class="full">
+            <h3>Concessionárias</h3>
+            <div class="inline-control">
+              <input type="text" id="utilityCompanyNameInput" placeholder="Nome da concessionária" maxlength="80" />
+              <button class="secondary-btn" id="addUtilityCompanyBtn" type="button">Adicionar</button>
+            </div>
+            <div class="people-list" id="utilityCompanyList"></div>
+          </section>
+          <section class="full">
+            <h3>Tipos de atividade</h3>
+            <div class="inline-control">
+              <input type="text" id="activityTypeNameInput" placeholder="Nome do tipo de atividade" maxlength="80" />
+              <button class="secondary-btn" id="addActivityTypeBtn" type="button">Adicionar</button>
+            </div>
+            <div class="people-list" id="activityTypeList"></div>
+          </section>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Fechar</button>
         </menu>
       </form>
     </dialog>
