@@ -673,8 +673,7 @@ async function boot() {
     bindEvents();
     setDefaultReportPeriod();
     const stockImport = importIluminarStock({ silent: true, includeMovements: false });
-    const vendasImport = importVendas2026Receivables();
-    if (stockImport.changed || vendasImport.changed) persist();
+    if (stockImport.changed) persist();
     renderAll();
     await ensureMasterUser();
     renderUsers();
@@ -1583,9 +1582,8 @@ async function initRemoteSync() {
       const localBankMerge = mergeLocalBankDataIntoRemote(remoteState, state);
       Object.assign(state, localBankMerge.state);
       const stockImport = importIluminarStock({ silent: true, includeMovements: false });
-      const vendasImport = importVendas2026Receivables();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      if (stockImport.changed || vendasImport.changed || localBankMerge.changed) scheduleRemoteSync();
+      if (stockImport.changed || localBankMerge.changed) scheduleRemoteSync();
       renderAll();
     }
     setSyncStatus("Sincronizado com o Google Sheets", "ok");
