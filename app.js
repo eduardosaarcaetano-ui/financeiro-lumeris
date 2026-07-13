@@ -1579,11 +1579,10 @@ async function initRemoteSync() {
     remoteUpdatedAt = result.updatedAt || "";
     if (result.data) {
       const remoteState = normalizeState(result.data);
-      const localBankMerge = mergeLocalBankDataIntoRemote(remoteState, state);
-      Object.assign(state, localBankMerge.state);
+      Object.assign(state, remoteState);
       const stockImport = importIluminarStock({ silent: true, includeMovements: false });
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      if (stockImport.changed || localBankMerge.changed) scheduleRemoteSync();
+      if (stockImport.changed) scheduleRemoteSync();
       renderAll();
     }
     setSyncStatus("Sincronizado com o Google Sheets", "ok");
