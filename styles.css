@@ -1344,6 +1344,21 @@ textarea {
   max-width: 190px;
 }
 
+.bank-toolbar label {
+  display: grid;
+  gap: 4px;
+  min-width: 120px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.bank-toolbar label input,
+.bank-toolbar label select {
+  width: 100%;
+  max-width: none;
+}
+
 .toolbar-period {
   font-size: 12px;
 }

@@ -487,6 +487,10 @@ const els = {
   bankSearch: document.querySelector("#bankSearch"),
   bankStatus: document.querySelector("#bankStatus"),
   bankAccountFilter: document.querySelector("#bankAccountFilter"),
+  bankDateStart: document.querySelector("#bankDateStart"),
+  bankDateEnd: document.querySelector("#bankDateEnd"),
+  bankMonthFilter: document.querySelector("#bankMonthFilter"),
+  bankYearFilter: document.querySelector("#bankYearFilter"),
   bankDialog: document.querySelector("#bankDialog"),
   bankForm: document.querySelector("#bankForm"),
   bankMovementId: document.querySelector("#bankMovementId"),
@@ -906,6 +910,10 @@ function bindEvents() {
     "#bankSearch",
     "#bankStatus",
     "#bankAccountFilter",
+    "#bankDateStart",
+    "#bankDateEnd",
+    "#bankMonthFilter",
+    "#bankYearFilter",
     "#peopleSearch",
     "#categoryReportType",
     "#reportStart",
@@ -5388,17 +5396,16 @@ function renderBank() {
   renderBankSyncList();
   hydrateBankAccountFilter();
   const movements = filteredBankMovements();
-  const all = state.bankMovements;
-  const totalIn = sum(all.filter((item) => item.type === "entrada"));
-  const totalOut = sum(all.filter((item) => item.type === "saida"));
-  const pending = all.filter((item) => bankStatus(item) === "pendente").length;
+  const totalIn = sum(movements.filter((item) => item.type === "entrada"));
+  const totalOut = sum(movements.filter((item) => item.type === "saida"));
+  const pending = movements.filter((item) => bankStatus(item) === "pendente").length;
 
   document.querySelector("#bankInTotal").textContent = money(totalIn);
   document.querySelector("#bankOutTotal").textContent = money(totalOut);
   document.querySelector("#bankNetTotal").textContent = money(totalIn - totalOut);
   document.querySelector("#bankPendingCount").textContent = String(pending);
-  document.querySelector("#bankInCount").textContent = `${all.filter((item) => item.type === "entrada").length} movimentos`;
-  document.querySelector("#bankOutCount").textContent = `${all.filter((item) => item.type === "saida").length} movimentos`;
+  document.querySelector("#bankInCount").textContent = `${movements.filter((item) => item.type === "entrada").length} movimentos`;
+  document.querySelector("#bankOutCount").textContent = `${movements.filter((item) => item.type === "saida").length} movimentos`;
 
   document.querySelector("#bankTable").innerHTML = movements.length
     ? movements.map(bankRow).join("")
@@ -5431,16 +5438,31 @@ function filteredBankMovements() {
   const search = els.bankSearch.value.toLowerCase().trim();
   const status = els.bankStatus.value;
   const accountFilter = els.bankAccountFilter.value;
+  const start = els.bankDateStart.value;
+  const end = els.bankDateEnd.value;
+  const month = els.bankMonthFilter.value;
+  const year = String(els.bankYearFilter.value || "").trim();
   return state.bankMovements
     .filter((item) => {
       const haystack = `${item.description} ${item.bankId} ${item.accountId} ${item.documentNumber} ${item.category} ${projectName(item.projectId)}`.toLowerCase();
       return (
         (!search || haystack.includes(search)) &&
         (status === "todos" || bankStatus(item) === status) &&
-        (accountFilter === "todas" || bankAccountKey(item) === accountFilter)
+        (accountFilter === "todas" || bankAccountKey(item) === accountFilter) &&
+        matchesBankDateFilters(item, { start, end, month, year })
       );
     })
     .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+function matchesBankDateFilters(item, filters) {
+  const date = item.date || "";
+  if (!date) return false;
+  if (filters.start && date < filters.start) return false;
+  if (filters.end && date > filters.end) return false;
+  if (filters.month && date.slice(5, 7) !== filters.month) return false;
+  if (filters.year && date.slice(0, 4) !== filters.year) return false;
+  return true;
 }
 
 function bankRow(item) {

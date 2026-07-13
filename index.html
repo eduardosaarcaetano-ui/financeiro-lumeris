@@ -893,6 +893,32 @@
             <select id="bankAccountFilter">
               <option value="todas">Todas as contas</option>
             </select>
+            <label>De
+              <input id="bankDateStart" type="date" />
+            </label>
+            <label>Até
+              <input id="bankDateEnd" type="date" />
+            </label>
+            <label>Mês
+              <select id="bankMonthFilter">
+                <option value="">Todos</option>
+                <option value="01">Janeiro</option>
+                <option value="02">Fevereiro</option>
+                <option value="03">Março</option>
+                <option value="04">Abril</option>
+                <option value="05">Maio</option>
+                <option value="06">Junho</option>
+                <option value="07">Julho</option>
+                <option value="08">Agosto</option>
+                <option value="09">Setembro</option>
+                <option value="10">Outubro</option>
+                <option value="11">Novembro</option>
+                <option value="12">Dezembro</option>
+              </select>
+            </label>
+            <label>Ano
+              <input id="bankYearFilter" type="number" min="2000" max="2100" step="1" placeholder="Todos" />
+            </label>
             <button class="secondary-btn" id="exportBankCsv" type="button">Exportar CSV</button>
           </div>
 
