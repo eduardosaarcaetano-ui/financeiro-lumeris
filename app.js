@@ -676,8 +676,6 @@ async function boot() {
   try {
     bindEvents();
     setDefaultReportPeriod();
-    const stockImport = importIluminarStock({ silent: true, includeMovements: false });
-    if (stockImport.changed) persist();
     renderAll();
     await ensureMasterUser();
     renderUsers();
@@ -1588,9 +1586,7 @@ async function initRemoteSync() {
     if (result.data) {
       const remoteState = normalizeState(result.data);
       Object.assign(state, remoteState);
-      const stockImport = importIluminarStock({ silent: true, includeMovements: false });
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      if (stockImport.changed) scheduleRemoteSync();
       renderAll();
     }
     setSyncStatus("Sincronizado com o Google Sheets", "ok");
