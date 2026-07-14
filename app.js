@@ -1582,7 +1582,7 @@ function normalizeState(data) {
 }
 
 function persist() {
-  if (isMaintenanceActive() && !isAdmin()) {
+  if (isMaintenanceActive()) {
     setSyncStatus("Sistema em manutenção - salvamento bloqueado", "error");
     toast("Sistema em manutenção. Alterações não foram salvas.");
     return false;
@@ -1839,7 +1839,7 @@ function maintenanceMessage() {
 }
 
 function shouldBlockForMaintenance() {
-  return isMaintenanceActive() && !isAdmin();
+  return isMaintenanceActive();
 }
 
 function showMaintenance() {
@@ -1985,7 +1985,7 @@ async function handleLogin(event) {
       return;
     }
 
-    if (isMaintenanceActive() && user.role !== "administrador") {
+    if (isMaintenanceActive()) {
       setSession(user);
       showMaintenance();
       return;
