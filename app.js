@@ -563,6 +563,7 @@ const els = {
   quickProjectForm: document.querySelector("#quickProjectForm"),
   quickProjectName: document.querySelector("#quickProjectName"),
   quickProjectCustomer: document.querySelector("#quickProjectCustomer"),
+  newQuickProjectCustomerBtn: document.querySelector("#newQuickProjectCustomerBtn"),
   quickProjectStatus: document.querySelector("#quickProjectStatus"),
   quickProjectStartDate: document.querySelector("#quickProjectStartDate"),
   quickProjectEndDate: document.querySelector("#quickProjectEndDate"),
@@ -1043,6 +1044,7 @@ function bindEvents() {
     saveProject();
   });
   els.newProjectCustomerBtn.addEventListener("click", createPersonFromProjectForm);
+  els.newQuickProjectCustomerBtn?.addEventListener("click", createPersonFromQuickProjectDialog);
   els.quickProjectForm.addEventListener("submit", (event) => {
     event.preventDefault();
     if (event.submitter?.value === "cancel") {
@@ -8364,6 +8366,15 @@ function createPersonFromProjectForm() {
   els.quickPersonName.focus();
 }
 
+function createPersonFromQuickProjectDialog() {
+  quickPersonTarget = "quickProject";
+  els.quickPersonForm.reset();
+  els.quickPersonType.value = "cliente";
+  els.quickPersonName.value = "";
+  els.quickPersonDialog.showModal();
+  els.quickPersonName.focus();
+}
+
 function createSupplierFromStockEntryDialog() {
   quickPersonTarget = "stockEntrySupplier";
   els.quickPersonForm.reset();
@@ -8393,6 +8404,9 @@ function saveQuickPersonFromTransaction() {
   if (quickPersonTarget === "project") {
     els.projectCustomer.value = person.id;
     refreshSearchableSelect(els.projectCustomer);
+  } else if (quickPersonTarget === "quickProject") {
+    hydrateProjectOptions();
+    els.quickProjectCustomer.value = person.id;
   } else if (quickPersonTarget === "opportunity") {
     hydrateCrmOptions();
     els.opportunityPerson.value = person.id;
