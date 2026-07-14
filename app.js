@@ -12,6 +12,7 @@ let remoteUpdatedAt = "";
 let syncTimer = null;
 let syncInFlight = false;
 let syncQueued = false;
+let pendingSyncScopes = new Set();
 
 const AUTH_STORAGE_KEY = "financeiro-lumeris-session";
 const MASTER_USERNAME = "adm";
@@ -77,6 +78,17 @@ const SECTOR_ALLOWED_VIEWS = {
   engenharia: ["dashboard", "projetos", "protocolos", "instalacoes"],
   diretoria: ["dashboard", "projetos", "protocolos", "instalacoes", "crm", "vendas", "relatorios"],
 };
+
+const SAVE_SCOPE_FIELDS = {
+  crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "sellers", "interactions", "tasks"],
+  financeiro: ["transactions", "bankAccounts", "bankMovements", "bankApiConfigs", "invoices"],
+  protocolo: ["protocols", "protocolHistory", "utilityCompanies", "protocolActivityTypes"],
+  estoque: ["stockItems", "stockMovements", "stockLocations"],
+  projetos: ["projects", "costCenters", "installations"],
+  config: ["users", "maintenance"],
+};
+
+const SHARED_MERGE_FIELDS = ["people", "projects", "costCenters", "installations"];
 
 const ROLE_LABELS = {
   administrador: "Administrador",
@@ -1583,14 +1595,14 @@ function normalizeState(data) {
   return normalized;
 }
 
-function persist() {
+function persist(scopes) {
   if (isMaintenanceActive()) {
     setSyncStatus("Sistema em manutenção - salvamento bloqueado", "error");
     toast("Sistema em manutenção. Alterações não foram salvas.");
     return false;
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  scheduleRemoteSync();
+  scheduleRemoteSync(scopes);
   return true;
 }
 
@@ -1625,6 +1637,85 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => window.clearTimeout(timeout));
+}
+
+function normalizePersistScopes(scopes) {
+  const input = Array.isArray(scopes) ? scopes : scopes ? [scopes] : inferPersistScopes();
+  const valid = input.filter((scope) => scope === "all" || SAVE_SCOPE_FIELDS[scope]);
+  return valid.length ? [...new Set(valid)] : inferPersistScopes();
+}
+
+function inferPersistScopes() {
+  const view = document.body.dataset.view || "";
+  if (["crm", "vendas"].includes(view)) return ["crm"];
+  if (["receber", "pagar", "banco", "apisbancarias", "notasfiscais", "relatorios"].includes(view)) return ["financeiro"];
+  if (view === "protocolos") return ["protocolo"];
+  if (view === "estoque") return ["estoque"];
+  if (["projetos", "instalacoes"].includes(view)) return ["projetos"];
+  if (["usuarios", "pessoas"].includes(view)) return ["config"];
+  return ["all"];
+}
+
+function cloneStateValue(value) {
+  return JSON.parse(JSON.stringify(value ?? null));
+}
+
+function itemMergeStamp(item) {
+  return item?.updatedAt || item?.createdAt || item?.balanceDate || item?.date || item?.timestamp || "";
+}
+
+function mergeArrayById(remoteItems = [], localItems = []) {
+  const merged = new Map();
+  remoteItems.forEach((item) => {
+    if (item?.id) merged.set(item.id, cloneStateValue(item));
+  });
+  localItems.forEach((item) => {
+    if (!item?.id) return;
+    const current = merged.get(item.id);
+    if (!current) {
+      merged.set(item.id, cloneStateValue(item));
+      return;
+    }
+    const localStamp = itemMergeStamp(item);
+    const remoteStamp = itemMergeStamp(current);
+    if (localStamp && (!remoteStamp || localStamp >= remoteStamp)) {
+      merged.set(item.id, cloneStateValue(item));
+    }
+  });
+  return Array.from(merged.values());
+}
+
+function mergeStateForScopes(remoteState, localState, scopes) {
+  const normalizedScopes = normalizePersistScopes(scopes);
+  if (normalizedScopes.includes("all")) return normalizeState(cloneStateValue(localState));
+
+  const merged = normalizeState(cloneStateValue(remoteState));
+  normalizedScopes.forEach((scope) => {
+    (SAVE_SCOPE_FIELDS[scope] || []).forEach((field) => {
+      const remoteValue = remoteState[field] || [];
+      const localValue = localState[field] || [];
+      merged[field] = Array.isArray(remoteValue) && Array.isArray(localValue)
+        ? mergeArrayById(remoteValue, localValue)
+        : cloneStateValue(localValue);
+    });
+  });
+
+  SHARED_MERGE_FIELDS.forEach((field) => {
+    if (normalizedScopes.some((scope) => (SAVE_SCOPE_FIELDS[scope] || []).includes(field))) return;
+    merged[field] = mergeArrayById(remoteState[field] || [], localState[field] || []);
+  });
+
+  return normalizeState(merged);
+}
+
+async function fetchRemoteForSectorSave() {
+  const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, 8000);
+  const result = await response.json();
+  if (!result.ok) throw new Error(result.error || "Falha ao carregar versao atual");
+  return {
+    state: normalizeState(result.data || {}),
+    updatedAt: result.updatedAt || "",
+  };
 }
 
 function mergeLocalBankDataIntoRemote(remoteState, localState) {
@@ -1672,8 +1763,9 @@ function mergeLocalBankDataIntoRemote(remoteState, localState) {
   return { state: merged, changed };
 }
 
-function scheduleRemoteSync() {
+function scheduleRemoteSync(scopes) {
   if (!SHEETS_ENDPOINT) return;
+  normalizePersistScopes(scopes).forEach((scope) => pendingSyncScopes.add(scope));
   if (syncInFlight) {
     syncQueued = true;
     setSyncStatus("Salvo localmente. Aguardando sincronizacao...", "syncing");
@@ -1692,56 +1784,77 @@ async function pushToSheets() {
 
   syncInFlight = true;
   syncQueued = false;
+  const scopes = pendingSyncScopes.size ? Array.from(pendingSyncScopes) : inferPersistScopes();
+  pendingSyncScopes.clear();
+  const localState = normalizeState(cloneStateValue(state));
   window.clearTimeout(syncTimer);
-  setSyncStatus("Sincronizando com o Google Sheets...", "syncing");
+  setSyncStatus(`Sincronizando ${syncScopeLabel(scopes)} com o Google Sheets...`, "syncing");
 
   try {
+    const latest = await fetchRemoteForSectorSave();
+    const sectorState = mergeStateForScopes(latest.state, localState, scopes);
     const response = await fetchWithTimeout(
       SHEETS_ENDPOINT,
       {
         method: "POST",
-        body: JSON.stringify({ data: state, baseUpdatedAt: remoteUpdatedAt }),
+        body: JSON.stringify({ data: sectorState, baseUpdatedAt: latest.updatedAt }),
       },
       SYNC_TIMEOUT_MS
     );
     const result = await response.json();
     if (!result.ok) {
       if (result.error === "conflict") {
-        await retrySyncAfterConflict();
+        await retrySyncAfterConflict(scopes, localState);
         return;
       }
       throw new Error(result.error || "Falha ao salvar");
     }
     remoteUpdatedAt = result.updatedAt || remoteUpdatedAt;
+    Object.assign(state, sectorState);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     setSyncStatus("Sincronizado com o Google Sheets", "ok");
   } catch (error) {
     console.error(error);
+    scopes.forEach((scope) => pendingSyncScopes.add(scope));
     setSyncStatus("Erro ao sincronizar - dados salvos neste computador", "error");
   } finally {
     syncInFlight = false;
-    if (syncQueued) scheduleRemoteSync();
+    if (syncQueued) scheduleRemoteSync(Array.from(pendingSyncScopes));
   }
 }
 
-async function retrySyncAfterConflict() {
-  setSyncStatus("Atualizando versao do Sheets e salvando novamente...", "syncing");
-  const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, 8000);
-  const result = await response.json();
-  if (!result.ok) throw new Error(result.error || "Falha ao atualizar versao");
-  remoteUpdatedAt = result.updatedAt || "";
+async function retrySyncAfterConflict(scopes, localState) {
+  setSyncStatus("Conflito detectado. Mesclando somente o setor alterado...", "syncing");
+  const latest = await fetchRemoteForSectorSave();
+  const sectorState = mergeStateForScopes(latest.state, localState, scopes);
 
   const retryResponse = await fetchWithTimeout(
     SHEETS_ENDPOINT,
     {
       method: "POST",
-      body: JSON.stringify({ data: state, baseUpdatedAt: remoteUpdatedAt }),
+      body: JSON.stringify({ data: sectorState, baseUpdatedAt: latest.updatedAt }),
     },
     SYNC_TIMEOUT_MS
   );
   const retryResult = await retryResponse.json();
   if (!retryResult.ok) throw new Error(retryResult.error || "Falha ao salvar apos conflito");
   remoteUpdatedAt = retryResult.updatedAt || remoteUpdatedAt;
+  Object.assign(state, sectorState);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   setSyncStatus("Sincronizado com o Google Sheets", "ok");
+}
+
+function syncScopeLabel(scopes) {
+  const labels = {
+    crm: "CRM/Vendas",
+    financeiro: "Financeiro",
+    protocolo: "Protocolo",
+    estoque: "Estoque",
+    projetos: "Projetos",
+    config: "Configuracoes",
+    all: "todos os dados",
+  };
+  return normalizePersistScopes(scopes).map((scope) => labels[scope] || scope).join(", ");
 }
 function setSyncStatus(text, kind) {
   if (!els.syncStatus) return;
@@ -2103,7 +2216,7 @@ async function saveUser(event) {
   els.userActive.checked = true;
   setUserSectorFields(DEFAULT_USER_SECTORS);
   updateUserSectorUi();
-  persist();
+  persist("config");
   renderUsers();
   updateSessionUi();
   toast("Usuário salvo.");
@@ -2140,7 +2253,7 @@ function handleUserAction(action, id) {
   }
 
   state.users = state.users.filter((item) => item.id !== id);
-  persist();
+  persist("config");
   renderUsers();
   toast("Usuário excluído.");
 }
@@ -2893,7 +3006,7 @@ function handleTransactionAction(action, id) {
         movement.transactionId = "";
       });
     state.transactions = state.transactions.filter((transaction) => transaction.id !== id);
-    persist();
+    persist("financeiro");
     renderAll();
     toast("Lançamento excluído.");
     return;
@@ -2902,7 +3015,7 @@ function handleTransactionAction(action, id) {
   if (action === "toggle") {
     item.status = item.status === "aberto" ? (item.type === "receber" ? "recebido" : "pago") : "aberto";
     item.paidDate = item.status === "aberto" ? "" : todayIso;
-    persist();
+    persist("financeiro");
     renderAll();
     toast("Status atualizado.");
   }
@@ -4202,11 +4315,12 @@ function saveProtocol() {
     addProtocolHistory(id, "Abertura do protocolo", "", newStatus);
   }
 
-  if (newStatus === PROTOCOL_RELEASE_STATUS && data.projectId) {
+  const releasesProject = newStatus === PROTOCOL_RELEASE_STATUS && data.projectId;
+  if (releasesProject) {
     releaseProjectFromHomologation(data.projectId);
   }
 
-  persist();
+  persist(releasesProject ? ["protocolo", "projetos"] : "protocolo");
   renderAll();
   els.protocolDialog.close();
   toast("Protocolo salvo.");
@@ -4355,7 +4469,7 @@ function bindProtocolDrawerEvents() {
     if (!notes) return;
     const protocolId = event.target.dataset.protocolId;
     addProtocolHistory(protocolId, "Observação registrada", "", "", notes);
-    persist();
+    persist("protocolo");
     renderProtocols();
     openProtocolDrawer(protocolId);
   });
@@ -4401,7 +4515,7 @@ function changeProtocolResponsible(protocolId, responsibleUserId) {
   protocol.lastMovementAt = new Date().toISOString();
   protocol.updatedAt = protocol.lastMovementAt;
   addProtocolHistory(protocolId, "Responsável atualizado", "", "", `${previous} -> ${userName(responsibleUserId)}`);
-  persist();
+  persist("protocolo");
   renderProtocols();
   openProtocolDrawer(protocolId);
   toast("Responsável do protocolo atualizado.");
@@ -4415,7 +4529,7 @@ function setChecklistItemStatus(protocolId, itemId, status) {
   protocol.lastMovementAt = new Date().toISOString();
   protocol.updatedAt = protocol.lastMovementAt;
   addProtocolHistory(protocolId, "Checklist atualizado", "", "", `${item.label}: ${checklistStatusLabel(status)}`);
-  persist();
+  persist("protocolo");
   renderProtocols();
   openProtocolDrawer(protocolId);
 }
@@ -4638,7 +4752,7 @@ function handleInstallationAction(action, id) {
   if (action === "complete") {
     installation.status = "concluida";
     installation.updatedAt = new Date().toISOString();
-    persist();
+    persist("projetos");
     renderAll();
     toast("Instalação concluída.");
   }
@@ -5605,6 +5719,7 @@ function handleBankAction(action, id) {
 
   if (action === "unlink") {
     unlinkBankMovement(movement);
+    movement.updatedAt = new Date().toISOString();
     persist();
     renderAll();
     toast("Conciliação desfeita.");
@@ -5724,6 +5839,7 @@ function saveBankClassification() {
   movement.projectId = els.bankProject.value || (matchedAllocations.length === 1 ? matchedAllocations[0].projectId : "");
   movement.notes = els.bankNotes.value.trim();
   movement.transactionId = els.bankMatchTransaction.value;
+  movement.updatedAt = new Date().toISOString();
 
   if (movement.transactionId) {
     const transaction = matchedTransaction;
@@ -5738,6 +5854,7 @@ function saveBankClassification() {
         : normalizeAllocations(transaction);
       transaction.directProjectCost = transaction.type === "pagar" && Boolean(movement.projectId);
       transaction.bankMovementId = movement.id;
+      transaction.updatedAt = movement.updatedAt;
     }
   }
   registerBankReconciliationHistory(movement, matchedTransaction, "conciliado");
@@ -5747,6 +5864,7 @@ function saveBankClassification() {
     const invoice = state.invoices.find((item) => item.id === movement.invoiceId);
     if (invoice && invoice.status !== "cancelada") {
       invoice.status = invoice.kind === "despesa" ? "paga" : "recebida_total";
+      invoice.updatedAt = movement.updatedAt;
     }
   }
 
@@ -5800,6 +5918,7 @@ function unlinkBankMovement(movement) {
     transaction.status = "aberto";
     transaction.paidDate = "";
     transaction.bankMovementId = "";
+    transaction.updatedAt = new Date().toISOString();
   }
   registerBankReconciliationHistory(movement, transaction, "desfeito");
   movement.transactionId = "";
@@ -6648,7 +6767,7 @@ function saveStockExit(event) {
     notes: els.stockExitNotes.value.trim(),
   });
 
-  persist();
+  persist(["estoque", "financeiro"]);
   renderAll();
   resetStockExitForm();
   toast("Saída de material registrada.");
@@ -7167,7 +7286,7 @@ function generateContractFromOpportunity(opportunity) {
   opportunity.installationId = installationId;
   opportunity.updatedAt = now;
 
-  persist();
+  persist(["crm", "financeiro", "projetos"]);
   renderAll();
   setView("homologacao");
   toast("Contrato gerado: recebimento, projeto e instalação foram criados.");
@@ -8650,7 +8769,7 @@ function importBackup(event) {
     state.protocolActivityTypes = data.protocolActivityTypes;
     state.protocols = data.protocols;
     state.protocolHistory = data.protocolHistory;
-    persist();
+    persist("all");
     renderAll();
     toast("Backup importado.");
   };
