@@ -518,6 +518,9 @@ const els = {
   bankDreGroup: document.querySelector("#bankDreGroup"),
   bankProject: document.querySelector("#bankProject"),
   newBankProjectBtn: document.querySelector("#newBankProjectBtn"),
+  addBankAllocationBtn: document.querySelector("#addBankAllocationBtn"),
+  bankAllocationRows: document.querySelector("#bankAllocationRows"),
+  bankAllocationTotal: document.querySelector("#bankAllocationTotal"),
   bankMatchTransaction: document.querySelector("#bankMatchTransaction"),
   bankNotes: document.querySelector("#bankNotes"),
   bankBalanceList: document.querySelector("#bankBalanceList"),
@@ -1021,6 +1024,7 @@ function bindEvents() {
     saveBankClassification();
   });
   els.newBankProjectBtn.addEventListener("click", createProjectFromBankDialog);
+  els.addBankAllocationBtn?.addEventListener("click", () => addBankAllocationRow());
 
   els.bankSyncProvider.addEventListener("change", updateBankSyncHint);
   els.bankSyncForm.addEventListener("submit", (event) => {
@@ -1528,12 +1532,17 @@ function normalizeState(data) {
     category: "",
     dreGroup: (item.signedAmount ?? item.amount) >= 0 ? "receita_bruta" : "despesas_operacionais",
     projectId: "",
+    allocations: [],
     notes: "",
     transactionId: "",
     invoiceId: "",
     reconciliationHistory: [],
     ...item,
   }));
+  normalized.bankMovements.forEach((item) => {
+    item.allocations = normalizeAllocations(item, normalized.projects);
+    item.projectId = item.allocations.length === 1 ? item.allocations[0].projectId : "";
+  });
   hydrateBankMovementNaturalKeys(normalized.bankMovements);
 
   normalized.bankAccounts = normalized.bankAccounts.map((item) => ({
@@ -2997,6 +3006,13 @@ function statusBadge(item) {
 
 function transactionProjectLabel(transaction) {
   const allocations = normalizeAllocations(transaction);
+  if (!allocations.length) return "Sem projeto";
+  if (allocations.length === 1) return projectName(allocations[0].projectId);
+  return `Rateio entre ${allocations.length} projetos`;
+}
+
+function bankMovementProjectLabel(movement) {
+  const allocations = normalizeAllocations(movement);
   if (!allocations.length) return "Sem projeto";
   if (allocations.length === 1) return projectName(allocations[0].projectId);
   return `Rateio entre ${allocations.length} projetos`;
@@ -4824,20 +4840,25 @@ function projectAllocations(projectId) {
   });
 
   const bankEntries = state.bankMovements
-    .filter((movement) => movement.projectId === projectId && !movement.transactionId)
-    .map((movement) => ({
-      transaction: {
-        type: movement.type === "entrada" ? "receber" : "pagar",
-        status: movement.type === "entrada" ? "recebido" : "pago",
-        category: movement.category || "Banco",
-        description: movement.description,
-        dueDate: movement.date,
-        paidDate: movement.date,
-      },
-      amount: movement.amount,
-      kind: "bank",
-      refId: movement.id,
-    }));
+    .filter((movement) => !movement.transactionId)
+    .flatMap((movement) => {
+      const allocations = normalizeAllocations(movement);
+      return allocations
+        .filter((allocation) => allocation.projectId === projectId)
+        .map((allocation) => ({
+          transaction: {
+            type: movement.type === "entrada" ? "receber" : "pagar",
+            status: movement.type === "entrada" ? "recebido" : "pago",
+            category: movement.category || "Banco",
+            description: movement.description,
+            dueDate: movement.date,
+            paidDate: movement.date,
+          },
+          amount: allocation.amount,
+          kind: "bank",
+          refId: movement.id,
+        }));
+    });
 
   return [...transactionEntries, ...bankEntries];
 }
@@ -5664,7 +5685,7 @@ function filteredBankMovements() {
   const year = String(els.bankYearFilter.value || "").trim();
   return state.bankMovements
     .filter((item) => {
-      const haystack = `${item.description} ${item.bankId} ${item.accountId} ${item.documentNumber} ${item.category} ${projectName(item.projectId)}`.toLowerCase();
+      const haystack = `${item.description} ${item.bankId} ${item.accountId} ${item.documentNumber} ${item.category} ${bankMovementProjectLabel(item)}`.toLowerCase();
       return (
         (!search || haystack.includes(search)) &&
         (status === "todos" || bankStatus(item) === status) &&
@@ -5692,7 +5713,7 @@ function bankRow(item) {
       <td>${item.type === "entrada" ? "Entrada" : "Saída"}</td>
       <td>
         <strong>${escapeHtml(item.description)}</strong>
-        <span class="muted block">${escapeHtml(item.bankId)} · ${escapeHtml(item.documentNumber || item.fitid)} · ${escapeHtml(item.projectId ? projectName(item.projectId) : "Sem projeto")}</span>
+        <span class="muted block">${escapeHtml(item.bankId)} · ${escapeHtml(item.documentNumber || item.fitid)} · ${escapeHtml(bankMovementProjectLabel(item))}</span>
       </td>
       <td>${escapeHtml(item.category || "-")}</td>
       <td>${dreGroupLabel(item.dreGroup)}</td>
@@ -5746,6 +5767,7 @@ function openBankDialog(movement) {
   hydrateProjectOptions();
   els.bankProject.value = movement.projectId || "";
   refreshSearchableSelect(els.bankProject);
+  renderBankAllocationRows(normalizeAllocations(movement));
   els.bankNotes.value = movement.notes || "";
   els.bankMovementSummary.innerHTML = `
     <strong>${movement.type === "entrada" ? "Entrada" : "Saída"} de ${money(movement.amount)}</strong>
@@ -5759,12 +5781,73 @@ function openBankDialog(movement) {
       if (allocations.length === 1) {
         els.bankProject.value = allocations[0].projectId;
         refreshSearchableSelect(els.bankProject);
+        renderBankAllocationRows([]);
       }
     }
   };
   hydrateBankInvoiceMatches(movement);
   els.bankMatchInvoice.value = movement.invoiceId || "";
   els.bankDialog.showModal();
+}
+
+function bankAllocationProjectOptions(selectedId = "") {
+  return state.projects.length
+    ? state.projects.map((project) => `<option value="${project.id}" ${project.id === selectedId ? "selected" : ""}>${escapeHtml(projectLabel(project))}</option>`).join("")
+    : `<option value="">Cadastre um projeto primeiro</option>`;
+}
+
+function renderBankAllocationRows(allocations = []) {
+  if (!els.bankAllocationRows) return;
+  els.bankAllocationRows.innerHTML = "";
+  allocations.slice(0, 10).forEach((allocation) => addBankAllocationRow(allocation));
+  renderBankAllocationTotal();
+}
+
+function addBankAllocationRow(allocation = {}) {
+  if (!els.bankAllocationRows) return;
+  if (els.bankAllocationRows.children.length >= 10) {
+    toast("O rateio permite no máximo 10 lançamentos por movimento.");
+    return;
+  }
+  const row = document.createElement("div");
+  row.className = "allocation-row";
+  row.innerHTML = `
+    <select data-bank-allocation-project>${bankAllocationProjectOptions(allocation.projectId)}</select>
+    <input data-bank-allocation-amount type="number" min="0.01" step="0.01" placeholder="Valor" />
+    <button class="secondary-btn" data-remove-bank-allocation type="button">Remover</button>`;
+  els.bankAllocationRows.appendChild(row);
+  row.querySelector("[data-bank-allocation-amount]").value = allocation.amount || "";
+  row.querySelector("[data-bank-allocation-project]").addEventListener("change", renderBankAllocationTotal);
+  row.querySelector("[data-bank-allocation-amount]").addEventListener("input", renderBankAllocationTotal);
+  row.querySelector("[data-remove-bank-allocation]").addEventListener("click", () => {
+    row.remove();
+    renderBankAllocationTotal();
+  });
+  renderBankAllocationTotal();
+}
+
+function getBankAllocations() {
+  if (!els.bankAllocationRows) return [];
+  return [...els.bankAllocationRows.querySelectorAll(".allocation-row")]
+    .map((row) => ({
+      projectId: row.querySelector("[data-bank-allocation-project]").value,
+      amount: roundCurrency(Number(row.querySelector("[data-bank-allocation-amount]").value || 0)),
+    }))
+    .filter((allocation) => allocation.projectId && allocation.amount > 0);
+}
+
+function currentBankMovementAmount() {
+  const movement = state.bankMovements.find((item) => item.id === els.bankMovementId.value);
+  return roundCurrency(Number(movement?.amount || 0));
+}
+
+function renderBankAllocationTotal() {
+  if (!els.bankAllocationTotal) return;
+  const total = allocationTotal(getBankAllocations());
+  const movementAmount = currentBankMovementAmount();
+  const diff = roundCurrency(movementAmount - total);
+  els.bankAllocationTotal.textContent = `Total rateado: ${money(total)} · Diferença: ${money(diff)}`;
+  els.bankAllocationTotal.classList.toggle("invalid", total > 0 && Math.abs(diff) >= 0.01);
 }
 
 function createProjectFromBankDialog() {
@@ -5846,9 +5929,19 @@ function saveBankClassification() {
     toast(validationMessage);
     return;
   }
+  const bankAllocations = getBankAllocations();
+  if (bankAllocations.length && !validateAllocations(movement.amount, bankAllocations)) {
+    toast("A soma do rateio precisa ser igual ao valor total do movimento bancário.");
+    return;
+  }
   unlinkBankMovement(movement);
   const matchedAllocations = matchedTransaction ? normalizeAllocations(matchedTransaction) : [];
-  movement.projectId = els.bankProject.value || (matchedAllocations.length === 1 ? matchedAllocations[0].projectId : "");
+  movement.allocations = bankAllocations.length
+    ? bankAllocations
+    : els.bankProject.value
+      ? [{ projectId: els.bankProject.value, amount: roundCurrency(Number(movement.amount || 0)) }]
+      : matchedAllocations;
+  movement.projectId = movement.allocations.length === 1 ? movement.allocations[0].projectId : "";
   movement.notes = els.bankNotes.value.trim();
   movement.transactionId = els.bankMatchTransaction.value;
   movement.updatedAt = new Date().toISOString();
@@ -5860,11 +5953,11 @@ function saveBankClassification() {
       transaction.paidDate = movement.date;
       transaction.category = movement.category || transaction.category;
       transaction.dreGroup = movement.dreGroup || transaction.dreGroup;
-      transaction.projectId = movement.projectId || transaction.projectId || "";
-      transaction.allocations = movement.projectId
-        ? [{ projectId: movement.projectId, amount: transaction.amount }]
+      transaction.allocations = movement.allocations.length
+        ? movement.allocations.map((allocation) => ({ ...allocation }))
         : normalizeAllocations(transaction);
-      transaction.directProjectCost = transaction.type === "pagar" && Boolean(movement.projectId);
+      transaction.projectId = transaction.allocations.length === 1 ? transaction.allocations[0].projectId : "";
+      transaction.directProjectCost = transaction.type === "pagar" && Boolean(transaction.allocations.length);
       transaction.bankMovementId = movement.id;
       transaction.updatedAt = movement.updatedAt;
     }
@@ -5954,7 +6047,7 @@ function exportBankCsv() {
     item.accountId,
     item.documentNumber,
     item.category,
-    item.projectId ? projectName(item.projectId) : "",
+    bankMovementProjectLabel(item),
     dreGroupLabel(item.dreGroup),
     bankStatus(item),
     item.amount,
