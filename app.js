@@ -6933,7 +6933,7 @@ function ensureIluminarStockLoaded() {
   stockAutoImportRunning = true;
   const stockImport = importIluminarStock({ silent: true, includeMovements: false });
   stockAutoImportRunning = false;
-  if (stockImport.changed) persist();
+  if (stockImport.changed) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
 // ---- CRM ----
