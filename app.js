@@ -7026,67 +7026,86 @@ function hydrateOpportunityPersonSuggestions() {
   els.opportunityPersonSuggestions.innerHTML = clients.map((person) => `<option value="${escapeHtml(person.name)}"></option>`).join("");
 }
 
-function openOpportunityDialog(opportunity) {
+function openOpportunityDialog(item = null) {
   els.opportunityForm.reset();
-  hydrateOpportunityPersonSuggestions();
-  if (opportunity) {
-    els.opportunityFormTitle.textContent = "Editar oportunidade";
-    els.opportunityId.value = opportunity.id;
-    els.opportunityTitle.value = opportunity.title;
-    els.opportunityPersonName.value = personName(opportunity.personId);
-    els.opportunityValue.value = opportunity.value;
-    els.opportunityProbability.value = opportunity.probability;
-    els.opportunityExpectedCloseDate.value = opportunity.expectedCloseDate;
-    els.opportunitySeller.value = opportunity.sellerId;
-    els.opportunityStage.value = opportunity.stage;
-  } else {
-    els.opportunityFormTitle.textContent = "Nova oportunidade";
-    els.opportunityId.value = "";
-    els.opportunityProbability.value = 20;
-    els.opportunityStage.value = "prospeccao";
-  }
+  hydrateCrmOptions();
+  els.opportunityId.value = item?.id || "";
+  els.opportunityPerson.value = item?.personId || els.opportunityPerson.value;
+  els.opportunityCompany.value = item?.company || "";
+  els.opportunityNumber.value = item?.number || item?.title || nextOpportunityNumber();
+  els.opportunityValue.value = item?.value || 0;
+  els.opportunityUnit.value = item?.unitId || state.crmUnits[0]?.id || "";
+  els.opportunityPipeline.value = item?.pipelineId || els.crmPipelineFilter.value || state.crmPipelines[0]?.id || "";
+  els.opportunityStage.value = item?.stageId || state.opportunityStages[0]?.id || "";
+  els.opportunityOwner.value = item?.owner || "";
+  els.opportunityPhone.value = item?.phone || "";
+  els.opportunityEmail.value = item?.email || "";
+  els.opportunityProject.value = item?.projectId || "";
+  els.opportunityTags.value = normalizeTags(item?.tags).join(", ");
+  els.opportunityNextActivity.value = item?.nextActivityDate || "";
+  els.opportunityPendingActivity.checked = Boolean(item?.pendingActivity);
+  els.opportunityNotes.value = item?.notes || "";
+  els.opportunityTitle.textContent = item ? "Editar oportunidade" : "Nova oportunidade";
+  renderOpportunityHistory(item?.id || "");
   els.opportunityDialog.showModal();
 }
 
 function saveOpportunity() {
+  const now = new Date().toISOString();
   const id = els.opportunityId.value || crypto.randomUUID();
   const existing = state.opportunities.find((item) => item.id === id);
-  const personNameInput = els.opportunityPersonName.value.trim();
-  if (!personNameInput) {
-    toast("Informe o cliente ou lead.");
-    return;
-  }
-
-  const personId = findOrCreatePersonByName(personNameInput);
-  const stage = els.opportunityStage.value;
-  const now = new Date().toISOString();
-  const stageChanged = existing && existing.stage !== stage;
-
-  const opportunity = {
+  const stageId = els.opportunityStage.value;
+  const pipelineStage = stageId === "ganho"
+    ? "ganho"
+    : stageId === "perdido"
+      ? "perdido"
+      : stageId === "proposta"
+        ? "proposta"
+        : stageId === "negociacao"
+          ? "negociacao"
+          : "prospeccao";
+  const data = {
+    ...(existing || {}),
     id,
-    personId,
-    title: els.opportunityTitle.value.trim(),
+    personId: els.opportunityPerson.value,
+    title: existing?.title || els.opportunityNumber.value.trim() || nextOpportunityNumber(),
+    company: els.opportunityCompany.value.trim(),
+    number: els.opportunityNumber.value.trim() || existing?.number || nextOpportunityNumber(),
     value: Number(els.opportunityValue.value || 0),
-    stage,
-    probability: Number(els.opportunityProbability.value || 0),
-    expectedCloseDate: els.opportunityExpectedCloseDate.value,
-    sellerId: els.opportunitySeller.value,
-    projectId: existing?.projectId || "",
-    lostReason: existing?.lostReason || "",
-    stageChangedAt: stageChanged || !existing ? now : existing.stageChangedAt,
-    stageHistory: existing ? [...existing.stageHistory] : [{ stage, at: now }],
-    wonAt: existing?.wonAt || (stage === "ganho" ? now : ""),
-    lostAt: existing?.lostAt || (stage === "perdido" ? now : ""),
+    unitId: els.opportunityUnit.value,
+    pipelineId: els.opportunityPipeline.value,
+    stageId,
+    stage: pipelineStage,
+    owner: els.opportunityOwner.value.trim(),
+    phone: els.opportunityPhone.value.trim(),
+    email: els.opportunityEmail.value.trim(),
+    projectId: els.opportunityProject.value,
+    tags: normalizeTags(els.opportunityTags.value),
+    pendingActivity: els.opportunityPendingActivity.checked,
+    nextActivityDate: els.opportunityNextActivity.value,
+    notes: els.opportunityNotes.value.trim(),
     createdAt: existing?.createdAt || now,
     updatedAt: now,
+    lastMovedAt: existing?.lastMovedAt || now,
+    lastContactAt: existing?.lastContactAt || "",
+    stageChangedAt: existing?.stageId === stageId ? existing?.stageChangedAt || now : now,
+    stageHistory: existing?.stageHistory?.length ? [...existing.stageHistory] : [{ stage: pipelineStage, at: now }],
   };
-  if (stageChanged) opportunity.stageHistory.push({ stage, at: now });
+  if (existing && existing.stageId !== data.stageId) {
+    addOpportunityHistory(id, "mudanca de etapa", existing.stageId, data.stageId);
+    data.lastMovedAt = now;
+    data.stageHistory.push({ stage: pipelineStage, at: now });
+  }
 
   const index = state.opportunities.findIndex((item) => item.id === id);
-  if (index >= 0) state.opportunities[index] = opportunity;
-  else state.opportunities.push(opportunity);
+  if (index >= 0) {
+    state.opportunities[index] = data;
+  } else {
+    state.opportunities.push(data);
+    addOpportunityHistory(id, "criacao", "", data.stageId);
+  }
 
-  persist();
+  persist("crm");
   renderAll();
   els.opportunityDialog.close();
   toast("Oportunidade salva.");
