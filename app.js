@@ -681,12 +681,12 @@ async function boot() {
     bindEvents();
     setDefaultReportPeriod();
     renderAll();
-    await ensureMasterUser();
+    await ensureMasterUser({ save: false });
     renderUsers();
     restoreSessionOrShowLogin();
     initRemoteSync()
       .then(async () => {
-        await ensureMasterUser();
+        await ensureMasterUser({ save: !isMaintenanceActive() });
         renderUsers();
         if (!currentSessionUser()) {
           restoreSessionOrShowLogin();
@@ -1757,7 +1757,7 @@ async function hashPassword(password, salt) {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function ensureMasterUser() {
+async function ensureMasterUser({ save = true } = {}) {
   let master = state.users.find((user) => user.username?.toLowerCase() === MASTER_USERNAME);
   let changed = false;
 
@@ -1797,7 +1797,7 @@ async function ensureMasterUser() {
     changed = true;
   }
 
-  if (changed) persist();
+  if (changed && save) persist();
 }
 
 function getSession() {
