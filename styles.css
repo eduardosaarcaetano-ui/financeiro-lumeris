@@ -255,6 +255,41 @@ button {
   cursor: default;
 }
 
+.maintenance-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: linear-gradient(160deg, #18251f, var(--bg) 65%);
+}
+
+.maintenance-card {
+  width: 100%;
+  max-width: 520px;
+  display: grid;
+  gap: 14px;
+  padding: 34px;
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+.maintenance-card h1 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.maintenance-card p {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.maintenance-card small {
+  color: var(--muted);
+}
+
 .main {
   padding: 28px;
   overflow-x: hidden;

@@ -226,6 +226,9 @@ const els = {
   loginPassword: document.querySelector("#loginPassword"),
   loginError: document.querySelector("#loginError"),
   loginSubmit: document.querySelector("#loginSubmit"),
+  maintenanceScreen: document.querySelector("#maintenanceScreen"),
+  maintenanceMessage: document.querySelector("#maintenanceMessage"),
+  maintenanceLogoutBtn: document.querySelector("#maintenanceLogoutBtn"),
   appShell: document.querySelector("#appShell"),
   sessionUserName: document.querySelector("#sessionUserName"),
   sessionUserRole: document.querySelector("#sessionUserRole"),
@@ -702,6 +705,7 @@ async function boot() {
 function bindEvents() {
   els.loginForm.addEventListener("submit", handleLogin);
   els.logoutBtn.addEventListener("click", handleLogout);
+  els.maintenanceLogoutBtn?.addEventListener("click", handleLogout);
   els.userForm.addEventListener("submit", saveUser);
   els.userRole.addEventListener("change", updateUserSectorUi);
   enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente…" });
@@ -1126,6 +1130,7 @@ function loadState() {
     protocolActivityTypes: [],
     protocols: [],
     protocolHistory: [],
+    maintenance: { enabled: false, message: "", startedAt: "", startedBy: "" },
   });
 }
 
@@ -1158,6 +1163,14 @@ function normalizeState(data) {
     protocolActivityTypes: Array.isArray(data.protocolActivityTypes) ? data.protocolActivityTypes : [],
     protocols: Array.isArray(data.protocols) ? data.protocols : [],
     protocolHistory: Array.isArray(data.protocolHistory) ? data.protocolHistory : [],
+    maintenance: data.maintenance && typeof data.maintenance === "object"
+      ? {
+          enabled: Boolean(data.maintenance.enabled),
+          message: data.maintenance.message || "",
+          startedAt: data.maintenance.startedAt || "",
+          startedBy: data.maintenance.startedBy || "",
+        }
+      : { enabled: false, message: "", startedAt: "", startedBy: "" },
   };
 
   normalized.sellers = normalized.sellers.map((item) => ({
@@ -1569,8 +1582,14 @@ function normalizeState(data) {
 }
 
 function persist() {
+  if (isMaintenanceActive() && !isAdmin()) {
+    setSyncStatus("Sistema em manutenção - salvamento bloqueado", "error");
+    toast("Sistema em manutenção. Alterações não foram salvas.");
+    return false;
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   scheduleRemoteSync();
+  return true;
 }
 
 async function initRemoteSync() {
@@ -1590,6 +1609,7 @@ async function initRemoteSync() {
       Object.assign(state, remoteState);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       renderAll();
+      enforceMaintenanceMode();
     }
     setSyncStatus("Sincronizado com o Google Sheets", "ok");
   } catch (error) {
@@ -1810,6 +1830,39 @@ function isAdmin() {
   return currentSessionUser()?.role === "administrador";
 }
 
+function isMaintenanceActive() {
+  return Boolean(state.maintenance?.enabled);
+}
+
+function maintenanceMessage() {
+  return state.maintenance?.message || "Estamos realizando ajustes. Por favor, tente novamente em alguns minutos.";
+}
+
+function shouldBlockForMaintenance() {
+  return isMaintenanceActive() && !isAdmin();
+}
+
+function showMaintenance() {
+  els.loginScreen.classList.add("hidden");
+  els.appShell.classList.add("hidden");
+  els.maintenanceScreen?.classList.remove("hidden");
+  if (els.maintenanceMessage) els.maintenanceMessage.textContent = maintenanceMessage();
+  setSyncStatus("Sistema em manutenção", "error");
+}
+
+function hideMaintenance() {
+  els.maintenanceScreen?.classList.add("hidden");
+}
+
+function enforceMaintenanceMode() {
+  if (shouldBlockForMaintenance()) {
+    showMaintenance();
+    return true;
+  }
+  hideMaintenance();
+  return false;
+}
+
 function normalizeUserSectors(user) {
   if (user?.role === "administrador") return DEFAULT_USER_SECTORS.slice();
   if (Array.isArray(user?.sectors)) {
@@ -1871,7 +1924,9 @@ function restoreSessionOrShowLogin() {
 }
 
 function showApp() {
+  if (enforceMaintenanceMode()) return;
   els.loginScreen.classList.add("hidden");
+  hideMaintenance();
   els.appShell.classList.remove("hidden");
   updateSessionUi();
   setView(defaultViewForRole());
@@ -1879,6 +1934,7 @@ function showApp() {
 
 function showLogin() {
   els.appShell.classList.add("hidden");
+  hideMaintenance();
   els.loginScreen.classList.remove("hidden");
   els.loginPassword.value = "";
   els.loginError.textContent = "";
@@ -1926,6 +1982,12 @@ async function handleLogin(event) {
     const hash = await hashPassword(password, user.salt);
     if (hash !== user.passwordHash) {
       els.loginError.textContent = "Usuário ou senha inválidos.";
+      return;
+    }
+
+    if (isMaintenanceActive() && user.role !== "administrador") {
+      setSession(user);
+      showMaintenance();
       return;
     }
 
