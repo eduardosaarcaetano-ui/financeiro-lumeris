@@ -6,6 +6,8 @@ const LEGACY_STORAGE_KEYS = ["financeiro-lumeris-v2", "financeiro-lumeris-v1"];
 const SHEETS_ENDPOINT = "https://script.google.com/macros/s/AKfycbw6UqQ8YH0jMLdvDfSumh6h8zZfBSh91NIOd6oqJo_DP5bgP88N8lLl25daHvwCUWSq/exec";
 const SYNC_DEBOUNCE_MS = 800;
 const SYNC_TIMEOUT_MS = 18000;
+const FORCE_MAINTENANCE_MODE = true;
+const FORCE_MAINTENANCE_MESSAGE = "Sistema em manutencao para ajustes. Por favor, aguarde a liberacao.";
 let remoteUpdatedAt = "";
 let syncTimer = null;
 let syncInFlight = false;
@@ -686,7 +688,7 @@ async function boot() {
     restoreSessionOrShowLogin();
     initRemoteSync()
       .then(async () => {
-        await ensureMasterUser({ save: !isMaintenanceActive() });
+        await ensureMasterUser({ save: false });
         renderUsers();
         if (!currentSessionUser()) {
           restoreSessionOrShowLogin();
@@ -1609,9 +1611,10 @@ async function initRemoteSync() {
       Object.assign(state, remoteState);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       renderAll();
-      enforceMaintenanceMode();
     }
-    setSyncStatus("Sincronizado com o Google Sheets", "ok");
+    if (!enforceMaintenanceMode()) {
+      setSyncStatus("Sincronizado com o Google Sheets", "ok");
+    }
   } catch (error) {
     console.error(error);
     setSyncStatus("Sem conexão com o Sheets — usando dados locais", "error");
@@ -1831,10 +1834,11 @@ function isAdmin() {
 }
 
 function isMaintenanceActive() {
-  return Boolean(state.maintenance?.enabled);
+  return FORCE_MAINTENANCE_MODE || Boolean(state.maintenance?.enabled);
 }
 
 function maintenanceMessage() {
+  if (FORCE_MAINTENANCE_MODE) return FORCE_MAINTENANCE_MESSAGE;
   return state.maintenance?.message || "Estamos realizando ajustes. Por favor, tente novamente em alguns minutos.";
 }
 
