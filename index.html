@@ -1981,7 +1981,10 @@
         <input type="hidden" id="opportunityId" />
         <div class="form-grid">
           <label>Cliente
-            <select id="opportunityPerson" required></select>
+            <div class="inline-control">
+              <select id="opportunityPerson" required></select>
+              <button class="secondary-btn" id="newOpportunityPersonBtn" type="button">Novo cliente</button>
+            </div>
           </label>
           <label>Empresa
             <input id="opportunityCompany" maxlength="120" />

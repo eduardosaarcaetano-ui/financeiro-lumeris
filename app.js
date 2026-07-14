@@ -420,6 +420,7 @@ const els = {
   opportunityTitle: document.querySelector("#opportunityTitle"),
   opportunityId: document.querySelector("#opportunityId"),
   opportunityPerson: document.querySelector("#opportunityPerson"),
+  newOpportunityPersonBtn: document.querySelector("#newOpportunityPersonBtn"),
   opportunityCompany: document.querySelector("#opportunityCompany"),
   opportunityNumber: document.querySelector("#opportunityNumber"),
   opportunityValue: document.querySelector("#opportunityValue"),
@@ -927,6 +928,7 @@ function bindEvents() {
     }
     saveOpportunity();
   });
+  els.newOpportunityPersonBtn.addEventListener("click", createPersonFromOpportunityDialog);
 
   document.querySelectorAll("[data-export-csv]").forEach((button) => {
     button.addEventListener("click", () => exportCsv(button.dataset.exportCsv));
@@ -7941,6 +7943,15 @@ function createPersonFromTransactionDialog() {
   els.quickPersonName.focus();
 }
 
+function createPersonFromOpportunityDialog() {
+  quickPersonTarget = "opportunity";
+  els.quickPersonForm.reset();
+  els.quickPersonType.value = "cliente";
+  els.quickPersonName.value = personName(els.opportunityPerson.value) === "Sem cadastro" ? "" : personName(els.opportunityPerson.value);
+  els.quickPersonDialog.showModal();
+  els.quickPersonName.focus();
+}
+
 function createPersonFromProjectForm() {
   quickPersonTarget = "project";
   els.quickPersonForm.reset();
@@ -7979,6 +7990,9 @@ function saveQuickPersonFromTransaction() {
   if (quickPersonTarget === "project") {
     els.projectCustomer.value = person.id;
     refreshSearchableSelect(els.projectCustomer);
+  } else if (quickPersonTarget === "opportunity") {
+    hydrateCrmOptions();
+    els.opportunityPerson.value = person.id;
   } else if (quickPersonTarget === "stockEntrySupplier") {
     els.stockEntrySupplier.value = person.id;
   } else if (quickPersonTarget === "protocol") {
