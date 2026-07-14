@@ -1641,6 +1641,10 @@ tr:last-child td {
   margin-bottom: 18px;
 }
 
+.toolbar-action-right {
+  margin-left: auto;
+}
+
 .chip-tab {
   min-height: 38px;
   padding: 0 16px;

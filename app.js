@@ -1064,6 +1064,7 @@ function bindEvents() {
   els.installationSearch.addEventListener("input", renderInstallations);
 
   document.querySelector("#newProtocolBtn")?.addEventListener("click", () => openProtocolDialog());
+  document.querySelector("#newProtocolInlineBtn")?.addEventListener("click", () => openProtocolDialog());
   document.querySelector("#protocolSettingsBtn")?.addEventListener("click", openProtocolSettingsDialog);
   els.protocolForm.addEventListener("submit", (event) => {
     event.preventDefault();
