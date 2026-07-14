@@ -721,7 +721,21 @@ async function boot() {
   }
 }
 
+function ensureQuickProjectCustomerButton() {
+  if (els.newQuickProjectCustomerBtn || !els.quickProjectCustomer) return;
+  const wrapper = els.quickProjectCustomer.closest(".inline-control") || els.quickProjectCustomer.parentElement;
+  if (!wrapper) return;
+  const button = document.createElement("button");
+  button.className = "secondary-btn";
+  button.id = "newQuickProjectCustomerBtn";
+  button.type = "button";
+  button.textContent = "Novo cliente";
+  wrapper.appendChild(button);
+  els.newQuickProjectCustomerBtn = button;
+}
+
 function bindEvents() {
+  ensureQuickProjectCustomerButton();
   els.loginForm.addEventListener("submit", handleLogin);
   els.logoutBtn.addEventListener("click", handleLogout);
   els.maintenanceLogoutBtn?.addEventListener("click", handleLogout);
