@@ -4214,6 +4214,12 @@ function openProtocolDrawer(protocolId) {
         ${PROTOCOL_STATUSES.map((status) => `<option value="${status.id}" ${protocol.status === status.id ? "selected" : ""}>${escapeHtml(status.label)}</option>`).join("")}
       </select>
     </section>
+    <section class="drawer-section">
+      <h4>Alterar responsável</h4>
+      <select id="protocolDrawerResponsible" data-protocol-id="${protocol.id}">
+        ${protocolResponsibleOptions(protocol.responsibleUserId)}
+      </select>
+    </section>
     ${drawerSection("Dados do protocolo", [
       ["Tipo de atividade", activityTypeName(protocol.activityTypeId)],
       ["Cidade", protocol.city || "-"],
@@ -4262,6 +4268,9 @@ function bindProtocolDrawerEvents() {
   document.querySelector("#protocolDrawerStatus")?.addEventListener("change", (event) => {
     changeProtocolStatus(event.target.dataset.protocolId, event.target.value);
   });
+  document.querySelector("#protocolDrawerResponsible")?.addEventListener("change", (event) => {
+    changeProtocolResponsible(event.target.dataset.protocolId, event.target.value);
+  });
   document.querySelectorAll("[data-checklist-status]").forEach((select) => {
     select.addEventListener("change", (event) => {
       setChecklistItemStatus(event.target.dataset.protocolId, event.target.dataset.itemId, event.target.value);
@@ -4309,6 +4318,27 @@ function changeProtocolStatus(protocolId, newStatus, { reopenDrawer = true } = {
   renderProtocols();
   if (reopenDrawer) openProtocolDrawer(protocolId);
   toast("Status do protocolo atualizado.");
+}
+
+function protocolResponsibleOptions(selectedId = "") {
+  const users = state.users.filter((user) => user.active !== false);
+  return `<option value="" ${selectedId ? "" : "selected"}>Sem responsável</option>${users.map((user) =>
+    `<option value="${user.id}" ${user.id === selectedId ? "selected" : ""}>${escapeHtml(user.name || user.username)}</option>`
+  ).join("")}`;
+}
+
+function changeProtocolResponsible(protocolId, responsibleUserId) {
+  const protocol = state.protocols.find((item) => item.id === protocolId);
+  if (!protocol || protocol.responsibleUserId === responsibleUserId) return;
+  const previous = userName(protocol.responsibleUserId);
+  protocol.responsibleUserId = responsibleUserId;
+  protocol.lastMovementAt = new Date().toISOString();
+  protocol.updatedAt = protocol.lastMovementAt;
+  addProtocolHistory(protocolId, "Responsável atualizado", "", "", `${previous} -> ${userName(responsibleUserId)}`);
+  persist();
+  renderProtocols();
+  openProtocolDrawer(protocolId);
+  toast("Responsável do protocolo atualizado.");
 }
 
 function setChecklistItemStatus(protocolId, itemId, status) {

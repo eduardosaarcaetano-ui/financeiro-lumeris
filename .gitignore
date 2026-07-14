@@ -6,3 +6,4 @@ backend-integration/*.key
 backend-integration/*.pem
 backend-integration/*.pfx
 backend-integration/*.p12
+backups/
