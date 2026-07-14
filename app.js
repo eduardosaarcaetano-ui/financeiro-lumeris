@@ -2082,7 +2082,7 @@ async function handleLogin(event) {
 
   try {
     if (isMasterCredentials(username, password)) {
-      await ensureMasterUser();
+      await ensureMasterUser({ save: false });
       const master = state.users.find((item) => item.username?.toLowerCase() === MASTER_USERNAME);
       els.loginError.textContent = "";
       setSession(master);
