@@ -397,6 +397,7 @@ const els = {
   opportunityWonDialog: document.querySelector("#opportunityWonDialog"),
   opportunityWonForm: document.querySelector("#opportunityWonForm"),
   opportunityWonSummary: document.querySelector("#opportunityWonSummary"),
+  crmKanbanMetrics: document.querySelector("#crmKanbanMetrics"),
   sellerDialog: document.querySelector("#sellerDialog"),
   sellerForm: document.querySelector("#sellerForm"),
   sellerName: document.querySelector("#sellerName"),
@@ -2516,15 +2517,17 @@ function filteredOpportunities() {
 
 function kanbanColumn(stage, opportunities) {
   const items = opportunities.filter((item) => item.stageId === stage.id);
+  const total = sum(items.map((item) => item.value));
+  const overdue = items.filter(isActivityDue).length;
   return `
     <section class="kanban-column" data-stage-id="${stage.id}">
       <header class="kanban-head" style="--stage-color:${stage.color}">
         <strong>${escapeHtml(stage.name)}</strong>
-        <span>${items.length} oportunidade(s)</span>
-        <span>${money(sum(items.map((item) => item.value)))}</span>
+        <span>${items.length} lead${items.length === 1 ? "" : "s"} - ${money(total)}</span>
       </header>
+      ${overdue ? `<div class="kanban-column-alert">${overdue} atividade${overdue === 1 ? "" : "s"} vencida${overdue === 1 ? "" : "s"}</div>` : ""}
       <div class="kanban-cards" data-drop-stage="${stage.id}">
-        ${items.slice(0, 80).map(opportunityCard).join("")}
+        ${items.slice(0, 80).map(opportunityCard).join("") || `<div class="kanban-empty">Sem oportunidades</div>`}
         ${items.length > 80 ? `<div class="muted kanban-limit">Mostrando 80 de ${items.length}</div>` : ""}
       </div>
     </section>`;
@@ -2532,15 +2535,23 @@ function kanbanColumn(stage, opportunities) {
 
 function opportunityCard(item) {
   const flags = [item.pendingActivity ? "Pendente" : "", isActivityDue(item) ? "Hoje/atrasada" : "", isOpportunityStale(item) ? "Sem movimento" : ""].filter(Boolean);
+  const movedDate = item.lastMovedAt?.slice(0, 10) || item.updatedAt?.slice(0, 10) || todayIso;
+  const project = item.projectId ? projectName(item.projectId) : "";
   return `
     <article class="opportunity-card" draggable="true" data-opportunity-id="${item.id}">
-      <div class="card-actions"><button type="button" data-opportunity-action="edit" data-id="${item.id}">Editar</button></div>
-      <strong>${escapeHtml(personName(item.personId))}</strong>
-      <span class="muted">${escapeHtml(item.company || "Sem empresa")}</span>
-      <div class="opportunity-meta"><span>${escapeHtml(item.number || "Sem número")}</span><strong>${money(item.value)}</strong></div>
-      <span class="muted">${formatDate(item.lastMovedAt?.slice(0, 10) || item.updatedAt?.slice(0, 10) || todayIso)} · ${escapeHtml(item.owner || "Sem responsável")}</span>
-      <span class="muted">${escapeHtml(unitName(item.unitId))}</span>
-      <div class="tag-row">${normalizeTags(item.tags).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
+      <div class="opportunity-card-top">
+        <strong>${escapeHtml(personName(item.personId))}</strong>
+        <span>${formatDate(movedDate)}</span>
+      </div>
+      <button class="opportunity-card-main" type="button" data-opportunity-action="edit" data-id="${item.id}">
+        ${escapeHtml(item.number || "Sem numero")}
+      </button>
+      <span class="muted">${escapeHtml(item.company || unitName(item.unitId) || "Sem empresa")}</span>
+      <div class="opportunity-meta"><span>${money(item.value)}</span><strong>${escapeHtml(item.owner || "Sem responsavel")}</strong></div>
+      <div class="tag-row">
+        ${project ? `<span>${escapeHtml(project)}</span>` : ""}
+        ${normalizeTags(item.tags).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
+      </div>
       <div class="attention-row">${flags.map((flag) => `<span>${escapeHtml(flag)}</span>`).join("")}</div>
     </article>`;
 }
@@ -7082,19 +7093,24 @@ function saveOpportunity() {
 }
 
 function renderPipelineBoard() {
+  renderCrmKanbanMetrics();
   els.pipelineBoard.innerHTML = OPPORTUNITY_STAGES.map((stageInfo) => {
     const items = state.opportunities
       .filter((item) => item.stage === stageInfo.key)
       .sort((a, b) => (b.stageChangedAt || "").localeCompare(a.stageChangedAt || ""));
     const total = sum(items.map((item) => item.value));
+    const overdue = items.filter(hasOverdueOpportunityTask).length;
     return `
-      <div class="pipeline-column">
+      <section class="pipeline-column" data-stage="${stageInfo.key}">
         <div class="pipeline-column-head">
-          <span>${stageInfo.label}</span>
-          <small>${items.length} · ${money(total)}</small>
+          <strong>${stageInfo.label}</strong>
+          <span>${items.length} lead${items.length === 1 ? "" : "s"} - ${money(total)}</span>
         </div>
-        ${items.map(pipelineCard).join("") || emptyMessage("Sem oportunidades.")}
-      </div>`;
+        ${overdue ? `<div class="pipeline-column-alert">${overdue} tarefa${overdue === 1 ? "" : "s"} vencida${overdue === 1 ? "" : "s"}</div>` : ""}
+        <div class="pipeline-card-list">
+          ${items.map(pipelineCard).join("") || `<div class="pipeline-empty">Sem oportunidades</div>`}
+        </div>
+      </section>`;
   }).join("");
 
   document.querySelectorAll("[data-opportunity-edit]").forEach((el) => {
@@ -7108,16 +7124,58 @@ function renderPipelineBoard() {
   });
 }
 
+function renderCrmKanbanMetrics() {
+  if (!els.crmKanbanMetrics) return;
+  const active = state.opportunities.filter((item) => !["ganho", "perdido"].includes(item.stage));
+  const dueToday = active.filter((item) => item.expectedCloseDate === todayIso).length;
+  const withoutTask = active.filter((item) => !item.expectedCloseDate).length;
+  const overdue = active.filter(hasOverdueOpportunityTask).length;
+  const createdRecently = state.opportunities.filter((item) => {
+    const created = (item.createdAt || "").slice(0, 10);
+    return created === todayIso || created === toIso(addDays(today, -1));
+  }).length;
+  const prospective = state.opportunities.filter((item) => item.stage === "prospeccao").length;
+  els.crmKanbanMetrics.innerHTML = [
+    { label: "Tarefas para hoje", value: dueToday, tone: "ok" },
+    { label: "Sem tarefa agendada", value: withoutTask, tone: "warn" },
+    { label: "Tarefas vencidas", value: overdue, tone: "danger" },
+    { label: "Novos hoje/ontem", value: createdRecently, tone: "neutral" },
+    { label: "Prospeccao", value: prospective || "Sem dados", tone: "neutral" },
+  ].map((item) => `
+    <article class="crm-kanban-metric ${item.tone}">
+      <span>${item.label}</span>
+      <strong>${item.value}</strong>
+    </article>
+  `).join("");
+}
+
+function hasOverdueOpportunityTask(opportunity) {
+  return Boolean(opportunity.expectedCloseDate && opportunity.expectedCloseDate < todayIso && !["ganho", "perdido"].includes(opportunity.stage));
+}
+
 function pipelineCard(opportunity) {
   const daysStalled = daysSince(opportunity.stageChangedAt);
   const stalled = daysStalled >= 14 && !["ganho", "perdido"].includes(opportunity.stage);
+  const dueText = opportunity.expectedCloseDate ? formatDate(opportunity.expectedCloseDate) : "Sem data";
+  const projectText = opportunity.projectId ? projectName(opportunity.projectId) : "";
+  const overdue = hasOverdueOpportunityTask(opportunity);
   return `
     <article class="pipeline-card ${stalled ? "stalled" : ""}">
-      <strong data-opportunity-edit="${opportunity.id}">${escapeHtml(opportunity.title)}</strong>
-      <span>${escapeHtml(personName(opportunity.personId))}</span>
-      <span class="muted">${money(opportunity.value)} · ${escapeHtml(sellerName(opportunity.sellerId))}</span>
-      <span class="muted">${daysStalled} dia(s) neste estágio</span>
-      <select data-opportunity-stage-select="${opportunity.id}">
+      <button class="pipeline-card-title" type="button" data-opportunity-edit="${opportunity.id}">
+        <span>${escapeHtml(personName(opportunity.personId))}</span>
+        <small>${escapeHtml(dueText)}</small>
+      </button>
+      <strong>${escapeHtml(opportunity.title)}</strong>
+      <div class="pipeline-card-value">
+        <span>${money(opportunity.value)}</span>
+        <small>${escapeHtml(sellerName(opportunity.sellerId))}</small>
+      </div>
+      <div class="pipeline-card-tags">
+        ${projectText ? `<span>${escapeHtml(projectText)}</span>` : ""}
+        ${stalled ? `<span class="warn">+${daysStalled} dias</span>` : ""}
+        ${overdue ? `<span class="danger">vencida</span>` : ""}
+      </div>
+      <select aria-label="Alterar etapa" data-opportunity-stage-select="${opportunity.id}">
         ${OPPORTUNITY_STAGES.map((stageInfo) => `<option value="${stageInfo.key}" ${stageInfo.key === opportunity.stage ? "selected" : ""}>${stageInfo.label}</option>`).join("")}
       </select>
     </article>`;
@@ -7519,9 +7577,9 @@ function renderCrmReports() {
 function renderStageConversionReport() {
   const rows = OPPORTUNITY_STAGES.filter((stageInfo) => !["ganho", "perdido"].includes(stageInfo.key)).map((stageInfo) => {
     const stageIndex = OPPORTUNITY_STAGES.findIndex((entry) => entry.key === stageInfo.key);
-    const reached = state.opportunities.filter((item) => item.stageHistory.some((entry) => entry.stage === stageInfo.key));
+    const reached = state.opportunities.filter((item) => (item.stageHistory || []).some((entry) => entry.stage === stageInfo.key));
     const advanced = reached.filter((item) =>
-      item.stageHistory.some((entry) => OPPORTUNITY_STAGES.findIndex((s) => s.key === entry.stage) > stageIndex)
+      (item.stageHistory || []).some((entry) => OPPORTUNITY_STAGES.findIndex((s) => s.key === entry.stage) > stageIndex)
     );
     const rate = reached.length ? (advanced.length / reached.length) * 100 : 0;
     return { stageInfo, reachedCount: reached.length, advancedCount: advanced.length, rate };
@@ -7559,10 +7617,27 @@ function renderSellerRanking(won, lost) {
 
 function renderCrm() {
   hydrateSellerOptions();
+  renderVisibleCrmKanban();
   renderPipelineBoard();
   renderFollowUpList();
   renderTasks();
   renderCrmReports();
+}
+
+function renderVisibleCrmKanban() {
+  if (!els.kanbanBoard) return;
+  const opportunities = filteredOpportunities();
+  document.querySelector("#crmVisibleCount").textContent = String(opportunities.length);
+  document.querySelector("#crmVisibleValue").textContent = `${money(sum(opportunities.map((item) => item.value)))} no pipeline`;
+  document.querySelector("#crmPendingCount").textContent = String(opportunities.filter((item) => item.pendingActivity || isActivityDue(item)).length);
+  document.querySelector("#crmStaleCount").textContent = String(opportunities.filter(isOpportunityStale).length);
+
+  els.kanbanBoard.innerHTML = state.opportunityStages
+    .slice()
+    .sort((a, b) => a.order - b.order)
+    .map((stage) => kanbanColumn(stage, opportunities))
+    .join("");
+  bindKanbanEvents();
 }
 
 // ---- Notas Fiscais ----

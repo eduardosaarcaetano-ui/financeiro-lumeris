@@ -1174,50 +1174,70 @@ button.project-chip {
 .kanban-board {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(280px, 320px);
-  gap: 14px;
-  min-height: 620px;
+  grid-auto-columns: minmax(230px, 1fr);
+  gap: 8px;
+  min-height: 62vh;
   overflow-x: auto;
-  padding-bottom: 12px;
+  padding: 4px 0 12px;
 }
 
 .kanban-column {
   display: grid;
   grid-template-rows: auto 1fr;
-  min-height: 600px;
+  min-height: 62vh;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f9fbfa;
-  box-shadow: var(--shadow);
+  border-radius: 4px;
+  background: #f8faf8;
 }
 
 .kanban-head {
   display: grid;
-  gap: 4px;
-  padding: 12px;
+  gap: 3px;
+  padding: 8px 10px;
   border-top: 4px solid var(--stage-color);
   border-bottom: 1px solid var(--line);
-  border-radius: 8px 8px 0 0;
-  background: #ffffff;
+  border-radius: 4px 4px 0 0;
+  background: #f1f5f2;
+  text-align: center;
 }
 
 .kanban-head strong {
-  font-size: 14px;
+  font-size: 12px;
+  letter-spacing: .04em;
   text-transform: uppercase;
 }
 
 .kanban-head span {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .kanban-cards {
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: 6px;
   min-height: 520px;
-  padding: 10px;
+  padding: 8px;
   overflow-y: auto;
+}
+
+.kanban-column-alert {
+  margin: 8px 8px 0;
+  padding: 5px 8px;
+  border: 1px solid #f1b0b0;
+  border-radius: 4px;
+  color: var(--danger);
+  background: #fff5f5;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.kanban-empty {
+  padding: 18px 8px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 12px;
 }
 
 .kanban-cards.drop-active {
@@ -1229,12 +1249,13 @@ button.project-chip {
 .opportunity-card {
   position: relative;
   display: grid;
-  gap: 6px;
-  padding: 11px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  gap: 5px;
+  padding: 7px;
+  border: 1px solid #cfd8d2;
+  border-radius: 4px;
   background: #ffffff;
   cursor: grab;
+  font-size: 12px;
 }
 
 .opportunity-card.dragging {
@@ -1246,11 +1267,54 @@ button.project-chip {
   overflow-wrap: anywhere;
 }
 
+.opportunity-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.opportunity-card-top strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.opportunity-card-top span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.opportunity-card-main {
+  justify-content: flex-start;
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
+
 .opportunity-meta {
   display: flex;
   justify-content: space-between;
   gap: 10px;
   align-items: center;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.opportunity-meta span {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.opportunity-meta strong {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .tag-row,
@@ -1262,23 +1326,26 @@ button.project-chip {
 
 .tag-row span,
 .attention-row span {
-  min-height: 24px;
+  min-height: 18px;
   display: inline-grid;
   place-items: center;
-  padding: 0 7px;
-  border-radius: 999px;
-  font-size: 11px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 10px;
   font-weight: 800;
+  text-transform: uppercase;
 }
 
 .tag-row span {
-  background: #edf3ef;
-  color: var(--primary-strong);
+  background: #f6f7f6;
+  color: var(--muted);
 }
 
 .attention-row span {
-  background: #fff3dd;
-  color: var(--warn);
+  border-color: #f1b0b0;
+  background: #fff5f5;
+  color: var(--danger);
 }
 
 .card-actions {
@@ -1763,50 +1830,196 @@ dialog::backdrop {
   border-left: 3px solid var(--danger);
 }
 
+.crm-kanban-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  gap: 1px;
+  margin: 10px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.crm-kanban-metric {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px 14px;
+  background: var(--surface);
+}
+
+.crm-kanban-metric span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.crm-kanban-metric strong {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.crm-kanban-metric.ok strong {
+  color: var(--success);
+}
+
+.crm-kanban-metric.warn strong {
+  color: var(--warn);
+}
+
+.crm-kanban-metric.danger strong {
+  color: var(--danger);
+}
+
 .pipeline-board {
-  display: flex;
-  gap: 14px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(245px, 1fr);
+  gap: 8px;
   overflow-x: auto;
-  padding-bottom: 8px;
-  align-items: flex-start;
+  padding: 10px 0 12px;
+  align-items: stretch;
 }
 
 .pipeline-column {
-  flex: 0 0 260px;
-  background: var(--surface-soft);
-  border-radius: 10px;
-  padding: 12px;
-  display: grid;
-  gap: 10px;
-  align-content: start;
-  min-height: 120px;
+  min-width: 245px;
+  min-height: 62vh;
+  background: #f8faf8;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
 }
 
 .pipeline-column-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  background: #f1f5f2;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.pipeline-column-head strong {
+  font-size: 12px;
+  letter-spacing: .04em;
+}
+
+.pipeline-column-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.pipeline-column-alert {
+  margin: 8px 8px 0;
+  padding: 5px 8px;
+  border: 1px solid #f3b0b0;
+  border-radius: 4px;
+  color: var(--danger);
+  background: #fff5f5;
+  font-size: 11px;
   font-weight: 700;
 }
 
-.pipeline-column-head small {
+.pipeline-card-list {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  padding: 8px;
+}
+
+.pipeline-empty {
+  padding: 18px 8px;
   color: var(--muted);
-  font-weight: 600;
+  text-align: center;
+  font-size: 12px;
 }
 
 .pipeline-card {
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
-  box-shadow: var(--shadow);
+  border: 1px solid #cfd8d2;
+  border-radius: 4px;
+  padding: 7px;
   display: grid;
-  gap: 6px;
-  font-size: 13px;
+  gap: 5px;
+  font-size: 12px;
+  box-shadow: none;
+}
+
+.pipeline-card-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+}
+
+.pipeline-card-title span {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pipeline-card-title small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .pipeline-card strong {
-  font-size: 14px;
+  color: var(--primary);
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.pipeline-card-value {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pipeline-card-value span {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.pipeline-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pipeline-card-tags span {
+  padding: 2px 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--muted);
+  background: #f6f7f6;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.pipeline-card-tags .warn {
+  border-color: #f3d48a;
+  color: #9a6500;
+  background: #fff8e5;
+}
+
+.pipeline-card-tags .danger {
+  border-color: #f1b0b0;
+  color: var(--danger);
+  background: #fff5f5;
 }
 
 .pipeline-card.stalled {
@@ -1814,9 +2027,9 @@ dialog::backdrop {
 }
 
 .pipeline-card select {
-  min-height: 34px;
-  padding: 4px 8px;
-  font-size: 12px;
+  min-height: 30px;
+  padding: 4px 7px;
+  font-size: 11px;
 }
 
 .follow-up-overdue {
@@ -1933,6 +2146,10 @@ dialog::backdrop {
     grid-template-columns: 1fr 1fr;
   }
 
+  .crm-kanban-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .crm-toolbar {
     grid-template-columns: repeat(3, minmax(150px, 1fr));
   }
@@ -1974,6 +2191,7 @@ dialog::backdrop {
   .project-report-grid,
   .crm-summary,
   .crm-toolbar,
+  .crm-kanban-metrics,
   .form-grid {
     grid-template-columns: 1fr;
   }
