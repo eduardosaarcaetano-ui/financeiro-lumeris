@@ -1470,7 +1470,7 @@ button.project-chip {
 
 .proposal-month-table {
   display: grid;
-  grid-template-columns: 64px minmax(90px, 1fr) minmax(90px, 1fr);
+  grid-template-columns: 58px minmax(80px, 1fr) minmax(76px, 0.8fr) minmax(90px, 1fr);
   gap: 6px;
   align-items: center;
 }

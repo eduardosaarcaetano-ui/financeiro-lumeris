@@ -995,9 +995,11 @@ function bindEvents() {
   els.opportunityAttachmentDropzone?.addEventListener("drop", handleOpportunityAttachmentDrop);
   els.opportunityAttachmentDropzone?.addEventListener("paste", handleOpportunityAttachmentPaste);
   els.generateOpportunityProposalBtn?.addEventListener("click", generateOpportunityProposalPdf);
-  [els.proposalConsumption, els.proposalGeneration].forEach((field) => {
+  [els.proposalConsumption].forEach((field) => {
     field?.addEventListener("change", () => renderProposalMonthlyRows(readOpportunityProposalFromForm()));
   });
+  els.proposalPower?.addEventListener("input", recalculateProposalGenerationFromPower);
+  els.proposalPower?.addEventListener("change", recalculateProposalGenerationFromPower);
   els.openOpportunityMapBtn?.addEventListener("click", openCurrentOpportunityMap);
   els.crmMapBtn?.addEventListener("click", openCrmMapDialog);
   els.openCrmRouteBtn?.addEventListener("click", openVisibleCrmRoute);
@@ -3035,11 +3037,13 @@ function renderOpportunityAttachmentRows() {
 
 function readOpportunityProposalFromForm() {
   const monthlyConsumption = [...(els.proposalMonthlyRows?.querySelectorAll("[data-proposal-consumption-month]") || [])].map((input) => Number(input.value || 0));
+  const monthlyAdjustmentPercent = [...(els.proposalMonthlyRows?.querySelectorAll("[data-proposal-adjustment-month]") || [])].map((input) => Number(input.value || 0));
   const monthlyGeneration = [...(els.proposalMonthlyRows?.querySelectorAll("[data-proposal-generation-month]") || [])].map((input) => Number(input.value || 0));
   return {
     consumptionKwh: Number(els.proposalConsumption?.value || 0),
     generationKwh: Number(els.proposalGeneration?.value || 0),
     monthlyConsumption,
+    monthlyAdjustmentPercent,
     monthlyGeneration,
     powerKwp: Number(els.proposalPower?.value || 0),
     moduleQuantity: Number(els.proposalModuleQuantity?.value || 0),
@@ -3060,7 +3064,7 @@ function readOpportunityProposalFromForm() {
 }
 
 const PROPOSAL_MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-const PROPOSAL_GENERATION_FACTORS = [1.078, 1.026, 1.13, 0.968, 0.916, 0.799, 0.879, 0.901, 0.929, 1.105, 1.146, 1.122];
+const PROPOSAL_GENERATION_FACTORS = [1.08, 1.03, 1.13, 0.97, 0.92, 0.80, 0.88, 0.90, 0.93, 1.11, 1.15, 1.12];
 
 function averagePositive(values) {
   const nums = values.map(Number).filter((value) => value > 0);
@@ -3070,21 +3074,61 @@ function averagePositive(values) {
 function renderProposalMonthlyRows(proposal = {}) {
   if (!els.proposalMonthlyRows) return;
   const baseConsumption = Number(proposal.consumptionKwh || els.proposalConsumption?.value || 0);
-  const baseGeneration = Number(proposal.generationKwh || els.proposalGeneration?.value || 0);
+  const powerKwp = Number(proposal.powerKwp || els.proposalPower?.value || 0);
+  const baseGeneration = powerKwp > 0 ? powerKwp * 100 : Number(proposal.generationKwh || els.proposalGeneration?.value || 0);
   const consumption = Array.isArray(proposal.monthlyConsumption) && proposal.monthlyConsumption.length ? proposal.monthlyConsumption : PROPOSAL_MONTHS.map(() => baseConsumption);
+  const adjustment = Array.isArray(proposal.monthlyAdjustmentPercent) && proposal.monthlyAdjustmentPercent.length
+    ? proposal.monthlyAdjustmentPercent
+    : PROPOSAL_GENERATION_FACTORS.map((factor) => Math.round(factor * 100));
   const generation = Array.isArray(proposal.monthlyGeneration) && proposal.monthlyGeneration.length
     ? proposal.monthlyGeneration
-    : PROPOSAL_GENERATION_FACTORS.map((factor) => Math.round(baseGeneration * factor));
+    : adjustment.map((percent) => Math.round(baseGeneration * (Number(percent || 0) / 100)));
+  if (els.proposalGeneration) {
+    els.proposalGeneration.value = Math.round(averagePositive(generation) || 0);
+  }
   els.proposalMonthlyRows.innerHTML = `
     <div class="proposal-month-head">Mês</div>
     <div class="proposal-month-head">Consumo</div>
+    <div class="proposal-month-head">% ajuste</div>
     <div class="proposal-month-head">Geração</div>
     ${PROPOSAL_MONTHS.map((month, index) => `
       <label>${month}</label>
       <input data-proposal-consumption-month="${index}" type="number" min="0" step="0.01" value="${consumption[index] || ""}" />
+      <input data-proposal-adjustment-month="${index}" type="number" min="0" step="0.01" value="${adjustment[index] || ""}" />
       <input data-proposal-generation-month="${index}" type="number" min="0" step="0.01" value="${generation[index] || ""}" />
     `).join("")}
   `;
+  bindProposalMonthlyEvents();
+}
+
+function recalculateProposalGenerationFromPower() {
+  if (!els.proposalMonthlyRows) return;
+  const powerKwp = Number(els.proposalPower?.value || 0);
+  const baseGeneration = powerKwp * 100;
+  const generationInputs = [...els.proposalMonthlyRows.querySelectorAll("[data-proposal-generation-month]")];
+  const adjustmentInputs = [...els.proposalMonthlyRows.querySelectorAll("[data-proposal-adjustment-month]")];
+  generationInputs.forEach((input, index) => {
+    const percent = Number(adjustmentInputs[index]?.value || 0);
+    input.value = baseGeneration > 0 && percent > 0 ? Math.round(baseGeneration * (percent / 100)) : "";
+  });
+  if (els.proposalGeneration) {
+    els.proposalGeneration.value = Math.round(averagePositive(generationInputs.map((input) => Number(input.value || 0))) || 0);
+  }
+}
+
+function updateProposalGenerationAverage() {
+  if (!els.proposalMonthlyRows || !els.proposalGeneration) return;
+  const values = [...els.proposalMonthlyRows.querySelectorAll("[data-proposal-generation-month]")].map((input) => Number(input.value || 0));
+  els.proposalGeneration.value = Math.round(averagePositive(values) || 0);
+}
+
+function bindProposalMonthlyEvents() {
+  els.proposalMonthlyRows?.querySelectorAll("[data-proposal-adjustment-month]").forEach((input) => {
+    input.addEventListener("input", recalculateProposalGenerationFromPower);
+  });
+  els.proposalMonthlyRows?.querySelectorAll("[data-proposal-generation-month]").forEach((input) => {
+    input.addEventListener("input", updateProposalGenerationAverage);
+  });
 }
 
 function setOpportunityProposalForm(proposal = {}) {
@@ -3169,7 +3213,9 @@ function proposalHtml(opportunity, proposal) {
     : PROPOSAL_MONTHS.map(() => Number(proposal.consumptionKwh || 0));
   const generationValues = Array.isArray(proposal.monthlyGeneration) && proposal.monthlyGeneration.some(Number)
     ? proposal.monthlyGeneration.map(Number)
-    : PROPOSAL_GENERATION_FACTORS.map((factor) => Math.round(Number(proposal.generationKwh || 0) * factor));
+    : (Array.isArray(proposal.monthlyAdjustmentPercent) && proposal.monthlyAdjustmentPercent.length
+      ? proposal.monthlyAdjustmentPercent.map((percent) => Math.round(Number(proposal.powerKwp || 0) * 100 * (Number(percent || 0) / 100)))
+      : PROPOSAL_GENERATION_FACTORS.map((factor) => Math.round(Number(proposal.powerKwp || 0) * 100 * factor)));
   const avgConsumption = averagePositive(consumptionValues) || Number(proposal.consumptionKwh || 0);
   const avgGeneration = averagePositive(generationValues) || Number(proposal.generationKwh || 0);
   const annualGeneration = sum(generationValues);
