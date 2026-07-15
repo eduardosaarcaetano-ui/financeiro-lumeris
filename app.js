@@ -425,6 +425,8 @@ const els = {
   crmLostCount: document.querySelector("#crmLostCount"),
   crmStageConversionReport: document.querySelector("#crmStageConversionReport"),
   crmSellerRankingTable: document.querySelector("#crmSellerRankingTable"),
+  openSalesRankMonthTvBtn: document.querySelector("#openSalesRankMonthTvBtn"),
+  openSalesRankYearTvBtn: document.querySelector("#openSalesRankYearTvBtn"),
   navItems: document.querySelectorAll(".nav-item"),
   views: document.querySelectorAll(".view"),
   crmUnitFilter: document.querySelector("#crmUnitFilter"),
@@ -755,6 +757,12 @@ async function boot() {
     bindEvents();
     setDefaultReportPeriod();
     renderAll();
+    if (isSalesRankingTvMode()) {
+      await initRemoteSync();
+      renderSalesRankingTvMode();
+      window.setInterval(renderSalesRankingTvMode, 60000);
+      return;
+    }
     await ensureMasterUser({ save: false });
     renderUsers();
     restoreSessionOrShowLogin();
@@ -960,6 +968,8 @@ function bindEvents() {
   });
   els.crmReportStart.addEventListener("input", renderCrmReports);
   els.crmReportEnd.addEventListener("input", renderCrmReports);
+  els.openSalesRankMonthTvBtn?.addEventListener("click", () => openSalesRankingTv("month"));
+  els.openSalesRankYearTvBtn?.addEventListener("click", () => openSalesRankingTv("year"));
   updateCrmReportPeriodUi();
 
   els.navItems.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
@@ -8857,6 +8867,9 @@ function updateCrmReportPeriodUi() {
 
 function getCrmReportPeriod() {
   const mode = els.crmReportPeriod.value;
+  if (mode === "ano") {
+    return { start: `${today.getFullYear()}-01-01`, end: `${today.getFullYear()}-12-31` };
+  }
   if (mode === "trimestre") {
     const quarterStartMonth = Math.floor(today.getMonth() / 3) * 3;
     const start = new Date(today.getFullYear(), quarterStartMonth, 1);
@@ -8869,10 +8882,43 @@ function getCrmReportPeriod() {
   return { start: currentMonthStart, end: currentMonthEnd };
 }
 
+function isOpportunityWon(item) {
+  return item.stage === "ganho" || item.stageId === "ganho";
+}
+
+function isOpportunityLost(item) {
+  return item.stage === "perdido" || item.stageId === "perdido";
+}
+
+function opportunityWonDate(item) {
+  return (item.wonAt || item.stageChangedAt || item.lastMovedAt || item.updatedAt || item.createdAt || "").slice(0, 10);
+}
+
+function opportunityLostDate(item) {
+  return (item.lostAt || item.stageChangedAt || item.lastMovedAt || item.updatedAt || item.createdAt || "").slice(0, 10);
+}
+
+function opportunitySellerKey(item) {
+  if (item.sellerId) return `seller:${item.sellerId}`;
+  return `owner:${item.owner || "Sem responsável"}`;
+}
+
+function opportunitySellerLabel(key) {
+  if (key.startsWith("seller:")) return sellerName(key.replace("seller:", ""));
+  return key.replace("owner:", "") || "Sem responsável";
+}
+
+function getSalesRankingPeriod(mode = "month") {
+  if (mode === "year" || mode === "ano") {
+    return { label: `Ano ${today.getFullYear()}`, start: `${today.getFullYear()}-01-01`, end: `${today.getFullYear()}-12-31` };
+  }
+  return { label: today.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }), start: currentMonthStart, end: currentMonthEnd };
+}
+
 function renderCrmReports() {
   const period = getCrmReportPeriod();
-  const won = state.opportunities.filter((item) => item.stage === "ganho" && isInPeriod((item.wonAt || "").slice(0, 10), period.start, period.end));
-  const lost = state.opportunities.filter((item) => item.stage === "perdido" && isInPeriod((item.lostAt || "").slice(0, 10), period.start, period.end));
+  const won = state.opportunities.filter((item) => isOpportunityWon(item) && isInPeriod(opportunityWonDate(item), period.start, period.end));
+  const lost = state.opportunities.filter((item) => isOpportunityLost(item) && isInPeriod(opportunityLostDate(item), period.start, period.end));
 
   const avgTicket = won.length ? sum(won.map((item) => item.value)) / won.length : 0;
   const avgCloseDays = won.length
@@ -8907,26 +8953,113 @@ function renderStageConversionReport() {
 }
 
 function renderSellerRanking(won, lost) {
-  const sellerIds = new Set([...won.map((item) => item.sellerId), ...lost.map((item) => item.sellerId)].filter(Boolean));
-  const rows = [...sellerIds]
-    .map((sellerId) => {
-      const wonBySeller = won.filter((item) => item.sellerId === sellerId);
-      const lostBySeller = lost.filter((item) => item.sellerId === sellerId);
-      const total = sum(wonBySeller.map((item) => item.value));
-      const conversion = wonBySeller.length + lostBySeller.length ? (wonBySeller.length / (wonBySeller.length + lostBySeller.length)) * 100 : 0;
-      return { sellerId, total, count: wonBySeller.length, conversion };
-    })
-    .sort((a, b) => b.total - a.total);
+  const rows = buildSalesRankingRows(won, lost);
 
   els.crmSellerRankingTable.innerHTML = rows.length
-    ? rows.map((row) => `
-      <tr>
-        <td>${escapeHtml(sellerName(row.sellerId))}</td>
+    ? rows.map((row, index) => `
+      <tr class="${index < 3 ? `ranking-row ranking-${index + 1}` : ""}">
+        <td>${index < 3 ? `${index + 1}? ` : ""}${escapeHtml(row.name)}</td>
         <td class="money">${money(row.total)}</td>
         <td>${row.count}</td>
         <td>${row.conversion.toFixed(1)}%</td>
       </tr>`).join("")
-    : `<tr><td colspan="4">${emptyMessage("Sem negócios fechados no período.")}</td></tr>`;
+    : `<tr><td colspan="4">${emptyMessage("Sem neg?cios fechados no per?odo.")}</td></tr>`;
+}
+
+function buildSalesRankingRows(won, lost) {
+  const sellerKeys = new Set([...won.map(opportunitySellerKey), ...lost.map(opportunitySellerKey)].filter(Boolean));
+  return [...sellerKeys]
+    .map((key) => {
+      const wonBySeller = won.filter((item) => opportunitySellerKey(item) === key);
+      const lostBySeller = lost.filter((item) => opportunitySellerKey(item) === key);
+      const total = sum(wonBySeller.map((item) => item.value));
+      const conversion = wonBySeller.length + lostBySeller.length ? (wonBySeller.length / (wonBySeller.length + lostBySeller.length)) * 100 : 0;
+      return { key, name: opportunitySellerLabel(key), total, count: wonBySeller.length, conversion };
+    })
+    .sort((a, b) => b.total - a.total || b.count - a.count || a.name.localeCompare(b.name));
+}
+
+function salesRankingRowsForPeriod(mode) {
+  const period = getSalesRankingPeriod(mode);
+  const won = state.opportunities.filter((item) => isOpportunityWon(item) && isInPeriod(opportunityWonDate(item), period.start, period.end));
+  const lost = state.opportunities.filter((item) => isOpportunityLost(item) && isInPeriod(opportunityLostDate(item), period.start, period.end));
+  return { period, rows: buildSalesRankingRows(won, lost), won, lost };
+}
+
+function salesRankingTvUrl(mode) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("tv", "ranking");
+  url.searchParams.set("period", mode);
+  return url.toString();
+}
+
+function openSalesRankingTv(mode) {
+  window.open(salesRankingTvUrl(mode), "_blank");
+}
+
+function isSalesRankingTvMode() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("tv") === "ranking";
+}
+
+function renderSalesRankingTvMode() {
+  const params = new URLSearchParams(window.location.search);
+  const mode = params.get("period") === "year" ? "year" : "month";
+  const { period, rows, won } = salesRankingRowsForPeriod(mode);
+  document.title = `Ranking de vendas - ${period.label}`;
+  els.loginScreen?.classList.add("hidden");
+  els.appShell?.classList.add("hidden");
+  hideMaintenance();
+
+  let screen = document.querySelector("#salesRankingTvScreen");
+  if (!screen) {
+    screen = document.createElement("main");
+    screen.id = "salesRankingTvScreen";
+    screen.className = "ranking-tv-screen";
+    document.body.appendChild(screen);
+  }
+
+  const podium = [rows[1], rows[0], rows[2]];
+  screen.innerHTML = `
+    <section class="ranking-tv-hero">
+      <div>
+        <span>Lumeris Engenharia</span>
+        <h1>Ranking de vendas</h1>
+        <p>${escapeHtml(period.label)} ? ${won.length} neg?cio${won.length === 1 ? "" : "s"} fechado${won.length === 1 ? "" : "s"}</p>
+      </div>
+      <div class="ranking-tv-clock">${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
+    </section>
+    <section class="ranking-podium">
+      ${podium.map((row, index) => {
+        const place = index === 1 ? 1 : index === 0 ? 2 : 3;
+        const heightClass = place === 1 ? "first" : place === 2 ? "second" : "third";
+        return row ? `
+          <article class="podium-card ${heightClass}">
+            <div class="medal">${place}?</div>
+            <h2>${escapeHtml(row.name)}</h2>
+            <strong>${money(row.total)}</strong>
+            <span>${row.count} venda${row.count === 1 ? "" : "s"} ? ${row.conversion.toFixed(1)}% convers?o</span>
+          </article>` : `
+          <article class="podium-card empty ${heightClass}">
+            <div class="medal">${place}?</div>
+            <h2>Sem vendedor</h2>
+            <strong>${money(0)}</strong>
+            <span>Aguardando venda fechada</span>
+          </article>`;
+      }).join("")}
+    </section>
+    <section class="ranking-tv-list">
+      ${rows.slice(3, 10).map((row, index) => `
+        <article>
+          <span>${index + 4}?</span>
+          <strong>${escapeHtml(row.name)}</strong>
+          <em>${money(row.total)}</em>
+          <small>${row.count} venda${row.count === 1 ? "" : "s"}</small>
+        </article>
+      `).join("") || `<article><strong>Sem outros vendedores no ranking</strong><em>${money(0)}</em></article>`}
+    </section>
+  `;
 }
 
 function renderCrm() {
