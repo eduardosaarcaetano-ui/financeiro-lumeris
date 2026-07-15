@@ -1174,20 +1174,45 @@ button.project-chip {
 .kanban-board {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(230px, 1fr);
-  gap: 8px;
+  grid-auto-columns: minmax(300px, 300px);
+  gap: 10px;
   min-height: 62vh;
   overflow-x: auto;
-  padding: 4px 0 12px;
+  overflow-y: hidden;
+  padding: 4px 0 18px;
+  scrollbar-gutter: stable both-edges;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.kanban-board::-webkit-scrollbar {
+  height: 14px;
+}
+
+.kanban-board::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: #e4ebe7;
+}
+
+.kanban-board::-webkit-scrollbar-thumb {
+  border: 3px solid #e4ebe7;
+  border-radius: 999px;
+  background: #7f9188;
+}
+
+.kanban-board::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
 }
 
 .kanban-column {
   display: grid;
   grid-template-rows: auto 1fr;
+  width: 300px;
   min-height: 62vh;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #f8faf8;
+  scroll-snap-align: start;
 }
 
 .kanban-head {
