@@ -207,6 +207,7 @@ let pendingWonOpportunity = null;
 let technicalReportDraftPhotos = [];
 let opportunityAttachmentsDraft = [];
 let driveAutomationCapability = null;
+let showLostOpportunities = false;
 
 // Ordem do funil — usada tanto para renderizar as colunas quanto para calcular
 // taxa de conversão por estágio nos relatórios. "ganho"/"perdido" são estágios
@@ -427,6 +428,7 @@ const els = {
   crmSellerRankingTable: document.querySelector("#crmSellerRankingTable"),
   openSalesRankMonthTvBtn: document.querySelector("#openSalesRankMonthTvBtn"),
   openSalesRankYearTvBtn: document.querySelector("#openSalesRankYearTvBtn"),
+  toggleLostOpportunitiesBtn: document.querySelector("#toggleLostOpportunitiesBtn"),
   navItems: document.querySelectorAll(".nav-item"),
   views: document.querySelectorAll(".view"),
   crmUnitFilter: document.querySelector("#crmUnitFilter"),
@@ -977,6 +979,10 @@ function bindEvents() {
   els.crmReportEnd.addEventListener("input", renderCrmReports);
   els.openSalesRankMonthTvBtn?.addEventListener("click", () => openSalesRankingTv("month"));
   els.openSalesRankYearTvBtn?.addEventListener("click", () => openSalesRankingTv("year"));
+  els.toggleLostOpportunitiesBtn?.addEventListener("click", () => {
+    showLostOpportunities = !showLostOpportunities;
+    renderPipelineBoard();
+  });
   updateCrmReportPeriodUi();
 
   els.navItems.forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
@@ -8611,7 +8617,14 @@ function saveOpportunity() {
 
 function renderPipelineBoard() {
   renderCrmKanbanMetrics();
-  els.pipelineBoard.innerHTML = OPPORTUNITY_STAGES.map((stageInfo) => {
+  const lostItems = state.opportunities.filter((item) => item.stage === "perdido");
+  if (els.toggleLostOpportunitiesBtn) {
+    els.toggleLostOpportunitiesBtn.textContent = showLostOpportunities
+      ? `Ocultar perdidos (${lostItems.length})`
+      : `Mostrar perdidos (${lostItems.length})`;
+  }
+  const visibleStages = OPPORTUNITY_STAGES.filter((stageInfo) => showLostOpportunities || stageInfo.key !== "perdido");
+  els.pipelineBoard.innerHTML = visibleStages.map((stageInfo) => {
     const items = state.opportunities
       .filter((item) => item.stage === stageInfo.key)
       .sort((a, b) => (b.stageChangedAt || "").localeCompare(a.stageChangedAt || ""));
