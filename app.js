@@ -494,6 +494,17 @@ const els = {
   proposalPaymentTerms: document.querySelector("#proposalPaymentTerms"),
   proposalDeliveryDeadline: document.querySelector("#proposalDeliveryDeadline"),
   proposalInvestment: document.querySelector("#proposalInvestment"),
+  proposalKitProvider: document.querySelector("#proposalKitProvider"),
+  proposalKitValue: document.querySelector("#proposalKitValue"),
+  proposalDistanceKm: document.querySelector("#proposalDistanceKm"),
+  proposalLaborPerPanel: document.querySelector("#proposalLaborPerPanel"),
+  proposalInstallMaterialCost: document.querySelector("#proposalInstallMaterialCost"),
+  proposalExtraCost: document.querySelector("#proposalExtraCost"),
+  proposalTaxPercent: document.querySelector("#proposalTaxPercent"),
+  proposalCommissionPercent: document.querySelector("#proposalCommissionPercent"),
+  proposalTargetMarginPercent: document.querySelector("#proposalTargetMarginPercent"),
+  proposalPriceAdjustmentPercent: document.querySelector("#proposalPriceAdjustmentPercent"),
+  proposalPricingResult: document.querySelector("#proposalPricingResult"),
   proposalAcceptanceData: document.querySelector("#proposalAcceptanceData"),
   proposalNotes: document.querySelector("#proposalNotes"),
   generateOpportunityProposalBtn: document.querySelector("#generateOpportunityProposalBtn"),
@@ -1006,6 +1017,19 @@ function bindEvents() {
   });
   els.proposalPower?.addEventListener("input", recalculateProposalGenerationFromPower);
   els.proposalPower?.addEventListener("change", recalculateProposalGenerationFromPower);
+  [
+    els.proposalKitValue,
+    els.proposalDistanceKm,
+    els.proposalLaborPerPanel,
+    els.proposalInstallMaterialCost,
+    els.proposalExtraCost,
+    els.proposalTaxPercent,
+    els.proposalCommissionPercent,
+    els.proposalTargetMarginPercent,
+    els.proposalPriceAdjustmentPercent,
+    els.proposalModuleQuantity,
+  ].forEach((field) => field?.addEventListener("input", () => updateProposalPricingUi(true)));
+  els.proposalInvestment?.addEventListener("input", () => updateProposalPricingUi(false));
   els.openOpportunityMapBtn?.addEventListener("click", openCurrentOpportunityMap);
   els.crmMapBtn?.addEventListener("click", openCrmMapDialog);
   els.openCrmRouteBtn?.addEventListener("click", openVisibleCrmRoute);
@@ -3041,6 +3065,96 @@ function renderOpportunityAttachmentRows() {
     : emptyMessage("Nenhum anexo registrado. Crie uma pasta no Drive para o lead e cole os links dos arquivos aqui.");
 }
 
+function defaultProposalMaterialCost(moduleQuantity) {
+  const qty = Number(moduleQuantity || 0);
+  if (!qty) return 0;
+  if (qty < 8) return 550;
+  if (qty < 26) return 1455;
+  return 6100;
+}
+
+function readProposalPricingFromForm() {
+  const moduleQuantity = Number(els.proposalModuleQuantity?.value || 0);
+  const materialValue = els.proposalInstallMaterialCost?.value;
+  return {
+    kitProvider: els.proposalKitProvider?.value.trim() || "",
+    kitValue: Number(els.proposalKitValue?.value || 0),
+    distanceKm: Number(els.proposalDistanceKm?.value || 0),
+    laborPerPanel: Number(els.proposalLaborPerPanel?.value || 80),
+    installMaterialCost: materialValue === "" || materialValue == null ? defaultProposalMaterialCost(moduleQuantity) : Number(materialValue || 0),
+    extraCost: Number(els.proposalExtraCost?.value || 0),
+    taxPercent: Number(els.proposalTaxPercent?.value || 5),
+    commissionPercent: Number(els.proposalCommissionPercent?.value || 5),
+    targetMarginPercent: Number(els.proposalTargetMarginPercent?.value || 20),
+    priceAdjustmentPercent: Number(els.proposalPriceAdjustmentPercent?.value || 0),
+  };
+}
+
+function calculateProposalPricing(pricing = {}, saleValueInput = 0, moduleQuantityInput = 0) {
+  const moduleQuantity = Number(moduleQuantityInput || els.proposalModuleQuantity?.value || 0);
+  const distanceCost = Number(pricing.distanceKm || 0) > 0 ? Number(pricing.distanceKm || 0) * 0.95 + 80 : 0;
+  const laborCost = moduleQuantity * Number(pricing.laborPerPanel || 0);
+  const materialCost = Number(pricing.installMaterialCost || 0);
+  const fixedCost = Number(pricing.kitValue || 0) + distanceCost + laborCost + materialCost + Number(pricing.extraCost || 0);
+  const variableRate = (Number(pricing.taxPercent || 0) + Number(pricing.commissionPercent || 0)) / 100;
+  const targetMargin = Number(pricing.targetMarginPercent || 0) / 100;
+  const denominator = Math.max(0.01, 1 - variableRate - targetMargin);
+  const minimumPrice = fixedCost ? fixedCost / denominator : 0;
+  const suggestedPrice = minimumPrice * (1 + Number(pricing.priceAdjustmentPercent || 0) / 100);
+  const saleValue = Number(saleValueInput || suggestedPrice || 0);
+  const taxCost = saleValue * (Number(pricing.taxPercent || 0) / 100);
+  const commissionCost = saleValue * (Number(pricing.commissionPercent || 0) / 100);
+  const totalCost = fixedCost + taxCost + commissionCost;
+  const profit = saleValue - totalCost;
+  const margin = saleValue ? profit / saleValue : 0;
+  const index = targetMargin ? margin / targetMargin : 0;
+  const status = margin >= targetMargin * 0.975 ? "ok" : margin >= targetMargin * 0.925 ? "atencao" : "revisar";
+  return {
+    distanceCost,
+    laborCost,
+    materialCost,
+    fixedCost,
+    taxCost,
+    commissionCost,
+    totalCost,
+    minimumPrice,
+    suggestedPrice,
+    saleValue,
+    profit,
+    margin,
+    index,
+    status,
+  };
+}
+
+function updateProposalPricingUi(syncInvestment = false) {
+  if (!els.proposalPricingResult) return;
+  const moduleQuantity = Number(els.proposalModuleQuantity?.value || 0);
+  if (els.proposalInstallMaterialCost && !els.proposalInstallMaterialCost.value && moduleQuantity) {
+    els.proposalInstallMaterialCost.placeholder = String(defaultProposalMaterialCost(moduleQuantity));
+  }
+  const pricing = readProposalPricingFromForm();
+  const currentInvestment = Number(els.proposalInvestment?.value || 0);
+  const result = calculateProposalPricing(pricing, currentInvestment, moduleQuantity);
+  if (syncInvestment && els.proposalInvestment && result.suggestedPrice) {
+    els.proposalInvestment.value = result.suggestedPrice.toFixed(2);
+    if (els.opportunityValue) els.opportunityValue.value = result.suggestedPrice.toFixed(2);
+  }
+  const finalResult = syncInvestment ? calculateProposalPricing(pricing, Number(els.proposalInvestment?.value || 0), moduleQuantity) : result;
+  const statusLabel = finalResult.status === "ok" ? "OK" : finalResult.status === "atencao" ? "Aten\u00e7\u00e3o" : "Revisar";
+  els.proposalPricingResult.innerHTML = `
+    <article class="pricing-status pricing-${finalResult.status}">
+      <strong>${statusLabel}</strong>
+      <span>\u00cdndice de acerto: ${formatNumber(finalResult.index * 100, 2)}%</span>
+    </article>
+    <article><span>Custo fixo</span><strong>${money(finalResult.fixedCost)}</strong></article>
+    <article><span>Impostos + comiss\u00e3o</span><strong>${money(finalResult.taxCost + finalResult.commissionCost)}</strong></article>
+    <article><span>Preço m\u00ednimo</span><strong>${money(finalResult.minimumPrice)}</strong></article>
+    <article><span>Preço sugerido</span><strong>${money(finalResult.suggestedPrice)}</strong></article>
+    <article><span>Margem estimada</span><strong>${formatNumber(finalResult.margin * 100, 2)}%</strong></article>
+  `;
+}
+
 function readOpportunityProposalFromForm() {
   const monthlyConsumption = [...(els.proposalMonthlyRows?.querySelectorAll("[data-proposal-consumption-month]") || [])].map((input) => Number(input.value || 0));
   const monthlyAdjustmentPercent = [...(els.proposalMonthlyRows?.querySelectorAll("[data-proposal-adjustment-month]") || [])].map((input) => Number(input.value || 0));
@@ -3064,6 +3178,7 @@ function readOpportunityProposalFromForm() {
     paymentTerms: els.proposalPaymentTerms?.value.trim() || "",
     deliveryDeadline: els.proposalDeliveryDeadline?.value.trim() || "",
     investment: Number(els.proposalInvestment?.value || 0),
+    pricing: readProposalPricingFromForm(),
     acceptanceData: els.proposalAcceptanceData?.value.trim() || "",
     notes: els.proposalNotes?.value.trim() || "",
   };
@@ -3155,6 +3270,18 @@ function setOpportunityProposalForm(proposal = {}) {
   els.proposalPaymentTerms.value = proposal.paymentTerms || "";
   els.proposalDeliveryDeadline.value = proposal.deliveryDeadline || "";
   els.proposalInvestment.value = proposal.investment || "";
+  const pricing = proposal.pricing || {};
+  if (els.proposalKitProvider) els.proposalKitProvider.value = pricing.kitProvider || "";
+  if (els.proposalKitValue) els.proposalKitValue.value = pricing.kitValue || "";
+  if (els.proposalDistanceKm) els.proposalDistanceKm.value = pricing.distanceKm ?? 100;
+  if (els.proposalLaborPerPanel) els.proposalLaborPerPanel.value = pricing.laborPerPanel ?? 80;
+  if (els.proposalInstallMaterialCost) els.proposalInstallMaterialCost.value = pricing.installMaterialCost || "";
+  if (els.proposalExtraCost) els.proposalExtraCost.value = pricing.extraCost || "";
+  if (els.proposalTaxPercent) els.proposalTaxPercent.value = pricing.taxPercent ?? 5;
+  if (els.proposalCommissionPercent) els.proposalCommissionPercent.value = pricing.commissionPercent ?? 5;
+  if (els.proposalTargetMarginPercent) els.proposalTargetMarginPercent.value = pricing.targetMarginPercent ?? 20;
+  if (els.proposalPriceAdjustmentPercent) els.proposalPriceAdjustmentPercent.value = pricing.priceAdjustmentPercent ?? 0;
+  updateProposalPricingUi(false);
   els.proposalAcceptanceData.value = proposal.acceptanceData || "";
   els.proposalNotes.value = proposal.notes || "";
 }

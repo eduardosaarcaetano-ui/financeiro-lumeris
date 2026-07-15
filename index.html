@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260715-crm-perdidos1" />
+    <link rel="stylesheet" href="styles.css?v=20260715-proposta-preco1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -2303,6 +2303,47 @@
             <label>Investimento
               <input id="proposalInvestment" type="number" min="0" step="0.01" />
             </label>
+            <section class="full proposal-pricing-grid">
+              <div class="panel-head tight">
+                <div>
+                  <h3>Precificação da proposta</h3>
+                  <small>Informe o valor do kit e revise os custos. O sistema calcula preço mínimo, preço sugerido e índice de acerto.</small>
+                </div>
+              </div>
+              <div class="form-grid">
+                <label>Fornecedor / kit
+                  <input id="proposalKitProvider" maxlength="120" placeholder="Ex.: BEL MICRO" />
+                </label>
+                <label>Valor do kit
+                  <input id="proposalKitValue" type="number" min="0" step="0.01" />
+                </label>
+                <label>Distância (km)
+                  <input id="proposalDistanceKm" type="number" min="0" step="0.01" value="100" />
+                </label>
+                <label>Mão de obra por placa
+                  <input id="proposalLaborPerPanel" type="number" min="0" step="0.01" value="80" />
+                </label>
+                <label>Material de instalação
+                  <input id="proposalInstallMaterialCost" type="number" min="0" step="0.01" />
+                </label>
+                <label>Custos extras
+                  <input id="proposalExtraCost" type="number" min="0" step="0.01" />
+                </label>
+                <label>Imposto (%)
+                  <input id="proposalTaxPercent" type="number" min="0" step="0.01" value="5" />
+                </label>
+                <label>Comissão (%)
+                  <input id="proposalCommissionPercent" type="number" min="0" step="0.01" value="5" />
+                </label>
+                <label>Margem mínima (%)
+                  <input id="proposalTargetMarginPercent" type="number" min="0" step="0.01" value="20" />
+                </label>
+                <label>Ajuste sobre sugerido (%)
+                  <input id="proposalPriceAdjustmentPercent" type="number" step="0.01" value="0" />
+                </label>
+              </div>
+              <div class="pricing-result" id="proposalPricingResult"></div>
+            </section>
             <label class="full">Dados do cliente para aceite
               <input id="proposalAcceptanceData" maxlength="240" placeholder="Nome, CPF/CNPJ, endereço ou responsável pela assinatura" />
             </label>
@@ -2818,6 +2859,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/estoque-iluminar-data.js?v=20260711-api-bancos1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260715-crm-perdidos1"></script>
+    <script src="app.js?v=20260715-proposta-preco1"></script>
   </body>
 </html>

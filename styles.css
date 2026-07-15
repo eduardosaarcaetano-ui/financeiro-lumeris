@@ -1488,6 +1488,58 @@ button.project-chip {
   text-transform: uppercase;
 }
 
+.proposal-pricing-grid {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fffaf0;
+}
+
+.pricing-result {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.pricing-result article {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface);
+}
+
+.pricing-result span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pricing-result strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 16px;
+}
+
+.pricing-status {
+  border-width: 2px !important;
+}
+
+.pricing-ok {
+  border-color: #55a863 !important;
+  background: #edf8ef !important;
+}
+
+.pricing-atencao {
+  border-color: #d6a642 !important;
+  background: #fff8e7 !important;
+}
+
+.pricing-revisar {
+  border-color: #c85050 !important;
+  background: #fff0f0 !important;
+}
+
 .ranking-row td:first-child {
   font-weight: 900;
 }
