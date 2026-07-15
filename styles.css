@@ -1461,6 +1461,33 @@ button.project-chip {
   color: var(--muted);
 }
 
+.proposal-month-grid {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfb;
+}
+
+.proposal-month-table {
+  display: grid;
+  grid-template-columns: 64px minmax(90px, 1fr) minmax(90px, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+.proposal-month-table label {
+  color: var(--muted);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.proposal-month-head {
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .ranking-row td:first-child {
   font-weight: 900;
 }

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260715-ranking-tv1" />
+    <link rel="stylesheet" href="styles.css?v=20260715-proposta-profissional1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -2245,8 +2245,18 @@
             <label>Geração estimada (kWh/mês)
               <input id="proposalGeneration" type="number" min="0" step="0.01" />
             </label>
+            <section class="full proposal-month-grid">
+              <div class="panel-head tight">
+                <h3>Consumo e geração mês a mês</h3>
+                <small>Preencha o consumo da conta do cliente e, se desejar, ajuste a geração prevista.</small>
+              </div>
+              <div class="proposal-month-table" id="proposalMonthlyRows"></div>
+            </section>
             <label>Potência do sistema (kWp)
               <input id="proposalPower" type="number" min="0" step="0.01" />
+            </label>
+            <label>Quantidade de placas
+              <input id="proposalModuleQuantity" type="number" min="0" step="1" />
             </label>
             <label>Tipo de inversor
               <select id="proposalInverterType">
@@ -2257,6 +2267,9 @@
             </label>
             <label>Marca/modelo do inversor
               <input id="proposalInverterBrand" maxlength="100" />
+            </label>
+            <label>Quantidade de inversores
+              <input id="proposalInverterQuantity" type="number" min="0" step="1" />
             </label>
             <label>Marca/modelo das placas
               <input id="proposalModuleBrand" maxlength="100" />
@@ -2277,8 +2290,20 @@
             <label>Baterias / ciclos
               <input id="proposalBattery" maxlength="100" placeholder="Ex.: 6000 ciclos" />
             </label>
+            <label>Valor médio do kWh
+              <input id="proposalTariff" type="number" min="0" step="0.01" placeholder="Ex.: 0,95" />
+            </label>
+            <label>Forma de pagamento
+              <input id="proposalPaymentTerms" maxlength="160" placeholder="Ex.: A negociar / entrada + parcelas" />
+            </label>
+            <label>Prazo de entrega
+              <input id="proposalDeliveryDeadline" maxlength="160" placeholder="Ex.: até 20 dias úteis após chegada do kit" />
+            </label>
             <label>Investimento
               <input id="proposalInvestment" type="number" min="0" step="0.01" />
+            </label>
+            <label class="full">Dados do cliente para aceite
+              <input id="proposalAcceptanceData" maxlength="240" placeholder="Nome, CPF/CNPJ, endereço ou responsável pela assinatura" />
             </label>
             <label class="full">Observações da proposta
               <textarea id="proposalNotes" rows="3" maxlength="800"></textarea>
@@ -2792,6 +2817,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/estoque-iluminar-data.js?v=20260711-api-bancos1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260715-ranking-tv1"></script>
+    <script src="app.js?v=20260715-proposta-profissional1"></script>
   </body>
 </html>

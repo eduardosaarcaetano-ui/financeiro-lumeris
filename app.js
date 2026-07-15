@@ -478,14 +478,21 @@ const els = {
   openCrmRouteBtn: document.querySelector("#openCrmRouteBtn"),
   proposalConsumption: document.querySelector("#proposalConsumption"),
   proposalGeneration: document.querySelector("#proposalGeneration"),
+  proposalMonthlyRows: document.querySelector("#proposalMonthlyRows"),
   proposalPower: document.querySelector("#proposalPower"),
+  proposalModuleQuantity: document.querySelector("#proposalModuleQuantity"),
   proposalInverterType: document.querySelector("#proposalInverterType"),
   proposalInverterBrand: document.querySelector("#proposalInverterBrand"),
+  proposalInverterQuantity: document.querySelector("#proposalInverterQuantity"),
   proposalModuleBrand: document.querySelector("#proposalModuleBrand"),
   proposalModulePower: document.querySelector("#proposalModulePower"),
   proposalRoofType: document.querySelector("#proposalRoofType"),
   proposalBattery: document.querySelector("#proposalBattery"),
+  proposalTariff: document.querySelector("#proposalTariff"),
+  proposalPaymentTerms: document.querySelector("#proposalPaymentTerms"),
+  proposalDeliveryDeadline: document.querySelector("#proposalDeliveryDeadline"),
   proposalInvestment: document.querySelector("#proposalInvestment"),
+  proposalAcceptanceData: document.querySelector("#proposalAcceptanceData"),
   proposalNotes: document.querySelector("#proposalNotes"),
   generateOpportunityProposalBtn: document.querySelector("#generateOpportunityProposalBtn"),
   opportunityHistory: document.querySelector("#opportunityHistory"),
@@ -988,6 +995,9 @@ function bindEvents() {
   els.opportunityAttachmentDropzone?.addEventListener("drop", handleOpportunityAttachmentDrop);
   els.opportunityAttachmentDropzone?.addEventListener("paste", handleOpportunityAttachmentPaste);
   els.generateOpportunityProposalBtn?.addEventListener("click", generateOpportunityProposalPdf);
+  [els.proposalConsumption, els.proposalGeneration].forEach((field) => {
+    field?.addEventListener("change", () => renderProposalMonthlyRows(readOpportunityProposalFromForm()));
+  });
   els.openOpportunityMapBtn?.addEventListener("click", openCurrentOpportunityMap);
   els.crmMapBtn?.addEventListener("click", openCrmMapDialog);
   els.openCrmRouteBtn?.addEventListener("click", openVisibleCrmRoute);
@@ -3024,33 +3034,78 @@ function renderOpportunityAttachmentRows() {
 }
 
 function readOpportunityProposalFromForm() {
+  const monthlyConsumption = [...(els.proposalMonthlyRows?.querySelectorAll("[data-proposal-consumption-month]") || [])].map((input) => Number(input.value || 0));
+  const monthlyGeneration = [...(els.proposalMonthlyRows?.querySelectorAll("[data-proposal-generation-month]") || [])].map((input) => Number(input.value || 0));
   return {
     consumptionKwh: Number(els.proposalConsumption?.value || 0),
     generationKwh: Number(els.proposalGeneration?.value || 0),
+    monthlyConsumption,
+    monthlyGeneration,
     powerKwp: Number(els.proposalPower?.value || 0),
+    moduleQuantity: Number(els.proposalModuleQuantity?.value || 0),
     inverterType: els.proposalInverterType?.value || "microinversor",
     inverterBrand: els.proposalInverterBrand?.value.trim() || "",
+    inverterQuantity: Number(els.proposalInverterQuantity?.value || 0),
     moduleBrand: els.proposalModuleBrand?.value.trim() || "",
     modulePowerWp: Number(els.proposalModulePower?.value || 0),
     roofType: els.proposalRoofType?.value || "telha_colonial",
     battery: els.proposalBattery?.value.trim() || "",
+    tariff: Number(els.proposalTariff?.value || 0),
+    paymentTerms: els.proposalPaymentTerms?.value.trim() || "",
+    deliveryDeadline: els.proposalDeliveryDeadline?.value.trim() || "",
     investment: Number(els.proposalInvestment?.value || 0),
+    acceptanceData: els.proposalAcceptanceData?.value.trim() || "",
     notes: els.proposalNotes?.value.trim() || "",
   };
+}
+
+const PROPOSAL_MONTHS = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+const PROPOSAL_GENERATION_FACTORS = [1.078, 1.026, 1.13, 0.968, 0.916, 0.799, 0.879, 0.901, 0.929, 1.105, 1.146, 1.122];
+
+function averagePositive(values) {
+  const nums = values.map(Number).filter((value) => value > 0);
+  return nums.length ? sum(nums) / nums.length : 0;
+}
+
+function renderProposalMonthlyRows(proposal = {}) {
+  if (!els.proposalMonthlyRows) return;
+  const baseConsumption = Number(proposal.consumptionKwh || els.proposalConsumption?.value || 0);
+  const baseGeneration = Number(proposal.generationKwh || els.proposalGeneration?.value || 0);
+  const consumption = Array.isArray(proposal.monthlyConsumption) && proposal.monthlyConsumption.length ? proposal.monthlyConsumption : PROPOSAL_MONTHS.map(() => baseConsumption);
+  const generation = Array.isArray(proposal.monthlyGeneration) && proposal.monthlyGeneration.length
+    ? proposal.monthlyGeneration
+    : PROPOSAL_GENERATION_FACTORS.map((factor) => Math.round(baseGeneration * factor));
+  els.proposalMonthlyRows.innerHTML = `
+    <div class="proposal-month-head">Mês</div>
+    <div class="proposal-month-head">Consumo</div>
+    <div class="proposal-month-head">Geração</div>
+    ${PROPOSAL_MONTHS.map((month, index) => `
+      <label>${month}</label>
+      <input data-proposal-consumption-month="${index}" type="number" min="0" step="0.01" value="${consumption[index] || ""}" />
+      <input data-proposal-generation-month="${index}" type="number" min="0" step="0.01" value="${generation[index] || ""}" />
+    `).join("")}
+  `;
 }
 
 function setOpportunityProposalForm(proposal = {}) {
   if (!els.proposalConsumption) return;
   els.proposalConsumption.value = proposal.consumptionKwh || "";
   els.proposalGeneration.value = proposal.generationKwh || "";
+  renderProposalMonthlyRows(proposal);
   els.proposalPower.value = proposal.powerKwp || "";
+  els.proposalModuleQuantity.value = proposal.moduleQuantity || "";
   els.proposalInverterType.value = proposal.inverterType || "microinversor";
   els.proposalInverterBrand.value = proposal.inverterBrand || "";
+  els.proposalInverterQuantity.value = proposal.inverterQuantity || "";
   els.proposalModuleBrand.value = proposal.moduleBrand || "";
   els.proposalModulePower.value = proposal.modulePowerWp || "";
   els.proposalRoofType.value = proposal.roofType || "telha_colonial";
   els.proposalBattery.value = proposal.battery || "";
+  els.proposalTariff.value = proposal.tariff || "";
+  els.proposalPaymentTerms.value = proposal.paymentTerms || "";
+  els.proposalDeliveryDeadline.value = proposal.deliveryDeadline || "";
   els.proposalInvestment.value = proposal.investment || "";
+  els.proposalAcceptanceData.value = proposal.acceptanceData || "";
   els.proposalNotes.value = proposal.notes || "";
 }
 
@@ -3071,12 +3126,63 @@ function roofTypeLabel(type) {
   }[type] || "Não informado";
 }
 
+function proposalChartSvg(consumption, generation) {
+  const values = [...consumption, ...generation, 1].map(Number);
+  const maxValue = Math.max(...values) * 1.18;
+  const width = 920;
+  const height = 320;
+  const left = 58;
+  const bottom = 48;
+  const top = 28;
+  const plotHeight = height - top - bottom;
+  const groupWidth = (width - left - 18) / PROPOSAL_MONTHS.length;
+  const barWidth = Math.min(22, groupWidth / 3);
+  const y = (value) => top + plotHeight - (Number(value || 0) / maxValue) * plotHeight;
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const gy = top + plotHeight - ratio * plotHeight;
+    return `<line x1="${left}" y1="${gy}" x2="${width - 10}" y2="${gy}" stroke="#e4ebe7"/><text x="8" y="${gy + 4}" font-size="12" fill="#62706a">${Math.round(maxValue * ratio)}</text>`;
+  }).join("");
+  const bars = PROPOSAL_MONTHS.map((month, index) => {
+    const x = left + index * groupWidth + 8;
+    const cy = y(consumption[index]);
+    const gy = y(generation[index]);
+    return `
+      <rect x="${x}" y="${cy}" width="${barWidth}" height="${top + plotHeight - cy}" fill="#7aa6d8"/>
+      <rect x="${x + barWidth + 4}" y="${gy}" width="${barWidth}" height="${top + plotHeight - gy}" fill="#f3a064"/>
+      <text x="${x}" y="${height - 18}" font-size="12" fill="#10231d">${month}</text>
+    `;
+  }).join("");
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Consumo x gera??o por m?s">
+    <rect width="${width}" height="${height}" fill="#fff"/>
+    ${grid}
+    ${bars}
+    <line x1="${left}" y1="${top + plotHeight}" x2="${width - 10}" y2="${top + plotHeight}" stroke="#9ca9a3"/>
+    <rect x="${left}" y="6" width="14" height="10" fill="#7aa6d8"/><text x="${left + 20}" y="15" font-size="12" fill="#10231d">En. Cons</text>
+    <rect x="${left + 108}" y="6" width="14" height="10" fill="#f3a064"/><text x="${left + 128}" y="15" font-size="12" fill="#10231d">En. Gerada</text>
+  </svg>`;
+}
+
 function proposalHtml(opportunity, proposal) {
   const client = personName(opportunity.personId);
-  const coverage = proposal.consumptionKwh ? Math.min(100, (proposal.generationKwh / proposal.consumptionKwh) * 100) : 0;
+  const consumptionValues = Array.isArray(proposal.monthlyConsumption) && proposal.monthlyConsumption.some(Number)
+    ? proposal.monthlyConsumption.map(Number)
+    : PROPOSAL_MONTHS.map(() => Number(proposal.consumptionKwh || 0));
+  const generationValues = Array.isArray(proposal.monthlyGeneration) && proposal.monthlyGeneration.some(Number)
+    ? proposal.monthlyGeneration.map(Number)
+    : PROPOSAL_GENERATION_FACTORS.map((factor) => Math.round(Number(proposal.generationKwh || 0) * factor));
+  const avgConsumption = averagePositive(consumptionValues) || Number(proposal.consumptionKwh || 0);
+  const avgGeneration = averagePositive(generationValues) || Number(proposal.generationKwh || 0);
+  const annualGeneration = sum(generationValues);
+  const annualConsumption = sum(consumptionValues);
+  const coverage = avgConsumption ? Math.min(100, (avgGeneration / avgConsumption) * 100) : 0;
+  const investment = Number(proposal.investment || opportunity.value || 0);
+  const tariff = Number(proposal.tariff || 0);
+  const annualSavings = tariff ? Math.min(annualGeneration, annualConsumption || annualGeneration) * tariff : 0;
+  const paybackYears = annualSavings ? investment / annualSavings : 0;
+  const twentyFiveYearSavings = annualSavings ? annualSavings * 25 - investment : 0;
   const warranties = [
-    "Placas: 15 anos contra defeito de fabricação",
-    "Eficiência das placas: 30 anos",
+    "Placas: 15 anos contra defeito de fabrica??o",
+    "Efici?ncia das placas: 30 anos",
     inverterWarrantyLabel(proposal.inverterType),
     proposal.battery ? `Baterias: ${escapeHtml(proposal.battery)}` : "",
   ].filter(Boolean);
@@ -3086,45 +3192,101 @@ function proposalHtml(opportunity, proposal) {
       <meta charset="utf-8" />
       <title>Proposta fotovoltaica - ${escapeHtml(client)}</title>
       <style>
-        body { font-family: Arial, sans-serif; margin: 32px; color: #10231d; }
-        header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #0f7665; padding-bottom: 18px; }
-        header img { width: 180px; max-height: 80px; object-fit: contain; background: #050505; padding: 8px; }
-        h1 { font-size: 26px; margin: 24px 0 8px; }
-        h2 { font-size: 16px; margin-top: 22px; color: #0f7665; }
+        @page { size: A4; margin: 16mm; }
+        body { font-family: Arial, sans-serif; margin: 0; color: #10231d; background: #fff; line-height: 1.45; }
+        header { display: flex; align-items: center; justify-content: space-between; border-bottom: 4px solid #0f7665; padding-bottom: 18px; margin-bottom: 24px; }
+        header img { width: 170px; max-height: 76px; object-fit: contain; background: #050505; padding: 8px; }
+        h1 { font-size: 28px; margin: 22px 0 8px; }
+        h2 { font-size: 18px; margin: 26px 0 10px; color: #0f7665; }
+        .muted { color: #5b6a64; }
+        .hero { padding: 18px; border-radius: 12px; background: #eef6f3; }
         .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-        .box { border: 1px solid #d7dfdb; border-radius: 8px; padding: 12px; }
-        .big { font-size: 22px; font-weight: 700; }
-        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { border-bottom: 1px solid #d7dfdb; text-align: left; padding: 9px; }
-        footer { margin-top: 32px; font-size: 12px; color: #5b6a64; }
+        .grid.four { grid-template-columns: repeat(4, 1fr); }
+        .box { border: 1px solid #d7dfdb; border-radius: 8px; padding: 12px; background: #fff; }
+        .box span { display: block; color: #5b6a64; font-size: 12px; }
+        .big { font-size: 22px; font-weight: 800; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border-bottom: 1px solid #d7dfdb; text-align: left; padding: 9px; vertical-align: top; }
+        th { color: #0f7665; font-size: 12px; text-transform: uppercase; }
+        .chart { border: 1px solid #d7dfdb; border-radius: 10px; padding: 12px; page-break-inside: avoid; }
+        .chart h2 { text-align: center; margin-top: 0; color: #10231d; }
+        .investment { margin-top: 20px; padding: 18px; border-radius: 12px; background: #10231d; color: #fff; page-break-inside: avoid; }
+        .investment h2 { color: #f5c451; margin-top: 0; }
+        .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 40px; }
+        .signature-line { border-top: 1px solid #10231d; padding-top: 8px; min-height: 80px; }
+        footer { margin-top: 28px; font-size: 11px; color: #5b6a64; }
+        .page-break { break-before: page; }
       </style>
     </head>
     <body>
       <header>
         <img src="assets/logo-lumeris.png" alt="Lumeris Engenharia" />
-        <div><strong>Lumeris Engenharia</strong><br>Proposta fotovoltaica<br>${formatDate(todayIso)}</div>
+        <div><strong>Lumeris Engenharia</strong><br>Proposta fotovoltaica<br>${formatDate(todayIso)}<br>Validade: 3 dias</div>
       </header>
-      <h1>${escapeHtml(opportunity.number || opportunity.title || "Proposta")} - ${escapeHtml(client)}</h1>
-      <p>${escapeHtml(opportunity.company || "")}</p>
-      <section class="grid">
-        <div class="box"><span>Investimento</span><div class="big">${money(proposal.investment || opportunity.value || 0)}</div></div>
-        <div class="box"><span>Potência</span><div class="big">${formatNumber(proposal.powerKwp || 0)} kWp</div></div>
-        <div class="box"><span>Geração estimada</span><div class="big">${formatNumber(proposal.generationKwh || 0)} kWh/mês</div></div>
+      <section class="hero">
+        <h1>${escapeHtml(opportunity.number || opportunity.title || "Proposta")} - ${escapeHtml(client)}</h1>
+        <p>${escapeHtml(opportunity.company || "")}</p>
+        <p>Conforme solicitado, apresentamos a proposta comercial para fornecimento de sistema fotovoltaico conectado ? rede el?trica, dimensionado com base no consumo informado e na gera??o estimada para o local de instala??o.</p>
+      </section>
+      <h2>Resumo t?cnico</h2>
+      <section class="grid four">
+        <div class="box"><span>Pot?ncia total</span><div class="big">${formatNumber(proposal.powerKwp || 0)} kWp</div></div>
+        <div class="box"><span>Gera??o m?dia</span><div class="big">${formatNumber(avgGeneration)} kWh/m?s</div></div>
+        <div class="box"><span>Consumo m?dio</span><div class="big">${formatNumber(avgConsumption)} kWh/m?s</div></div>
         <div class="box"><span>Cobertura estimada</span><div class="big">${formatNumber(coverage)}%</div></div>
       </section>
-      <h2>Dados técnicos</h2>
+      <h2>Radia??o solar considerada no projeto</h2>
+      <p>O dimensionamento considera a disponibilidade m?dia de radia??o solar da regi?o, efeitos sazonais ao longo do ano, inclina??o, orienta??o dos m?dulos e condi??es clim?ticas t?picas. A gera??o pode variar m?s a m?s conforme temperatura, sombreamento, limpeza dos m?dulos e disponibilidade da rede el?trica.</p>
+      <p>Os valores de gera??o mensal abaixo s?o estimativas t?cnicas utilizadas para comparar a energia consumida pelo cliente com a energia prevista do sistema proposto.</p>
+      <section class="chart">
+        <h2>Consumo x Gera??o</h2>
+        ${proposalChartSvg(consumptionValues, generationValues)}
+      </section>
       <table>
-        <tr><th>Consumo médio</th><td>${formatNumber(proposal.consumptionKwh || 0)} kWh/mês</td></tr>
-        <tr><th>Tipo de inversor</th><td>${escapeHtml(inverterWarrantyLabel(proposal.inverterType).split(":")[0])}</td></tr>
-        <tr><th>Inversor</th><td>${escapeHtml(proposal.inverterBrand || "A definir")}</td></tr>
-        <tr><th>Placas</th><td>${escapeHtml(proposal.moduleBrand || "A definir")} ${proposal.modulePowerWp ? `· ${formatNumber(proposal.modulePowerWp)} Wp` : ""}</td></tr>
-        <tr><th>Tipo de instalação</th><td>${escapeHtml(roofTypeLabel(proposal.roofType))}</td></tr>
+        <thead><tr><th>M?s</th>${PROPOSAL_MONTHS.map((month) => `<th>${month}</th>`).join("")}<th>M?dia</th></tr></thead>
+        <tbody>
+          <tr><th>En. Cons</th>${consumptionValues.map((value) => `<td>${formatNumber(value, 0)}</td>`).join("")}<td>${formatNumber(avgConsumption, 0)}</td></tr>
+          <tr><th>En. Gerada</th>${generationValues.map((value) => `<td>${formatNumber(value, 0)}</td>`).join("")}<td>${formatNumber(avgGeneration, 0)}</td></tr>
+        </tbody>
+      </table>
+      <h2>Composi??o do projeto</h2>
+      <table>
+        <thead><tr><th>Item</th><th>Quantidade</th></tr></thead>
+        <tbody>
+          <tr><td>M?dulo fotovoltaico ${escapeHtml(proposal.moduleBrand || "A definir")} ${proposal.modulePowerWp ? `${formatNumber(proposal.modulePowerWp, 0)} Wp` : ""}</td><td>${formatNumber(proposal.moduleQuantity || 0, 0)}</td></tr>
+          <tr><td>Inversor ${escapeHtml(proposal.inverterBrand || "A definir")} - ${escapeHtml(inverterWarrantyLabel(proposal.inverterType).split(":")[0])}</td><td>${formatNumber(proposal.inverterQuantity || 0, 0)}</td></tr>
+          <tr><td>Estrutura de fixa??o para ${escapeHtml(roofTypeLabel(proposal.roofType))}</td><td>1 kit</td></tr>
+          <tr><td><strong>Cabos solares 6 mm?</strong>, conectores e prote??es necess?rios para instala??o</td><td>Incluso</td></tr>
+          <tr><td>Monitoramento, aterramento, string box/prote??es e homologa??o conforme escopo</td><td>Incluso</td></tr>
+        </tbody>
       </table>
       <h2>Garantias</h2>
       <ul>${warranties.map((item) => `<li>${item}</li>`).join("")}</ul>
-      <h2>Observações</h2>
-      <p>${escapeHtml(proposal.notes || "Proposta sujeita à vistoria técnica, disponibilidade de rede e aprovação da concessionária.")}</p>
-      <footer>Documento gerado pelo CRM Lumeris. Para envio ao cliente, salve como PDF na janela de impressão.</footer>
+      <h2>Estimativa de ROI e payback</h2>
+      <section class="grid">
+        <div class="box"><span>Economia estimada anual</span><div class="big">${annualSavings ? money(annualSavings) : "Informar kWh"}</div></div>
+        <div class="box"><span>Payback estimado</span><div class="big">${paybackYears ? `${formatNumber(paybackYears, 1)} anos` : "A calcular"}</div></div>
+        <div class="box"><span>Economia projetada em 25 anos</span><div class="big">${annualSavings ? money(twentyFiveYearSavings) : "A calcular"}</div></div>
+        <div class="box"><span>Valor m?dio do kWh</span><div class="big">${tariff ? money(tariff) : "N?o informado"}</div></div>
+      </section>
+      <div class="investment page-break">
+        <h2>Pre?o, entrega e condi??es de pagamento</h2>
+        <section class="grid">
+          <div><span>Valor total do sistema</span><div class="big">${money(investment)}</div></div>
+          <div><span>Forma de pagamento</span><div class="big">${escapeHtml(proposal.paymentTerms || "A negociar")}</div></div>
+          <div><span>Prazo de entrega</span><div>${escapeHtml(proposal.deliveryDeadline || "Ap?s chegada do kit, at? 20 dias ?teis para instala??o, sujeito ? aprova??o da concession?ria.")}</div></div>
+          <div><span>Gera??o m?dia</span><div>${formatNumber(avgGeneration)} kWh/m?s</div></div>
+        </section>
+      </div>
+      <h2>Observa??es comerciais</h2>
+      <p>${escapeHtml(proposal.notes || "Proposta sujeita ? vistoria t?cnica, disponibilidade de rede, aprova??o da concession?ria, assinatura de contrato e disponibilidade dos equipamentos no ato da compra.")}</p>
+      <h2>Aceite da proposta</h2>
+      <p>Esta proposta, quando assinada, formaliza o aceite das condi??es t?cnicas e comerciais acima e servir? como base para emiss?o/assinatura do contrato de presta??o de servi?os.</p>
+      <section class="signatures">
+        <div class="signature-line"><strong>Lumeris Engenharia</strong><br>Respons?vel comercial</div>
+        <div class="signature-line"><strong>${escapeHtml(client)}</strong><br>${escapeHtml(proposal.acceptanceData || "CPF/CNPJ, endere?o e respons?vel pelo aceite")}</div>
+      </section>
+      <footer>Documento gerado pelo CRM Lumeris. Para envio ao cliente, salve como PDF na janela de impress?o.</footer>
       <script>window.addEventListener("load", () => setTimeout(() => window.print(), 400));</script>
     </body>
   </html>`;
