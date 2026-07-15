@@ -5209,26 +5209,28 @@ function resetInstallationForm() {
 
 function installationTypeLabel(type) {
   return {
-    instalacao_projeto: "Instalação de projeto",
-    ampliacao: "Ampliação",
-    manutencao_preventiva: "Manutenção preventiva",
-    manutencao_corretiva: "Manutenção corretiva",
-  }[type] || "Instalação de projeto";
+    instalacao_projeto: "Instala\u00e7\u00e3o de projeto",
+    ampliacao: "Amplia\u00e7\u00e3o",
+    manutencao_preventiva: "Manuten\u00e7\u00e3o preventiva",
+    manutencao_corretiva: "Manuten\u00e7\u00e3o corretiva",
+    retrabalho: "Retrabalho",
+    pos_venda: "P\u00f3s venda",
+  }[type] || "Instala\u00e7\u00e3o de projeto";
 }
 
 function installationStatusLabel(status) {
   return {
-    sem_programacao: "Sem programação",
+    sem_programacao: "Sem programa\u00e7\u00e3o",
     aguardando_projeto: "Aguardando projeto",
     aguardando_material: "Aguardando material",
     aguardando_cliente: "Aguardando cliente",
-    aguardando_instalacao: "Aguardando instalação",
+    aguardando_instalacao: "Aguardando instala\u00e7\u00e3o",
     programada: "Programada",
     em_andamento: "Em andamento",
-    concluida: "Concluída",
+    concluida: "Conclu\u00edda",
     pendente: "Pendente",
     cancelada: "Cancelada",
-  }[status] || status;
+  }[status] || "Programada";
 }
 
 function technicalPhotoTemplates(serviceType) {
