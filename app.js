@@ -75,6 +75,7 @@ const SECTOR_ALLOWED_VIEWS = {
   financeiro: ["dashboard", "receber", "pagar", "banco", "apisbancarias", "notasfiscais", "estoque", "relatorios", "pessoas"],
   vendas: ["dashboard", "crm", "vendas"],
   projetos: ["dashboard", "projetos", "protocolos", "instalacoes"],
+  instaladores: ["dashboard", "instalacoes"],
   engenharia: ["dashboard", "projetos", "protocolos", "instalacoes"],
   diretoria: ["dashboard", "projetos", "protocolos", "instalacoes", "crm", "vendas", "relatorios"],
 };
@@ -93,13 +94,14 @@ const SHARED_MERGE_FIELDS = ["people", "projects", "costCenters", "installations
 const ROLE_LABELS = {
   administrador: "Administrador",
   estoque: "Estoque",
-  usuario: "Usuario",
+  usuario: "Usuário",
 };
 
 const SECTOR_LABELS = {
   financeiro: "Financeiro",
   vendas: "Vendas",
   projetos: "Projetos",
+  instaladores: "Instaladores",
   engenharia: "Engenharia",
   diretoria: "Diretoria",
 };
@@ -202,6 +204,7 @@ const STOCK_EXIT_TYPE_LABELS = {
 let currentCrmTab = "funil";
 let pendingOpportunityConversion = null;
 let pendingWonOpportunity = null;
+let technicalReportDraftPhotos = [];
 
 // Ordem do funil — usada tanto para renderizar as colunas quanto para calcular
 // taxa de conversão por estágio nos relatórios. "ganho"/"perdido" são estágios
@@ -615,14 +618,36 @@ const els = {
   installationId: document.querySelector("#installationId"),
   installationProject: document.querySelector("#installationProject"),
   installationCustomer: document.querySelector("#installationCustomer"),
+  installationServiceType: document.querySelector("#installationServiceType"),
   installationStatus: document.querySelector("#installationStatus"),
+  installationClosedDate: document.querySelector("#installationClosedDate"),
+  installationDeadlineDate: document.querySelector("#installationDeadlineDate"),
   installationScheduledDate: document.querySelector("#installationScheduledDate"),
+  installationCompletedDate: document.querySelector("#installationCompletedDate"),
+  installationPanels: document.querySelector("#installationPanels"),
   installationTeam: document.querySelector("#installationTeam"),
+  installationLaborRows: document.querySelector("#installationLaborRows"),
+  installationEfficiencyPreview: document.querySelector("#installationEfficiencyPreview"),
   installationMaterials: document.querySelector("#installationMaterials"),
   installationNotes: document.querySelector("#installationNotes"),
   installationConclusion: document.querySelector("#installationConclusion"),
+  technicalWarrantyStart: document.querySelector("#technicalWarrantyStart"),
+  technicalTechnician: document.querySelector("#technicalTechnician"),
+  technicalWhatsapp: document.querySelector("#technicalWhatsapp"),
+  technicalEmail: document.querySelector("#technicalEmail"),
+  technicalSummary: document.querySelector("#technicalSummary"),
+  technicalPhotoGrid: document.querySelector("#technicalPhotoGrid"),
+  fillSampleTechnicalReportBtn: document.querySelector("#fillSampleTechnicalReportBtn"),
+  generateTechnicalReportBtn: document.querySelector("#generateTechnicalReportBtn"),
+  installationKpis: document.querySelector("#installationKpis"),
+  installationDateStart: document.querySelector("#installationDateStart"),
+  installationDateEnd: document.querySelector("#installationDateEnd"),
+  installationTypeFilter: document.querySelector("#installationTypeFilter"),
+  installationStatusFilter: document.querySelector("#installationStatusFilter"),
+  resetInstallationFilters: document.querySelector("#resetInstallationFilters"),
   installationSearch: document.querySelector("#installationSearch"),
   installationList: document.querySelector("#installationList"),
+  installationListSummary: document.querySelector("#installationListSummary"),
   personForm: document.querySelector("#personForm"),
   personId: document.querySelector("#personId"),
   personType: document.querySelector("#personType"),
@@ -1081,7 +1106,33 @@ function bindEvents() {
   els.projectReportSelect.addEventListener("input", renderProjectReports);
   document.querySelector("#exportProjectCsv").addEventListener("click", exportProjectsCsv);
   els.installationForm.addEventListener("submit", saveInstallation);
-  els.installationSearch.addEventListener("input", renderInstallations);
+  [
+    els.installationSearch,
+    els.installationDateStart,
+    els.installationDateEnd,
+    els.installationTypeFilter,
+    els.installationStatusFilter,
+  ].forEach((field) => {
+    field?.addEventListener("input", renderInstallations);
+    field?.addEventListener("change", renderInstallations);
+  });
+  [
+    els.installationClosedDate,
+    els.installationPanels,
+  ].forEach((field) => {
+    field?.addEventListener("input", updateInstallationFormCalculations);
+    field?.addEventListener("change", updateInstallationFormCalculations);
+  });
+  els.installationServiceType?.addEventListener("change", () => {
+    renderTechnicalPhotoGrid(els.installationServiceType.value);
+    updateInstallationFormCalculations();
+  });
+  els.installationLaborRows?.addEventListener("input", updateInstallationFormCalculations);
+  els.installationLaborRows?.addEventListener("change", updateInstallationFormCalculations);
+  els.resetInstallationFilters?.addEventListener("click", clearInstallationFilters);
+  els.technicalPhotoGrid?.addEventListener("change", handleTechnicalPhotoUpload);
+  els.fillSampleTechnicalReportBtn?.addEventListener("click", fillSampleTechnicalReport);
+  els.generateTechnicalReportBtn?.addEventListener("click", () => generateTechnicalDeliveryPdf());
 
   document.querySelector("#newProtocolBtn")?.addEventListener("click", () => openProtocolDialog());
   document.querySelector("#newProtocolInlineBtn")?.addEventListener("click", () => openProtocolDialog());
@@ -1334,9 +1385,24 @@ function normalizeState(data) {
     id: crypto.randomUUID(),
     projectId: "",
     customerId: "",
+    serviceType: "instalacao_projeto",
     status: "programada",
+    closedDate: "",
+    deadlineDate: "",
     scheduledDate: "",
+    completedDate: "",
+    panels: 0,
     team: "",
+    labor: [],
+    technicalReport: {
+      warrantyStartDate: "",
+      technician: "",
+      whatsapp: "",
+      email: "",
+      summary: "",
+      photos: [],
+      generatedAt: "",
+    },
     materials: "",
     notes: "",
     conclusion: "",
@@ -2791,7 +2857,7 @@ function renderSectorOverview(receberAberto, pagarAberto) {
   const monthSales = state.sales.filter((sale) => isInPeriod(sale.saleDate, currentMonthStart, currentMonthEnd));
   const monthSalesTotal = sum(monthSales.map((sale) => sale.total || 0));
   const activeProjects = state.projects.filter((project) => !["concluido", "cancelado"].includes(project.status));
-  const scheduledInstallations = state.installations.filter((item) => ["programada", "em_andamento", "pendente"].includes(item.status));
+  const scheduledInstallations = state.installations.filter((item) => !["concluida", "cancelada"].includes(item.status));
   const stockTotal = sum(state.stockItems.map((item) => (item.quantity || 0) * (item.averageCost || 0)));
   const monthInvoices = state.invoices.filter((invoice) => invoice.kind !== "despesa" && invoice.status !== "cancelada" && isInPeriod(invoice.issueDate, currentMonthStart, currentMonthEnd));
   const monthInvoicesTotal = sum(monthInvoices.map(accountingValueOf));
@@ -4697,7 +4763,7 @@ function toggleActivityTypeActive(id) {
 
 // ===================== fim Central de Protocolos =====================
 
-function openInstallationForProject(project) {
+function legacyOpenInstallationForProject(project) {
   setView("instalacoes");
   resetInstallationForm();
   els.installationProject.value = project.id;
@@ -4706,13 +4772,13 @@ function openInstallationForProject(project) {
   toast("Revise os dados e salve a instalação.");
 }
 
-function resetInstallationForm() {
+function legacyResetInstallationForm() {
   els.installationForm.reset();
   els.installationId.value = "";
   hydrateProjectOptions();
 }
 
-function installationStatusLabel(status) {
+function legacyInstallationStatusLabel(status) {
   return {
     programada: "Programada",
     em_andamento: "Em andamento",
@@ -4722,7 +4788,7 @@ function installationStatusLabel(status) {
   }[status] || status;
 }
 
-function renderInstallations() {
+function legacyRenderInstallations() {
   hydrateProjectOptions();
   const search = (els.installationSearch.value || "").toLowerCase().trim();
   const rows = state.installations
@@ -4747,7 +4813,7 @@ function renderInstallations() {
   });
 }
 
-function saveInstallation(event) {
+function legacySaveInstallation(event) {
   event.preventDefault();
   const id = els.installationId.value || crypto.randomUUID();
   const existing = state.installations.find((item) => item.id === id);
@@ -4778,7 +4844,7 @@ function saveInstallation(event) {
   toast("Instalação salva.");
 }
 
-function handleInstallationAction(action, id) {
+function legacyHandleInstallationAction(action, id) {
   const installation = state.installations.find((item) => item.id === id);
   if (!installation) return;
   if (action === "edit") {
@@ -4799,6 +4865,580 @@ function handleInstallationAction(action, id) {
     persist("projetos");
     renderAll();
     toast("Instalação concluída.");
+  }
+}
+
+function openInstallationForProject(project) {
+  setView("instalacoes");
+  resetInstallationForm();
+  els.installationProject.value = project.id;
+  els.installationCustomer.value = project.customerId;
+  els.installationServiceType.value = "instalacao_projeto";
+  els.installationClosedDate.value = todayIso;
+  els.installationDeadlineDate.value = addBusinessDaysIso(todayIso, 15);
+  els.installationScheduledDate.value = project.endDate || "";
+  updateInstallationFormCalculations();
+  toast("Revise os dados e salve o serviço.");
+}
+
+function resetInstallationForm() {
+  els.installationForm.reset();
+  els.installationId.value = "";
+  els.installationStatus.value = "sem_programacao";
+  els.installationServiceType.value = "instalacao_projeto";
+  els.installationClosedDate.value = todayIso;
+  els.installationDeadlineDate.value = addBusinessDaysIso(todayIso, 15);
+  renderInstallationLaborRows();
+  setTechnicalReportForm({}, "instalacao_projeto");
+  hydrateProjectOptions();
+  updateInstallationFormCalculations();
+}
+
+function installationTypeLabel(type) {
+  return {
+    instalacao_projeto: "Instalação de projeto",
+    ampliacao: "Ampliação",
+    manutencao_preventiva: "Manutenção preventiva",
+    manutencao_corretiva: "Manutenção corretiva",
+  }[type] || "Instalação de projeto";
+}
+
+function installationStatusLabel(status) {
+  return {
+    sem_programacao: "Sem programação",
+    aguardando_projeto: "Aguardando projeto",
+    aguardando_material: "Aguardando material",
+    aguardando_cliente: "Aguardando cliente",
+    aguardando_instalacao: "Aguardando instalação",
+    programada: "Programada",
+    em_andamento: "Em andamento",
+    concluida: "Concluída",
+    pendente: "Pendente",
+    cancelada: "Cancelada",
+  }[status] || status;
+}
+
+function technicalPhotoTemplates(serviceType) {
+  const common = [
+    { key: "area_antes", label: "Local antes do serviço" },
+    { key: "area_depois", label: "Local após o serviço" },
+    { key: "equipamentos", label: "Equipamentos / inversores" },
+    { key: "teste_funcionamento", label: "Teste de funcionamento / geração" },
+    { key: "seriais", label: "Seriais dos equipamentos" },
+  ];
+  if (serviceType === "instalacao_projeto" || serviceType === "ampliacao") {
+    return [
+      { key: "telhado_antes", label: "Telhado antes da instalação" },
+      { key: "suportes", label: "Suportes das placas instalados" },
+      { key: "placas_instaladas", label: "Placas instaladas" },
+      { key: "inversores", label: "Inversores instalados" },
+      { key: "geracao", label: "Geração do sistema" },
+      { key: "seriais", label: "Seriais dos inversores" },
+    ];
+  }
+  return common;
+}
+
+function technicalReportFromForm() {
+  return {
+    warrantyStartDate: els.technicalWarrantyStart.value,
+    technician: els.technicalTechnician.value.trim(),
+    whatsapp: els.technicalWhatsapp.value.trim(),
+    email: els.technicalEmail.value.trim(),
+    summary: els.technicalSummary.value.trim(),
+    photos: technicalReportDraftPhotos,
+    generatedAt: "",
+  };
+}
+
+function setTechnicalReportForm(report = {}, serviceType = "instalacao_projeto") {
+  technicalReportDraftPhotos = Array.isArray(report.photos) ? [...report.photos] : [];
+  els.technicalWarrantyStart.value = report.warrantyStartDate || "";
+  els.technicalTechnician.value = report.technician || currentSessionUser()?.name || "";
+  els.technicalWhatsapp.value = report.whatsapp || "";
+  els.technicalEmail.value = report.email || "";
+  els.technicalSummary.value = report.summary || "";
+  renderTechnicalPhotoGrid(serviceType);
+}
+
+function renderTechnicalPhotoGrid(serviceType = "instalacao_projeto") {
+  if (!els.technicalPhotoGrid) return;
+  const templates = technicalPhotoTemplates(serviceType);
+  els.technicalPhotoGrid.innerHTML = templates.map((template) => {
+    const photo = technicalReportDraftPhotos.find((item) => item.key === template.key);
+    return `
+      <article class="technical-photo-slot">
+        <strong>${escapeHtml(template.label)}</strong>
+        <div class="technical-photo-preview">
+          ${photo?.dataUrl ? `<img src="${photo.dataUrl}" alt="${escapeHtml(template.label)}" />` : `<span>Sem foto</span>`}
+        </div>
+        <label class="secondary-btn file-btn">
+          Adicionar foto
+          <input type="file" accept="image/*" capture="environment" data-technical-photo="${template.key}" data-technical-label="${escapeHtml(template.label)}" />
+        </label>
+      </article>
+    `;
+  }).join("");
+}
+
+async function handleTechnicalPhotoUpload(event) {
+  const input = event.target;
+  if (!input?.matches?.("[data-technical-photo]") || !input.files?.[0]) return;
+  const dataUrl = await compressImageFile(input.files[0], 1280, 0.72);
+  const entry = {
+    key: input.dataset.technicalPhoto,
+    label: input.dataset.technicalLabel,
+    dataUrl,
+    capturedAt: new Date().toISOString(),
+  };
+  technicalReportDraftPhotos = technicalReportDraftPhotos.filter((photo) => photo.key !== entry.key);
+  technicalReportDraftPhotos.push(entry);
+  renderTechnicalPhotoGrid(els.installationServiceType.value);
+}
+
+function compressImageFile(file, maxSize = 1280, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const ratio = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * ratio));
+        canvas.height = Math.max(1, Math.round(image.height * ratio));
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      image.onerror = reject;
+      image.src = reader.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function samplePhotoDataUrl(label, index) {
+  const bg = ["#1f4f46", "#876514", "#324b67", "#703d3d", "#4b5f32", "#58466b"][index % 6];
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="900" height="560"><rect width="100%" height="100%" fill="${bg}"/><text x="50%" y="46%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="34" font-weight="700" fill="#fff">Lumeris Engenharia</text><text x="50%" y="56%" dominant-baseline="middle" text-anchor="middle" font-family="Arial" font-size="24" fill="#fff">${escapeHtml(label)}</text></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function fillSampleTechnicalReport() {
+  const templates = technicalPhotoTemplates(els.installationServiceType.value);
+  technicalReportDraftPhotos = templates.map((template, index) => ({
+    key: template.key,
+    label: template.label,
+    dataUrl: samplePhotoDataUrl(template.label, index),
+    capturedAt: new Date().toISOString(),
+  }));
+  if (!els.technicalWarrantyStart.value) els.technicalWarrantyStart.value = els.installationCompletedDate.value || todayIso;
+  if (!els.technicalSummary.value) els.technicalSummary.value = "Serviço executado e validado conforme checklist técnico da Lumeris Engenharia.";
+  renderTechnicalPhotoGrid(els.installationServiceType.value);
+  toast("Fotos teste inseridas no relatório técnico.");
+}
+
+function technicalReportHtml(installation, report) {
+  const project = state.projects.find((item) => item.id === installation.projectId);
+  const client = state.people.find((item) => item.id === installation.customerId);
+  const efficiency = installationEfficiency(installation);
+  const photos = report.photos || [];
+  return `<!doctype html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="utf-8" />
+      <title>Entrega técnica - ${escapeHtml(projectName(installation.projectId))}</title>
+      <style>
+        @page { size: A4; margin: 14mm; }
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; color: #17231f; margin: 0; }
+        header { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 2px solid #146c5f; padding-bottom: 14px; margin-bottom: 18px; }
+        header img { width: 170px; background: #050505; padding: 8px; border-radius: 4px; }
+        h1 { margin: 0; font-size: 24px; }
+        h2 { margin: 18px 0 8px; font-size: 17px; color: #146c5f; }
+        .muted { color: #61706a; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+        .box { border: 1px solid #d7dfda; border-radius: 6px; padding: 10px; }
+        .box strong { display: block; font-size: 12px; color: #61706a; margin-bottom: 4px; }
+        .photos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .photo { break-inside: avoid; border: 1px solid #d7dfda; border-radius: 6px; padding: 8px; }
+        .photo img { width: 100%; height: 190px; object-fit: cover; border-radius: 4px; background: #eef3f0; }
+        .photo strong { display: block; margin-bottom: 6px; }
+        footer { margin-top: 24px; border-top: 1px solid #d7dfda; padding-top: 12px; font-size: 12px; color: #61706a; }
+      </style>
+    </head>
+    <body>
+      <header>
+        <img src="assets/logo-lumeris.png" alt="Lumeris Engenharia" />
+        <div>
+          <h1>Relatório de Entrega Técnica</h1>
+          <div class="muted">Lumeris Engenharia · ${formatDate(todayIso)}</div>
+        </div>
+      </header>
+
+      <section class="grid">
+        <div class="box"><strong>Cliente</strong>${escapeHtml(client?.name || personName(installation.customerId))}</div>
+        <div class="box"><strong>Projeto</strong>${escapeHtml(project?.name || projectName(installation.projectId))}</div>
+        <div class="box"><strong>Tipo de serviço</strong>${escapeHtml(installationTypeLabel(installation.serviceType))}</div>
+        <div class="box"><strong>Status</strong>${escapeHtml(installationStatusLabel(installation.status))}</div>
+        <div class="box"><strong>Conclusão</strong>${formatDate(installation.completedDate || todayIso)}</div>
+        <div class="box"><strong>Início da garantia</strong>${formatDate(report.warrantyStartDate || installation.completedDate || todayIso)}</div>
+        <div class="box"><strong>Técnico responsável</strong>${escapeHtml(report.technician || installation.team || "-")}</div>
+        <div class="box"><strong>Contato do cliente</strong>${escapeHtml(report.whatsapp || client?.contact || "-")} ${report.email ? "· " + escapeHtml(report.email) : ""}</div>
+      </section>
+
+      <h2>Resumo técnico</h2>
+      <div class="box">${escapeHtml(report.summary || installation.conclusion || "Serviço finalizado conforme padrão técnico da Lumeris Engenharia.")}</div>
+
+      <h2>Eficiência da execução</h2>
+      <section class="grid">
+        <div class="box"><strong>Placas instaladas</strong>${installation.panels || 0}</div>
+        <div class="box"><strong>Custo equipe</strong>${money(efficiency.own)}</div>
+        <div class="box"><strong>Referência terceirizada</strong>${money(efficiency.outsourced)} (R$ 120,00 por placa)</div>
+        <div class="box"><strong>Resultado comparativo</strong>${money(efficiency.saving)}</div>
+      </section>
+
+      <h2>Registro fotográfico</h2>
+      <section class="photos">
+        ${photos.map((photo) => `
+          <article class="photo">
+            <strong>${escapeHtml(photo.label)}</strong>
+            <img src="${photo.dataUrl}" alt="${escapeHtml(photo.label)}" />
+          </article>
+        `).join("") || `<div class="box">Nenhuma foto anexada.</div>`}
+      </section>
+
+      <footer>
+        Documento gerado pelo ERP Lumeris. A garantia passa a contar a partir da data de finalização registrada neste relatório.
+      </footer>
+      <script>window.addEventListener("load", () => setTimeout(() => window.print(), 400));</script>
+    </body>
+    </html>`;
+}
+
+function currentInstallationFromForm() {
+  const existing = state.installations.find((item) => item.id === els.installationId.value);
+  const project = state.projects.find((item) => item.id === els.installationProject.value);
+  return {
+    ...(existing || {}),
+    id: els.installationId.value || "preview",
+    projectId: els.installationProject.value,
+    customerId: els.installationCustomer.value || project?.customerId || "",
+    serviceType: els.installationServiceType.value,
+    status: els.installationStatus.value,
+    closedDate: els.installationClosedDate.value,
+    deadlineDate: els.installationDeadlineDate.value,
+    scheduledDate: els.installationScheduledDate.value,
+    completedDate: els.installationCompletedDate.value || todayIso,
+    panels: Number(els.installationPanels.value || 0),
+    team: els.installationTeam.value.trim(),
+    labor: installationLaborEntriesFromForm(),
+    technicalReport: technicalReportFromForm(),
+    materials: els.installationMaterials.value.trim(),
+    notes: els.installationNotes.value.trim(),
+    conclusion: els.installationConclusion.value.trim(),
+  };
+}
+
+function generateTechnicalDeliveryPdf(installation = null) {
+  const source = installation || currentInstallationFromForm();
+  if (!source.projectId) {
+    toast("Selecione o projeto antes de gerar a entrega técnica.");
+    return;
+  }
+  const report = installation?.technicalReport || technicalReportFromForm();
+  const win = window.open("", "_blank");
+  if (!win) {
+    toast("Permita pop-ups para gerar o PDF da entrega técnica.");
+    return;
+  }
+  win.document.open();
+  win.document.write(technicalReportHtml(source, report));
+  win.document.close();
+}
+
+function isBusinessDay(date) {
+  const day = date.getDay();
+  return day !== 0 && day !== 6;
+}
+
+function addBusinessDaysIso(startIso, businessDays) {
+  if (!startIso) return "";
+  let current = parseDate(startIso);
+  let added = 0;
+  while (added < businessDays) {
+    current = addDays(current, 1);
+    if (isBusinessDay(current)) added += 1;
+  }
+  return toIso(current);
+}
+
+function normalizeInstallationStatus(status) {
+  return status === "pendente" ? "sem_programacao" : status || "sem_programacao";
+}
+
+function isInstallationWaitingScheduling(item) {
+  return ["sem_programacao", "aguardando_projeto", "aguardando_material", "aguardando_cliente", "aguardando_instalacao"].includes(normalizeInstallationStatus(item.status));
+}
+
+function installationDeadline(item) {
+  return item.deadlineDate || addBusinessDaysIso(item.closedDate || (item.createdAt || "").slice(0, 10) || todayIso, 15);
+}
+
+function isInstallationLate(item) {
+  if (["concluida", "cancelada"].includes(item.status)) return false;
+  const deadline = installationDeadline(item);
+  return Boolean(deadline && deadline < todayIso);
+}
+
+function installationMonthRef(item) {
+  return item.completedDate || item.scheduledDate || item.deadlineDate || item.closedDate || (item.createdAt || "").slice(0, 10);
+}
+
+function installationLaborEntriesFromForm() {
+  return Array.from(document.querySelectorAll("[data-installation-labor-row]"))
+    .map((row) => ({
+      name: row.querySelector("[data-labor-name]")?.value.trim() || "",
+      role: row.querySelector("[data-labor-role]")?.value.trim() || "",
+      hours: Number(row.querySelector("[data-labor-hours]")?.value || 0),
+      cost: Number(row.querySelector("[data-labor-cost]")?.value || 0),
+      notes: row.querySelector("[data-labor-notes]")?.value.trim() || "",
+    }))
+    .filter((entry) => entry.name || entry.role || entry.hours || entry.cost || entry.notes);
+}
+
+function installationOwnLaborCost(item) {
+  return (item.labor || []).reduce((total, entry) => total + Number(entry.cost || 0), 0);
+}
+
+function installationOutsourceCost(item) {
+  return Number(item.panels || 0) * 120;
+}
+
+function installationEfficiency(item) {
+  const own = installationOwnLaborCost(item);
+  const outsourced = installationOutsourceCost(item);
+  const saving = outsourced - own;
+  const percent = outsourced > 0 ? (saving / outsourced) * 100 : 0;
+  return { own, outsourced, saving, percent };
+}
+
+function renderInstallationLaborRows(entries = []) {
+  if (!els.installationLaborRows) return;
+  const rows = Array.from({ length: 5 }, (_, index) => entries[index] || {});
+  els.installationLaborRows.innerHTML = rows.map((entry, index) => `
+    <div class="installation-labor-row" data-installation-labor-row>
+      <span>${index + 1}</span>
+      <input data-labor-name maxlength="80" placeholder="Pessoa da equipe" value="${escapeHtml(entry.name || "")}" />
+      <input data-labor-role maxlength="80" placeholder="Função" value="${escapeHtml(entry.role || "")}" />
+      <input data-labor-hours type="number" min="0" step="0.5" placeholder="Horas" value="${entry.hours || ""}" />
+      <input data-labor-cost type="number" min="0" step="0.01" placeholder="Custo R$" value="${entry.cost || ""}" />
+      <input data-labor-notes maxlength="120" placeholder="Observação" value="${escapeHtml(entry.notes || "")}" />
+    </div>
+  `).join("");
+}
+
+function updateInstallationFormCalculations() {
+  if (els.installationClosedDate?.value && !els.installationDeadlineDate.value) {
+    els.installationDeadlineDate.value = addBusinessDaysIso(els.installationClosedDate.value, 15);
+  }
+  const panels = Number(els.installationPanels?.value || 0);
+  const labor = installationLaborEntriesFromForm();
+  const own = sum(labor.map((entry) => entry.cost));
+  const outsourced = panels * 120;
+  const saving = outsourced - own;
+  const percent = outsourced > 0 ? (saving / outsourced) * 100 : 0;
+  if (!els.installationEfficiencyPreview) return;
+  els.installationEfficiencyPreview.innerHTML = `
+    <span>Terceirização estimada: <strong>${money(outsourced)}</strong></span>
+    <span>Custo da equipe: <strong>${money(own)}</strong></span>
+    <span class="${saving >= 0 ? "ok-text" : "danger-text"}">${saving >= 0 ? "Economia" : "Acima da terceirização"}: <strong>${money(Math.abs(saving))}</strong>${outsourced > 0 ? ` (${percent.toFixed(1)}%)` : ""}</span>
+  `;
+}
+
+function clearInstallationFilters() {
+  els.installationDateStart.value = "";
+  els.installationDateEnd.value = "";
+  els.installationTypeFilter.value = "todos";
+  els.installationStatusFilter.value = "todos";
+  els.installationSearch.value = "";
+  renderInstallations();
+}
+
+function installationMatchesFilters(item) {
+  const search = (els.installationSearch.value || "").toLowerCase().trim();
+  const start = els.installationDateStart.value;
+  const end = els.installationDateEnd.value;
+  const type = els.installationTypeFilter.value;
+  const status = els.installationStatusFilter.value;
+  const refDate = installationMonthRef(item);
+  const haystack = [
+    projectName(item.projectId),
+    personName(item.customerId),
+    item.team,
+    item.status,
+    installationTypeLabel(item.serviceType),
+    item.materials,
+    item.notes,
+  ].join(" ").toLowerCase();
+  if (search && !haystack.includes(search)) return false;
+  if (start && (!refDate || refDate < start)) return false;
+  if (end && (!refDate || refDate > end)) return false;
+  if (type !== "todos" && item.serviceType !== type) return false;
+  if (status === "atrasada") return isInstallationLate(item);
+  if (status !== "todos" && normalizeInstallationStatus(item.status) !== status) return false;
+  return true;
+}
+
+function renderInstallationKpis() {
+  if (!els.installationKpis) return;
+  const monthStart = todayIso.slice(0, 8) + "01";
+  const monthEnd = toIso(endOfMonth(today));
+  const completedMonth = state.installations.filter((item) => {
+    const completed = item.completedDate || (item.status === "concluida" ? (item.updatedAt || "").slice(0, 10) : "");
+    return completed && completed >= monthStart && completed <= monthEnd;
+  });
+  const late = state.installations.filter(isInstallationLate);
+  const inProgress = state.installations.filter((item) => item.status === "em_andamento");
+  const unscheduled = state.installations.filter((item) => isInstallationWaitingScheduling(item) || !item.scheduledDate);
+  const efficiencyRows = state.installations.filter((item) => item.status === "concluida" || Number(item.panels || 0) || item.labor?.length);
+  const ownCost = sum(efficiencyRows.map(installationOwnLaborCost));
+  const outsourceCost = sum(efficiencyRows.map(installationOutsourceCost));
+  const saving = outsourceCost - ownCost;
+  els.installationKpis.innerHTML = [
+    { label: "Realizados no mês", value: completedMonth.length, hint: `${formatDate(monthStart)} até ${formatDate(monthEnd)}`, tone: "neutral" },
+    { label: "Em atraso", value: late.length, hint: "Prazo de 15 dias úteis vencido", tone: late.length ? "danger" : "ok" },
+    { label: "Em andamento", value: inProgress.length, hint: "Execução aberta", tone: "warn" },
+    { label: "Falta programação", value: unscheduled.length, hint: "Aguardando projeto, material, cliente ou instalação", tone: unscheduled.length ? "warn" : "ok" },
+    { label: "Eficiência da equipe", value: money(saving), hint: `Terceiro ${money(outsourceCost)} · Equipe ${money(ownCost)}`, tone: saving >= 0 ? "ok" : "danger" },
+  ].map((card) => `
+    <article class="installation-kpi ${card.tone}">
+      <span>${card.label}</span>
+      <strong>${card.value}</strong>
+      <small>${card.hint}</small>
+    </article>
+  `).join("");
+}
+
+function renderInstallations() {
+  hydrateProjectOptions();
+  const rows = state.installations
+    .map((item) => ({ ...item, status: normalizeInstallationStatus(item.status), serviceType: item.serviceType || "instalacao_projeto" }))
+    .filter(installationMatchesFilters)
+    .sort((a, b) => {
+      const lateDiff = Number(isInstallationLate(b)) - Number(isInstallationLate(a));
+      if (lateDiff) return lateDiff;
+      return (installationDeadline(a) || "9999-12-31").localeCompare(installationDeadline(b) || "9999-12-31");
+    });
+
+  renderInstallationKpis();
+  els.installationListSummary.textContent = `${rows.length} serviço(s) exibido(s)`;
+  els.installationList.innerHTML = rows.length
+    ? rows.map((item) => {
+      const deadline = installationDeadline(item);
+      const efficiency = installationEfficiency(item);
+      const late = isInstallationLate(item);
+      return `
+        <tr class="${late ? "danger-row" : ""}">
+          <td><strong>${formatDate(deadline)}</strong>${late ? `<small class="danger-text">Atrasado</small>` : `<small>${daysBetween(deadline, todayIso)} dia(s)</small>`}</td>
+          <td>${formatDate(item.scheduledDate)}<small>${item.completedDate ? `Concluído em ${formatDate(item.completedDate)}` : "Agenda"}</small></td>
+          <td>${escapeHtml(installationTypeLabel(item.serviceType))}</td>
+          <td><strong>${escapeHtml(personName(item.customerId))}</strong><small>${escapeHtml(projectName(item.projectId))}</small></td>
+          <td><span class="status ${item.status === "concluida" ? "baixado" : late ? "vencido" : "aberto"}">${escapeHtml(installationStatusLabel(item.status))}</span></td>
+          <td>${escapeHtml(item.team || "Sem equipe")}<small>${(item.labor || []).length} pessoa(s) com custo</small></td>
+          <td><strong class="${efficiency.saving >= 0 ? "ok-text" : "danger-text"}">${money(efficiency.saving)}</strong><small>${item.panels || 0} placa(s) · equipe ${money(efficiency.own)}</small></td>
+          <td class="row-actions">
+            <button type="button" data-installation-action="edit" data-id="${item.id}">Editar</button>
+            <button type="button" data-installation-action="complete" data-id="${item.id}">Concluir</button>
+            <button type="button" data-installation-action="report" data-id="${item.id}">PDF</button>
+          </td>
+        </tr>`;
+    }).join("")
+    : `<tr><td colspan="8">${emptyMessage("Nenhum serviço encontrado.")}</td></tr>`;
+
+  document.querySelectorAll("[data-installation-action]").forEach((button) => {
+    button.addEventListener("click", () => handleInstallationAction(button.dataset.installationAction, button.dataset.id));
+  });
+}
+
+function saveInstallation(event) {
+  event.preventDefault();
+  const id = els.installationId.value || crypto.randomUUID();
+  const existing = state.installations.find((item) => item.id === id);
+  const project = state.projects.find((item) => item.id === els.installationProject.value);
+  if (!project) {
+    toast("Selecione um projeto ganho para controlar a instalação.");
+    return;
+  }
+  const data = {
+    id,
+    projectId: els.installationProject.value,
+    customerId: els.installationCustomer.value || project?.customerId || "",
+    serviceType: els.installationServiceType.value,
+    status: els.installationStatus.value,
+    closedDate: els.installationClosedDate.value,
+    deadlineDate: els.installationDeadlineDate.value || addBusinessDaysIso(els.installationClosedDate.value || todayIso, 15),
+    scheduledDate: els.installationScheduledDate.value,
+    completedDate: els.installationCompletedDate.value || (els.installationStatus.value === "concluida" ? todayIso : ""),
+    panels: Number(els.installationPanels.value || 0),
+    team: els.installationTeam.value.trim(),
+    labor: installationLaborEntriesFromForm(),
+    materials: els.installationMaterials.value.trim(),
+    notes: els.installationNotes.value.trim(),
+    conclusion: els.installationConclusion.value.trim(),
+    opportunityId: existing?.opportunityId || "",
+    contractId: existing?.contractId || "",
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  const index = state.installations.findIndex((item) => item.id === id);
+  if (index >= 0) state.installations[index] = data;
+  else state.installations.push(data);
+
+  persist("projetos");
+  renderAll();
+  resetInstallationForm();
+  toast("Serviço salvo.");
+}
+
+function handleInstallationAction(action, id) {
+  const installation = state.installations.find((item) => item.id === id);
+  if (!installation) return;
+  if (action === "edit") {
+    els.installationId.value = installation.id;
+    els.installationProject.value = installation.projectId;
+    els.installationCustomer.value = installation.customerId;
+    els.installationServiceType.value = installation.serviceType || "instalacao_projeto";
+    els.installationStatus.value = normalizeInstallationStatus(installation.status);
+    els.installationClosedDate.value = installation.closedDate || (installation.createdAt || "").slice(0, 10) || todayIso;
+    els.installationDeadlineDate.value = installation.deadlineDate || addBusinessDaysIso(els.installationClosedDate.value, 15);
+    els.installationScheduledDate.value = installation.scheduledDate;
+    els.installationCompletedDate.value = installation.completedDate || "";
+    els.installationPanels.value = installation.panels || "";
+    els.installationTeam.value = installation.team;
+    renderInstallationLaborRows(installation.labor || []);
+    setTechnicalReportForm(installation.technicalReport || {}, installation.serviceType || "instalacao_projeto");
+    els.installationMaterials.value = installation.materials;
+    els.installationNotes.value = installation.notes;
+    els.installationConclusion.value = installation.conclusion;
+    updateInstallationFormCalculations();
+    return;
+  }
+  if (action === "complete") {
+    installation.status = "concluida";
+    installation.completedDate = installation.completedDate || todayIso;
+    installation.technicalReport = {
+      ...(installation.technicalReport || {}),
+      warrantyStartDate: installation.technicalReport?.warrantyStartDate || installation.completedDate,
+    };
+    installation.updatedAt = new Date().toISOString();
+    persist("projetos");
+    renderAll();
+    toast("Serviço concluído.");
+  }
+  if (action === "report") {
+    generateTechnicalDeliveryPdf(installation);
   }
 }
 
@@ -7455,9 +8095,24 @@ function generateContractFromOpportunity(opportunity) {
     id: installationId,
     projectId,
     customerId: opportunity.personId,
-    status: "programada",
+    serviceType: "instalacao_projeto",
+    status: "aguardando_projeto",
+    closedDate: todayIso,
+    deadlineDate: addBusinessDaysIso(todayIso, 15),
     scheduledDate: dueDate,
+    completedDate: "",
+    panels: 0,
     team: "",
+    labor: [],
+    technicalReport: {
+      warrantyStartDate: "",
+      technician: "",
+      whatsapp: "",
+      email: "",
+      summary: "",
+      photos: [],
+      generatedAt: "",
+    },
     materials: "",
     notes: `Programação criada automaticamente pelo contrato ${contractId}.`,
     conclusion: "",

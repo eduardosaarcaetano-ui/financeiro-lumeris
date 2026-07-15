@@ -1679,6 +1679,167 @@ tr:last-child td {
   background: #fff;
 }
 
+.installation-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.installation-kpi {
+  min-height: 110px;
+  display: grid;
+  align-content: space-between;
+  gap: 10px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.installation-kpi span,
+.installation-kpi small,
+.installation-table small {
+  color: var(--muted);
+}
+
+.installation-kpi strong {
+  font-size: 24px;
+}
+
+.installation-kpi.ok {
+  border-color: rgba(37, 116, 79, 0.35);
+}
+
+.installation-kpi.warn {
+  border-color: rgba(160, 100, 24, 0.35);
+}
+
+.installation-kpi.danger {
+  border-color: rgba(170, 47, 47, 0.45);
+  background: #fff8f8;
+}
+
+.installation-filters {
+  margin-bottom: 16px;
+}
+
+.installation-layout {
+  grid-template-columns: minmax(420px, 0.9fr) minmax(640px, 1.4fr);
+}
+
+.installation-labor-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-soft);
+}
+
+.technical-report-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcfb;
+}
+
+.technical-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.technical-photo-slot {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.technical-photo-preview {
+  display: grid;
+  place-items: center;
+  min-height: 130px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.technical-photo-preview img {
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+}
+
+.compact-actions {
+  justify-content: flex-start;
+}
+
+.panel-head.tight {
+  margin-bottom: 10px;
+}
+
+.panel-head.tight h3 {
+  margin: 0;
+}
+
+.installation-labor-rows {
+  display: grid;
+  gap: 8px;
+}
+
+.installation-labor-row {
+  display: grid;
+  grid-template-columns: 24px minmax(120px, 1.5fr) minmax(90px, 1fr) 82px 110px minmax(120px, 1.2fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.installation-labor-row span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.installation-efficiency-preview {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf8;
+}
+
+.ok-text {
+  color: var(--ok);
+}
+
+.danger-text {
+  color: var(--danger);
+}
+
+.installation-table th,
+.installation-table td {
+  vertical-align: top;
+}
+
+.installation-table td {
+  min-width: 120px;
+}
+
+.installation-table td small {
+  display: block;
+  margin-top: 4px;
+}
+
+.danger-row {
+  background: #fff8f8;
+}
+
 .form-panel,
 .modal {
   display: grid;
@@ -2116,6 +2277,10 @@ dialog::backdrop {
   .dashboard-kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .installation-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1050px) {
@@ -2146,7 +2311,8 @@ dialog::backdrop {
   .split,
   .project-layout,
   .project-report-grid,
-  .crm-summary {
+  .crm-summary,
+  .installation-layout {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -2196,8 +2362,16 @@ dialog::backdrop {
   .crm-summary,
   .crm-toolbar,
   .crm-kanban-metrics,
-  .form-grid {
+  .form-grid,
+  .installation-kpis,
+  .installation-layout,
+  .installation-efficiency-preview,
+  .technical-photo-grid {
     grid-template-columns: 1fr;
+  }
+
+  .installation-labor-row {
+    grid-template-columns: 24px 1fr;
   }
 
   .kanban-board {
