@@ -40,7 +40,7 @@ button {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 290px 1fr;
+  grid-template-columns: 290px minmax(0, 1fr);
   min-height: 100vh;
 }
 
@@ -291,6 +291,7 @@ button {
 }
 
 .main {
+  min-width: 0;
   padding: 28px;
   overflow-x: hidden;
 }
@@ -1176,10 +1177,14 @@ button.project-chip {
   grid-auto-flow: column;
   grid-auto-columns: minmax(300px, 300px);
   gap: 10px;
-  min-height: 62vh;
-  overflow-x: auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: min(62vh, calc(100vh - 330px));
+  min-height: 380px;
+  overflow-x: scroll;
   overflow-y: hidden;
-  padding: 4px 0 18px;
+  padding: 4px 0 20px;
   scrollbar-gutter: stable both-edges;
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
@@ -1208,7 +1213,8 @@ button.project-chip {
   display: grid;
   grid-template-rows: auto 1fr;
   width: 300px;
-  min-height: 62vh;
+  min-height: 0;
+  height: 100%;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #f8faf8;
@@ -1242,7 +1248,7 @@ button.project-chip {
   display: grid;
   align-content: start;
   gap: 6px;
-  min-height: 520px;
+  min-height: 0;
   padding: 8px;
   overflow-y: auto;
 }
