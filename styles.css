@@ -1354,6 +1354,38 @@ button.project-chip {
   margin-top: 10px;
 }
 
+.attachment-dropzone {
+  display: grid;
+  place-items: center;
+  min-height: 92px;
+  margin-top: 10px;
+  border: 2px dashed #b9c8c1;
+  border-radius: 8px;
+  background: #f7fbf9;
+  color: var(--muted);
+  font-weight: 700;
+  text-align: center;
+  transition: 0.15s ease;
+}
+
+.attachment-dropzone.drag-active {
+  border-color: var(--primary);
+  background: #eef8f4;
+  color: var(--primary);
+}
+
+#opportunityAttachmentStatus[data-tone="ok"] {
+  color: var(--primary);
+}
+
+#opportunityAttachmentStatus[data-tone="error"] {
+  color: var(--danger);
+}
+
+#opportunityAttachmentStatus[data-tone="syncing"] {
+  color: #a06418;
+}
+
 .attachment-row {
   display: grid;
   grid-template-columns: 120px minmax(160px, 1fr) minmax(220px, 1.4fr) minmax(160px, 1fr) auto;

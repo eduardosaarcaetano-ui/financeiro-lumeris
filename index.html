@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260715-instalacoes-servicos1" />
+    <link rel="stylesheet" href="styles.css?v=20260715-crm-drive-anexos1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -2205,13 +2205,22 @@
           <div class="panel-head">
             <div>
               <h2>Anexos e mídia</h2>
-              <small>Guarde os arquivos no Google Drive e cole os links aqui.</small>
+              <small>Arraste links ou arquivos. Os arquivos serão enviados para a pasta do lead no Google Drive.</small>
             </div>
-            <button class="secondary-btn" id="addOpportunityAttachmentBtn" type="button">Adicionar anexo</button>
+            <div class="row-actions">
+              <button class="secondary-btn" id="createOpportunityDriveFolderBtn" type="button">Criar pasta</button>
+              <button class="secondary-btn" id="pickOpportunityFilesBtn" type="button">Selecionar arquivos</button>
+              <button class="secondary-btn" id="addOpportunityAttachmentBtn" type="button">Adicionar link</button>
+            </div>
           </div>
           <label class="full">Pasta do Google Drive do lead
             <input id="opportunityDriveFolder" type="url" maxlength="300" placeholder="https://drive.google.com/drive/folders/..." />
           </label>
+          <input class="hidden" id="opportunityFileInput" type="file" multiple accept="image/*,.pdf,.xlsx,.xls,.csv,.doc,.docx,.txt" />
+          <div class="attachment-dropzone" id="opportunityAttachmentDropzone">
+            Arraste aqui fotos, PDFs, planilhas, contas de energia ou links do Google Drive.
+          </div>
+          <small class="muted" id="opportunityAttachmentStatus">Arquivos grandes dependem do limite do Google Apps Script. Para lotes pesados, envie direto no Drive e arraste o link aqui.</small>
           <div class="attachment-list" id="opportunityAttachmentRows"></div>
         </section>
         <section class="panel embedded-panel">
@@ -2776,6 +2785,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/estoque-iluminar-data.js?v=20260711-api-bancos1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260715-instalacoes-servicos1"></script>
+    <script src="app.js?v=20260715-crm-drive-anexos1"></script>
   </body>
 </html>

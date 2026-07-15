@@ -5,8 +5,18 @@
 // para o projeto do Apps Script e para achar a pasta onde o arquivo de dados fica salvo.
 
 var DATA_FILE_NAME = "financeiro-lumeris-data.json";
+var CRM_ATTACHMENTS_ROOT_NAME = "CRM - Anexos Lumeris";
 
-function doGet() {
+function doGet(e) {
+  if (e && e.parameter && e.parameter.capabilities === "drive") {
+    return jsonResponse({
+      ok: true,
+      capabilities: {
+        driveUploads: true,
+        version: "crm-drive-attachments-20260715",
+      },
+    });
+  }
   var stored = readDataFile();
   return jsonResponse({
     ok: true,
@@ -20,6 +30,15 @@ function doPost(e) {
   lock.waitLock(10000);
   try {
     var body = JSON.parse(e.postData.contents);
+
+    if (body.action === "crm.createLeadFolder") {
+      return jsonResponse(createLeadFolder(body));
+    }
+
+    if (body.action === "crm.uploadLeadFile") {
+      return jsonResponse(uploadLeadFile(body));
+    }
+
     var stored = readDataFile();
 
     if (body.baseUpdatedAt && stored.updatedAt && body.baseUpdatedAt !== stored.updatedAt) {
@@ -56,6 +75,70 @@ function getDataFile() {
     return files.next();
   }
   return folder.createFile(DATA_FILE_NAME, JSON.stringify({ updatedAt: "", data: null }), MimeType.PLAIN_TEXT);
+}
+
+function createLeadFolder(body) {
+  var root = getCrmAttachmentsRootFolder();
+  var folderName = sanitizeDriveName(body.folderName || body.clientName || "Lead sem nome");
+  var folders = root.getFoldersByName(folderName);
+  var folder = folders.hasNext() ? folders.next() : root.createFolder(folderName);
+  return {
+    ok: true,
+    folderId: folder.getId(),
+    folderUrl: folder.getUrl(),
+    folderName: folder.getName(),
+  };
+}
+
+function uploadLeadFile(body) {
+  if (!body.base64) {
+    return { ok: false, error: "Arquivo vazio." };
+  }
+  var folder = getFolderFromUrl(body.folderUrl);
+  if (!folder) {
+    folder = createLeadFolder(body).folderId;
+    folder = DriveApp.getFolderById(folder);
+  }
+  var bytes = Utilities.base64Decode(body.base64);
+  var blob = Utilities.newBlob(bytes, body.mimeType || "application/octet-stream", sanitizeDriveName(body.fileName || "arquivo"));
+  var file = folder.createFile(blob);
+  return {
+    ok: true,
+    fileId: file.getId(),
+    fileUrl: file.getUrl(),
+    fileName: file.getName(),
+    folderId: folder.getId(),
+    folderUrl: folder.getUrl(),
+  };
+}
+
+function getCrmAttachmentsRootFolder() {
+  var base = getTargetFolder();
+  var folders = base.getFoldersByName(CRM_ATTACHMENTS_ROOT_NAME);
+  if (folders.hasNext()) {
+    return folders.next();
+  }
+  return base.createFolder(CRM_ATTACHMENTS_ROOT_NAME);
+}
+
+function getFolderFromUrl(url) {
+  var id = extractDriveId(url);
+  if (!id) return null;
+  try {
+    return DriveApp.getFolderById(id);
+  } catch (err) {
+    return null;
+  }
+}
+
+function extractDriveId(url) {
+  var text = String(url || "");
+  var match = text.match(/\/folders\/([a-zA-Z0-9_-]+)/) || text.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : "";
+}
+
+function sanitizeDriveName(name) {
+  return String(name || "Sem nome").replace(/[\\/:*?"<>|#%{}~&]/g, " ").replace(/\s+/g, " ").trim().substring(0, 140);
 }
 
 function getTargetFolder() {

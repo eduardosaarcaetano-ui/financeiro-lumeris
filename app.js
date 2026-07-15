@@ -206,6 +206,7 @@ let pendingOpportunityConversion = null;
 let pendingWonOpportunity = null;
 let technicalReportDraftPhotos = [];
 let opportunityAttachmentsDraft = [];
+let driveAutomationCapability = null;
 
 // Ordem do funil — usada tanto para renderizar as colunas quanto para calcular
 // taxa de conversão por estágio nos relatórios. "ganho"/"perdido" são estágios
@@ -461,8 +462,13 @@ const els = {
   opportunityLatitude: document.querySelector("#opportunityLatitude"),
   opportunityLongitude: document.querySelector("#opportunityLongitude"),
   opportunityDriveFolder: document.querySelector("#opportunityDriveFolder"),
+  opportunityFileInput: document.querySelector("#opportunityFileInput"),
+  opportunityAttachmentDropzone: document.querySelector("#opportunityAttachmentDropzone"),
+  opportunityAttachmentStatus: document.querySelector("#opportunityAttachmentStatus"),
   opportunityAttachmentRows: document.querySelector("#opportunityAttachmentRows"),
   addOpportunityAttachmentBtn: document.querySelector("#addOpportunityAttachmentBtn"),
+  createOpportunityDriveFolderBtn: document.querySelector("#createOpportunityDriveFolderBtn"),
+  pickOpportunityFilesBtn: document.querySelector("#pickOpportunityFilesBtn"),
   openOpportunityMapBtn: document.querySelector("#openOpportunityMapBtn"),
   crmMapBtn: document.querySelector("#crmMapBtn"),
   crmMapDialog: document.querySelector("#crmMapDialog"),
@@ -964,6 +970,13 @@ function bindEvents() {
   document.querySelector("#clearCrmFilters").addEventListener("click", clearCrmFilters);
   els.addOpportunityAttachmentBtn?.addEventListener("click", () => addOpportunityAttachmentRow());
   els.opportunityAttachmentRows?.addEventListener("click", handleOpportunityAttachmentAction);
+  els.createOpportunityDriveFolderBtn?.addEventListener("click", createOpportunityDriveFolderForCurrentLead);
+  els.pickOpportunityFilesBtn?.addEventListener("click", () => els.opportunityFileInput?.click());
+  els.opportunityFileInput?.addEventListener("change", (event) => handleOpportunityFiles(event.target.files));
+  els.opportunityAttachmentDropzone?.addEventListener("dragover", handleOpportunityAttachmentDragOver);
+  els.opportunityAttachmentDropzone?.addEventListener("dragleave", handleOpportunityAttachmentDragLeave);
+  els.opportunityAttachmentDropzone?.addEventListener("drop", handleOpportunityAttachmentDrop);
+  els.opportunityAttachmentDropzone?.addEventListener("paste", handleOpportunityAttachmentPaste);
   els.generateOpportunityProposalBtn?.addEventListener("click", generateOpportunityProposalPdf);
   els.openOpportunityMapBtn?.addEventListener("click", openCurrentOpportunityMap);
   els.crmMapBtn?.addEventListener("click", openCrmMapDialog);
@@ -2760,6 +2773,192 @@ function addOpportunityAttachmentRow(entry = null) {
     createdAt: new Date().toISOString(),
   });
   renderOpportunityAttachmentRows();
+}
+
+function setOpportunityAttachmentStatus(message, tone = "neutral") {
+  if (!els.opportunityAttachmentStatus) return;
+  els.opportunityAttachmentStatus.textContent = message;
+  els.opportunityAttachmentStatus.dataset.tone = tone;
+}
+
+function currentOpportunityClientName() {
+  const selected = els.opportunityPerson?.selectedOptions?.[0]?.textContent?.trim();
+  return selected && !selected.toLowerCase().includes("cadastre") ? selected : "Lead sem cadastro";
+}
+
+function currentOpportunityFolderName() {
+  const number = els.opportunityNumber?.value?.trim() || nextOpportunityNumber();
+  return `${number} - ${currentOpportunityClientName()}`.slice(0, 140);
+}
+
+function extractFirstUrl(text) {
+  return String(text || "").match(/https?:\/\/[^\s"'<>]+/i)?.[0] || "";
+}
+
+function inferAttachmentType(fileOrUrl) {
+  const name = typeof fileOrUrl === "string" ? fileOrUrl.toLowerCase() : (fileOrUrl.name || "").toLowerCase();
+  const mime = typeof fileOrUrl === "string" ? "" : (fileOrUrl.type || "").toLowerCase();
+  if (mime.startsWith("image/") || /\.(png|jpe?g|webp|gif|heic)$/i.test(name)) return "foto";
+  if (name.includes("conta") || name.includes("energia")) return "conta_energia";
+  if (mime.includes("pdf") || /\.pdf$/i.test(name)) return "pdf";
+  if (/\.(xlsx?|csv)$/i.test(name)) return "planilha";
+  if (/\.(docx?|txt)$/i.test(name)) return "documento";
+  return "outro";
+}
+
+async function checkDriveAutomationAvailable() {
+  if (driveAutomationCapability !== null) return driveAutomationCapability;
+  if (!SHEETS_ENDPOINT) {
+    driveAutomationCapability = false;
+    return false;
+  }
+  try {
+    const response = await fetchWithTimeout(`${SHEETS_ENDPOINT}?capabilities=drive`, {}, 8000);
+    const result = await response.json();
+    driveAutomationCapability = Boolean(result.capabilities?.driveUploads);
+  } catch (error) {
+    console.error(error);
+    driveAutomationCapability = false;
+  }
+  return driveAutomationCapability;
+}
+
+async function postDriveAutomation(action, payload, timeoutMs = 60000) {
+  const available = await checkDriveAutomationAvailable();
+  if (!available) {
+    throw new Error("Atualize e publique o Apps Script para ativar criação de pastas e upload automático no Drive.");
+  }
+  const response = await fetchWithTimeout(
+    SHEETS_ENDPOINT,
+    {
+      method: "POST",
+      body: JSON.stringify({ action, ...payload }),
+    },
+    timeoutMs
+  );
+  const result = await response.json();
+  if (!result.ok) throw new Error(result.error || "Falha no Google Drive");
+  return result;
+}
+
+async function createOpportunityDriveFolderForCurrentLead() {
+  try {
+    setOpportunityAttachmentStatus("Criando pasta do lead no Google Drive...", "syncing");
+    const result = await postDriveAutomation("crm.createLeadFolder", {
+      folderName: currentOpportunityFolderName(),
+      clientName: currentOpportunityClientName(),
+      opportunityNumber: els.opportunityNumber.value.trim(),
+    });
+    els.opportunityDriveFolder.value = result.folderUrl || "";
+    setOpportunityAttachmentStatus("Pasta criada. Agora arraste arquivos para enviar direto ao Drive.", "ok");
+    toast("Pasta do lead criada no Google Drive.");
+  } catch (error) {
+    console.error(error);
+    setOpportunityAttachmentStatus(error.message, "error");
+    toast("Não foi possível criar a pasta automaticamente.");
+  }
+}
+
+async function ensureOpportunityDriveFolder() {
+  if (els.opportunityDriveFolder.value.trim()) return els.opportunityDriveFolder.value.trim();
+  await createOpportunityDriveFolderForCurrentLead();
+  return els.opportunityDriveFolder.value.trim();
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || "").split(",")[1] || "");
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadOpportunityFile(file) {
+  const folderUrl = await ensureOpportunityDriveFolder();
+  if (!folderUrl) throw new Error("Informe ou crie a pasta do Drive antes de enviar arquivos.");
+  const base64 = await fileToBase64(file);
+  const result = await postDriveAutomation("crm.uploadLeadFile", {
+    folderUrl,
+    folderName: currentOpportunityFolderName(),
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    base64,
+  }, 90000);
+  return {
+    id: crypto.randomUUID(),
+    type: inferAttachmentType(file),
+    name: file.name,
+    url: result.fileUrl || "",
+    notes: "Enviado automaticamente ao Google Drive",
+    createdAt: new Date().toISOString(),
+  };
+}
+
+async function handleOpportunityFiles(fileList) {
+  const files = [...(fileList || [])];
+  if (!files.length) return;
+  if (files.some((file) => file.size > 9 * 1024 * 1024)) {
+    toast("Arquivo acima de 9 MB: envie direto no Drive e arraste o link.");
+    setOpportunityAttachmentStatus("Arquivos acima de 9 MB devem ser enviados manualmente ao Drive.", "error");
+    return;
+  }
+  try {
+    setOpportunityAttachmentStatus(`Enviando ${files.length} arquivo(s) para o Google Drive...`, "syncing");
+    for (const file of files) {
+      const attachment = await uploadOpportunityFile(file);
+      opportunityAttachmentsDraft.push(attachment);
+    }
+    renderOpportunityAttachmentRows();
+    setOpportunityAttachmentStatus("Upload concluído. Salve a oportunidade para gravar os anexos.", "ok");
+    toast("Arquivos anexados ao lead.");
+  } catch (error) {
+    console.error(error);
+    setOpportunityAttachmentStatus(error.message, "error");
+    toast("Upload automático indisponível. Use o link da pasta do Drive.");
+  } finally {
+    if (els.opportunityFileInput) els.opportunityFileInput.value = "";
+  }
+}
+
+function addOpportunityLinkAttachment(url) {
+  if (!url) return false;
+  opportunityAttachmentsDraft.push({
+    id: crypto.randomUUID(),
+    type: inferAttachmentType(url),
+    name: url.includes("drive.google.com") ? "Arquivo Google Drive" : "Link externo",
+    url,
+    notes: "Link arrastado/colado no CRM",
+    createdAt: new Date().toISOString(),
+  });
+  renderOpportunityAttachmentRows();
+  setOpportunityAttachmentStatus("Link adicionado. Salve a oportunidade para gravar.", "ok");
+  return true;
+}
+
+function handleOpportunityAttachmentDragOver(event) {
+  event.preventDefault();
+  els.opportunityAttachmentDropzone?.classList.add("drag-active");
+}
+
+function handleOpportunityAttachmentDragLeave() {
+  els.opportunityAttachmentDropzone?.classList.remove("drag-active");
+}
+
+function handleOpportunityAttachmentDrop(event) {
+  event.preventDefault();
+  els.opportunityAttachmentDropzone?.classList.remove("drag-active");
+  const url = extractFirstUrl(event.dataTransfer?.getData("text/uri-list") || event.dataTransfer?.getData("text/plain"));
+  if (url && addOpportunityLinkAttachment(url)) return;
+  handleOpportunityFiles(event.dataTransfer?.files);
+}
+
+function handleOpportunityAttachmentPaste(event) {
+  const text = event.clipboardData?.getData("text/plain") || "";
+  const url = extractFirstUrl(text);
+  if (!url) return;
+  event.preventDefault();
+  addOpportunityLinkAttachment(url);
 }
 
 function handleOpportunityAttachmentAction(event) {
@@ -8116,6 +8315,7 @@ function openOpportunityDialog(item = null) {
   els.opportunityDriveFolder.value = item?.driveFolderUrl || "";
   opportunityAttachmentsDraft = normalizeOpportunityAttachments(item?.attachments);
   renderOpportunityAttachmentRows();
+  setOpportunityAttachmentStatus("Arraste links ou arquivos para anexar ao lead. Salve a oportunidade ao concluir.", "neutral");
   setOpportunityProposalForm(item?.proposal || {});
   els.opportunityTitle.textContent = item ? "Editar oportunidade" : "Nova oportunidade";
   renderOpportunityHistory(item?.id || "");
