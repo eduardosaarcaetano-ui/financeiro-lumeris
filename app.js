@@ -205,6 +205,7 @@ let currentCrmTab = "funil";
 let pendingOpportunityConversion = null;
 let pendingWonOpportunity = null;
 let technicalReportDraftPhotos = [];
+let opportunityAttachmentsDraft = [];
 
 // Ordem do funil — usada tanto para renderizar as colunas quanto para calcular
 // taxa de conversão por estágio nos relatórios. "ganho"/"perdido" são estágios
@@ -456,6 +457,29 @@ const els = {
   opportunityNextActivity: document.querySelector("#opportunityNextActivity"),
   opportunityPendingActivity: document.querySelector("#opportunityPendingActivity"),
   opportunityNotes: document.querySelector("#opportunityNotes"),
+  opportunityAddress: document.querySelector("#opportunityAddress"),
+  opportunityLatitude: document.querySelector("#opportunityLatitude"),
+  opportunityLongitude: document.querySelector("#opportunityLongitude"),
+  opportunityDriveFolder: document.querySelector("#opportunityDriveFolder"),
+  opportunityAttachmentRows: document.querySelector("#opportunityAttachmentRows"),
+  addOpportunityAttachmentBtn: document.querySelector("#addOpportunityAttachmentBtn"),
+  openOpportunityMapBtn: document.querySelector("#openOpportunityMapBtn"),
+  crmMapBtn: document.querySelector("#crmMapBtn"),
+  crmMapDialog: document.querySelector("#crmMapDialog"),
+  crmMapList: document.querySelector("#crmMapList"),
+  openCrmRouteBtn: document.querySelector("#openCrmRouteBtn"),
+  proposalConsumption: document.querySelector("#proposalConsumption"),
+  proposalGeneration: document.querySelector("#proposalGeneration"),
+  proposalPower: document.querySelector("#proposalPower"),
+  proposalInverterType: document.querySelector("#proposalInverterType"),
+  proposalInverterBrand: document.querySelector("#proposalInverterBrand"),
+  proposalModuleBrand: document.querySelector("#proposalModuleBrand"),
+  proposalModulePower: document.querySelector("#proposalModulePower"),
+  proposalRoofType: document.querySelector("#proposalRoofType"),
+  proposalBattery: document.querySelector("#proposalBattery"),
+  proposalInvestment: document.querySelector("#proposalInvestment"),
+  proposalNotes: document.querySelector("#proposalNotes"),
+  generateOpportunityProposalBtn: document.querySelector("#generateOpportunityProposalBtn"),
   opportunityHistory: document.querySelector("#opportunityHistory"),
   transactionDialog: document.querySelector("#transactionDialog"),
   transactionForm: document.querySelector("#transactionForm"),
@@ -938,6 +962,12 @@ function bindEvents() {
   document.querySelector("#newSaleInlineBtn").addEventListener("click", openSaleDialog);
   document.querySelector("#newOpportunityBtn").addEventListener("click", () => openOpportunityDialog());
   document.querySelector("#clearCrmFilters").addEventListener("click", clearCrmFilters);
+  els.addOpportunityAttachmentBtn?.addEventListener("click", () => addOpportunityAttachmentRow());
+  els.opportunityAttachmentRows?.addEventListener("click", handleOpportunityAttachmentAction);
+  els.generateOpportunityProposalBtn?.addEventListener("click", generateOpportunityProposalPdf);
+  els.openOpportunityMapBtn?.addEventListener("click", openCurrentOpportunityMap);
+  els.crmMapBtn?.addEventListener("click", openCrmMapDialog);
+  els.openCrmRouteBtn?.addEventListener("click", openVisibleCrmRoute);
   document.querySelector("#printBtn").addEventListener("click", () => window.print());
   document.querySelector("#exportJson").addEventListener("click", exportBackup);
   document.querySelector("#importJson").addEventListener("change", importBackup);
@@ -1280,6 +1310,10 @@ function normalizeState(data) {
     contractId: "",
     contractGeneratedAt: "",
     installationId: "",
+    location: { address: "", latitude: "", longitude: "" },
+    driveFolderUrl: "",
+    attachments: [],
+    proposal: {},
     lostReason: "",
     stageChangedAt: item.createdAt || new Date().toISOString(),
     stageHistory: [],
@@ -1493,6 +1527,10 @@ function normalizeState(data) {
     pendingActivity: false,
     nextActivityDate: "",
     notes: "",
+    location: { address: "", latitude: "", longitude: "" },
+    driveFolderUrl: "",
+    attachments: [],
+    proposal: {},
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     lastMovedAt: "",
@@ -2629,6 +2667,8 @@ function opportunityCard(item) {
   const flags = [item.pendingActivity ? "Pendente" : "", isActivityDue(item) ? "Hoje/atrasada" : "", isOpportunityStale(item) ? "Sem movimento" : ""].filter(Boolean);
   const movedDate = item.lastMovedAt?.slice(0, 10) || item.updatedAt?.slice(0, 10) || todayIso;
   const project = item.projectId ? projectName(item.projectId) : "";
+  const attachmentCount = Array.isArray(item.attachments) ? item.attachments.length : 0;
+  const hasLocation = opportunityLocationText(item);
   return `
     <article class="opportunity-card" draggable="true" data-opportunity-id="${item.id}">
       <div class="opportunity-card-top">
@@ -2642,6 +2682,8 @@ function opportunityCard(item) {
       <div class="opportunity-meta"><span>${money(item.value)}</span><strong>${escapeHtml(item.owner || "Sem responsavel")}</strong></div>
       <div class="tag-row">
         ${project ? `<span>${escapeHtml(project)}</span>` : ""}
+        ${attachmentCount ? `<span>${attachmentCount} anexo${attachmentCount === 1 ? "" : "s"}</span>` : ""}
+        ${hasLocation ? `<span>Mapa</span>` : ""}
         ${normalizeTags(item.tags).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
       </div>
       <div class="attention-row">${flags.map((flag) => `<span>${escapeHtml(flag)}</span>`).join("")}</div>
@@ -2675,6 +2717,277 @@ function bindKanbanEvents() {
       moveOpportunity(event.dataTransfer.getData("text/plain"), dropZone.dataset.dropStage);
     });
   });
+}
+
+function opportunityLocationText(item) {
+  const location = item?.location || {};
+  const coords = [location.latitude, location.longitude].filter(Boolean).join(",");
+  return coords || location.address || "";
+}
+
+function googleMapsUrlFromLocation(locationText) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationText)}`;
+}
+
+function googleMapsRouteUrl(locations) {
+  const clean = locations.filter(Boolean).slice(0, 10);
+  if (!clean.length) return "";
+  const destination = clean[clean.length - 1];
+  const waypoints = clean.slice(0, -1).join("|");
+  const params = new URLSearchParams({ api: "1", travelmode: "driving", destination });
+  if (waypoints) params.set("waypoints", waypoints);
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+function normalizeOpportunityAttachments(value) {
+  return Array.isArray(value) ? value.map((item) => ({
+    id: item.id || crypto.randomUUID(),
+    type: item.type || "outro",
+    name: item.name || "",
+    url: item.url || "",
+    notes: item.notes || "",
+    createdAt: item.createdAt || new Date().toISOString(),
+  })) : [];
+}
+
+function addOpportunityAttachmentRow(entry = null) {
+  opportunityAttachmentsDraft.push(entry || {
+    id: crypto.randomUUID(),
+    type: "foto",
+    name: "",
+    url: "",
+    notes: "",
+    createdAt: new Date().toISOString(),
+  });
+  renderOpportunityAttachmentRows();
+}
+
+function handleOpportunityAttachmentAction(event) {
+  const removeButton = event.target.closest("[data-remove-opportunity-attachment]");
+  if (!removeButton) return;
+  opportunityAttachmentsDraft = opportunityAttachmentsDraft.filter((item) => item.id !== removeButton.dataset.removeOpportunityAttachment);
+  renderOpportunityAttachmentRows();
+}
+
+function readOpportunityAttachmentsFromForm() {
+  if (!els.opportunityAttachmentRows) return [];
+  return [...els.opportunityAttachmentRows.querySelectorAll("[data-attachment-row]")].map((row) => ({
+    id: row.dataset.attachmentRow,
+    type: row.querySelector("[data-attachment-type]")?.value || "outro",
+    name: row.querySelector("[data-attachment-name]")?.value.trim() || "",
+    url: row.querySelector("[data-attachment-url]")?.value.trim() || "",
+    notes: row.querySelector("[data-attachment-notes]")?.value.trim() || "",
+    createdAt: opportunityAttachmentsDraft.find((item) => item.id === row.dataset.attachmentRow)?.createdAt || new Date().toISOString(),
+  })).filter((item) => item.name || item.url || item.notes);
+}
+
+function renderOpportunityAttachmentRows() {
+  if (!els.opportunityAttachmentRows) return;
+  els.opportunityAttachmentRows.innerHTML = opportunityAttachmentsDraft.length
+    ? opportunityAttachmentsDraft.map((item) => `
+      <article class="attachment-row" data-attachment-row="${item.id}">
+        <label>Tipo
+          <select data-attachment-type>
+            ${[
+              ["foto", "Foto"],
+              ["conta_energia", "Conta de energia"],
+              ["documento", "Documento"],
+              ["pdf", "PDF"],
+              ["planilha", "Planilha Excel"],
+              ["midia", "Mídia"],
+              ["outro", "Outro"],
+            ].map(([value, label]) => `<option value="${value}" ${item.type === value ? "selected" : ""}>${label}</option>`).join("")}
+          </select>
+        </label>
+        <label>Nome
+          <input data-attachment-name maxlength="120" value="${escapeHtml(item.name)}" placeholder="Ex.: Conta de energia" />
+        </label>
+        <label class="attachment-url">Link do Drive
+          <input data-attachment-url type="url" maxlength="300" value="${escapeHtml(item.url)}" placeholder="https://drive.google.com/..." />
+        </label>
+        <label class="attachment-notes">Observações
+          <input data-attachment-notes maxlength="180" value="${escapeHtml(item.notes)}" />
+        </label>
+        <button class="secondary-btn" data-remove-opportunity-attachment="${item.id}" type="button">Remover</button>
+      </article>
+    `).join("")
+    : emptyMessage("Nenhum anexo registrado. Crie uma pasta no Drive para o lead e cole os links dos arquivos aqui.");
+}
+
+function readOpportunityProposalFromForm() {
+  return {
+    consumptionKwh: Number(els.proposalConsumption?.value || 0),
+    generationKwh: Number(els.proposalGeneration?.value || 0),
+    powerKwp: Number(els.proposalPower?.value || 0),
+    inverterType: els.proposalInverterType?.value || "microinversor",
+    inverterBrand: els.proposalInverterBrand?.value.trim() || "",
+    moduleBrand: els.proposalModuleBrand?.value.trim() || "",
+    modulePowerWp: Number(els.proposalModulePower?.value || 0),
+    roofType: els.proposalRoofType?.value || "telha_colonial",
+    battery: els.proposalBattery?.value.trim() || "",
+    investment: Number(els.proposalInvestment?.value || 0),
+    notes: els.proposalNotes?.value.trim() || "",
+  };
+}
+
+function setOpportunityProposalForm(proposal = {}) {
+  if (!els.proposalConsumption) return;
+  els.proposalConsumption.value = proposal.consumptionKwh || "";
+  els.proposalGeneration.value = proposal.generationKwh || "";
+  els.proposalPower.value = proposal.powerKwp || "";
+  els.proposalInverterType.value = proposal.inverterType || "microinversor";
+  els.proposalInverterBrand.value = proposal.inverterBrand || "";
+  els.proposalModuleBrand.value = proposal.moduleBrand || "";
+  els.proposalModulePower.value = proposal.modulePowerWp || "";
+  els.proposalRoofType.value = proposal.roofType || "telha_colonial";
+  els.proposalBattery.value = proposal.battery || "";
+  els.proposalInvestment.value = proposal.investment || "";
+  els.proposalNotes.value = proposal.notes || "";
+}
+
+function inverterWarrantyLabel(type) {
+  if (type === "microinversor") return "Micro inversor: 15 anos";
+  if (type === "hibrido") return "Inversor híbrido: conforme fabricante, base comercial de 10 anos";
+  return "Inversor convencional: 10 anos";
+}
+
+function roofTypeLabel(type) {
+  return {
+    telha_colonial: "Telha colonial",
+    metalico: "Metálico",
+    fibrocimento: "Fibrocimento",
+    madeira: "Madeira",
+    laje: "Laje",
+    solo: "Solo",
+  }[type] || "Não informado";
+}
+
+function proposalHtml(opportunity, proposal) {
+  const client = personName(opportunity.personId);
+  const coverage = proposal.consumptionKwh ? Math.min(100, (proposal.generationKwh / proposal.consumptionKwh) * 100) : 0;
+  const warranties = [
+    "Placas: 15 anos contra defeito de fabricação",
+    "Eficiência das placas: 30 anos",
+    inverterWarrantyLabel(proposal.inverterType),
+    proposal.battery ? `Baterias: ${escapeHtml(proposal.battery)}` : "",
+  ].filter(Boolean);
+  return `<!doctype html>
+  <html>
+    <head>
+      <meta charset="utf-8" />
+      <title>Proposta fotovoltaica - ${escapeHtml(client)}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 32px; color: #10231d; }
+        header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #0f7665; padding-bottom: 18px; }
+        header img { width: 180px; max-height: 80px; object-fit: contain; background: #050505; padding: 8px; }
+        h1 { font-size: 26px; margin: 24px 0 8px; }
+        h2 { font-size: 16px; margin-top: 22px; color: #0f7665; }
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .box { border: 1px solid #d7dfdb; border-radius: 8px; padding: 12px; }
+        .big { font-size: 22px; font-weight: 700; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { border-bottom: 1px solid #d7dfdb; text-align: left; padding: 9px; }
+        footer { margin-top: 32px; font-size: 12px; color: #5b6a64; }
+      </style>
+    </head>
+    <body>
+      <header>
+        <img src="assets/logo-lumeris.png" alt="Lumeris Engenharia" />
+        <div><strong>Lumeris Engenharia</strong><br>Proposta fotovoltaica<br>${formatDate(todayIso)}</div>
+      </header>
+      <h1>${escapeHtml(opportunity.number || opportunity.title || "Proposta")} - ${escapeHtml(client)}</h1>
+      <p>${escapeHtml(opportunity.company || "")}</p>
+      <section class="grid">
+        <div class="box"><span>Investimento</span><div class="big">${money(proposal.investment || opportunity.value || 0)}</div></div>
+        <div class="box"><span>Potência</span><div class="big">${formatNumber(proposal.powerKwp || 0)} kWp</div></div>
+        <div class="box"><span>Geração estimada</span><div class="big">${formatNumber(proposal.generationKwh || 0)} kWh/mês</div></div>
+        <div class="box"><span>Cobertura estimada</span><div class="big">${formatNumber(coverage)}%</div></div>
+      </section>
+      <h2>Dados técnicos</h2>
+      <table>
+        <tr><th>Consumo médio</th><td>${formatNumber(proposal.consumptionKwh || 0)} kWh/mês</td></tr>
+        <tr><th>Tipo de inversor</th><td>${escapeHtml(inverterWarrantyLabel(proposal.inverterType).split(":")[0])}</td></tr>
+        <tr><th>Inversor</th><td>${escapeHtml(proposal.inverterBrand || "A definir")}</td></tr>
+        <tr><th>Placas</th><td>${escapeHtml(proposal.moduleBrand || "A definir")} ${proposal.modulePowerWp ? `· ${formatNumber(proposal.modulePowerWp)} Wp` : ""}</td></tr>
+        <tr><th>Tipo de instalação</th><td>${escapeHtml(roofTypeLabel(proposal.roofType))}</td></tr>
+      </table>
+      <h2>Garantias</h2>
+      <ul>${warranties.map((item) => `<li>${item}</li>`).join("")}</ul>
+      <h2>Observações</h2>
+      <p>${escapeHtml(proposal.notes || "Proposta sujeita à vistoria técnica, disponibilidade de rede e aprovação da concessionária.")}</p>
+      <footer>Documento gerado pelo CRM Lumeris. Para envio ao cliente, salve como PDF na janela de impressão.</footer>
+      <script>window.addEventListener("load", () => setTimeout(() => window.print(), 400));</script>
+    </body>
+  </html>`;
+}
+
+function currentOpportunityDraftFromForm() {
+  return {
+    id: els.opportunityId.value || "",
+    personId: els.opportunityPerson.value,
+    company: els.opportunityCompany.value.trim(),
+    number: els.opportunityNumber.value.trim(),
+    title: els.opportunityNumber.value.trim(),
+    value: Number(els.opportunityValue.value || 0),
+    location: {
+      address: els.opportunityAddress?.value.trim() || "",
+      latitude: els.opportunityLatitude?.value.trim() || "",
+      longitude: els.opportunityLongitude?.value.trim() || "",
+    },
+  };
+}
+
+function generateOpportunityProposalPdf() {
+  const opportunity = currentOpportunityDraftFromForm();
+  const proposal = readOpportunityProposalFromForm();
+  const win = window.open("", "_blank");
+  if (!win) {
+    toast("Permita pop-ups para gerar a proposta.");
+    return;
+  }
+  win.document.write(proposalHtml(opportunity, proposal));
+  win.document.close();
+}
+
+function openCurrentOpportunityMap() {
+  const locationText = opportunityLocationText(currentOpportunityDraftFromForm());
+  if (!locationText) {
+    toast("Informe endereço ou latitude/longitude para abrir o mapa.");
+    return;
+  }
+  window.open(googleMapsUrlFromLocation(locationText), "_blank");
+}
+
+function openCrmMapDialog() {
+  renderCrmMapList();
+  els.crmMapDialog?.showModal();
+}
+
+function renderCrmMapList() {
+  if (!els.crmMapList) return;
+  const rows = filteredOpportunities().filter(opportunityLocationText);
+  els.crmMapList.innerHTML = rows.length
+    ? rows.map((item) => {
+      const location = opportunityLocationText(item);
+      return `
+        <article class="map-lead-item">
+          <strong>${escapeHtml(personName(item.personId))}</strong>
+          <span>${escapeHtml(item.number || item.company || "")}</span>
+          <small>${escapeHtml(location)}</small>
+          <a class="secondary-btn" href="${googleMapsUrlFromLocation(location)}" target="_blank" rel="noopener">Abrir no Google Maps</a>
+        </article>`;
+    }).join("")
+    : emptyMessage("Nenhum lead visível possui endereço ou coordenadas.");
+}
+
+function openVisibleCrmRoute() {
+  const locations = filteredOpportunities().map(opportunityLocationText).filter(Boolean);
+  const url = googleMapsRouteUrl(locations);
+  if (!url) {
+    toast("Nenhum lead visível possui localização para montar rota.");
+    return;
+  }
+  window.open(url, "_blank");
 }
 
 function openOpportunityDialog(item = null) {
@@ -7795,6 +8108,13 @@ function openOpportunityDialog(item = null) {
   els.opportunityNextActivity.value = item?.nextActivityDate || "";
   els.opportunityPendingActivity.checked = Boolean(item?.pendingActivity);
   els.opportunityNotes.value = item?.notes || "";
+  els.opportunityAddress.value = item?.location?.address || "";
+  els.opportunityLatitude.value = item?.location?.latitude || "";
+  els.opportunityLongitude.value = item?.location?.longitude || "";
+  els.opportunityDriveFolder.value = item?.driveFolderUrl || "";
+  opportunityAttachmentsDraft = normalizeOpportunityAttachments(item?.attachments);
+  renderOpportunityAttachmentRows();
+  setOpportunityProposalForm(item?.proposal || {});
   els.opportunityTitle.textContent = item ? "Editar oportunidade" : "Nova oportunidade";
   renderOpportunityHistory(item?.id || "");
   els.opportunityDialog.showModal();
@@ -7834,6 +8154,14 @@ function saveOpportunity() {
     pendingActivity: els.opportunityPendingActivity.checked,
     nextActivityDate: els.opportunityNextActivity.value,
     notes: els.opportunityNotes.value.trim(),
+    location: {
+      address: els.opportunityAddress.value.trim(),
+      latitude: els.opportunityLatitude.value.trim(),
+      longitude: els.opportunityLongitude.value.trim(),
+    },
+    driveFolderUrl: els.opportunityDriveFolder.value.trim(),
+    attachments: readOpportunityAttachmentsFromForm(),
+    proposal: readOpportunityProposalFromForm(),
     createdAt: existing?.createdAt || now,
     updatedAt: now,
     lastMovedAt: existing?.lastMovedAt || now,
@@ -9744,6 +10072,10 @@ function sum(items) {
 
 function money(value) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value || 0);
+}
+
+function formatNumber(value, fractionDigits = 2) {
+  return new Intl.NumberFormat("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: fractionDigits }).format(Number(value || 0));
 }
 
 function formatDate(iso) {

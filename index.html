@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260714-entrega-tecnica1" />
+    <link rel="stylesheet" href="styles.css?v=20260714-crm-proposta-anexos1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -287,6 +287,7 @@
               Sem movimento
             </label>
             <button class="secondary-btn" id="clearCrmFilters" type="button">Limpar filtros</button>
+            <button class="secondary-btn" id="crmMapBtn" type="button">Mapa de leads</button>
             <button class="primary-btn" id="newOpportunityBtn" type="button">Nova oportunidade</button>
           </div>
 
@@ -2178,6 +2179,94 @@
         </div>
         <section class="panel embedded-panel">
           <div class="panel-head">
+            <div>
+              <h2>Localização</h2>
+              <small>Use endereço completo ou coordenadas para visualizar no Google Maps.</small>
+            </div>
+            <button class="secondary-btn" id="openOpportunityMapBtn" type="button">Visualizar no mapa</button>
+          </div>
+          <div class="form-grid">
+            <label class="full">Endereço
+              <input id="opportunityAddress" maxlength="220" placeholder="Rua, número, bairro, cidade - UF" />
+            </label>
+            <label>Latitude
+              <input id="opportunityLatitude" maxlength="40" placeholder="-23.5010" />
+            </label>
+            <label>Longitude
+              <input id="opportunityLongitude" maxlength="40" placeholder="-47.4526" />
+            </label>
+          </div>
+        </section>
+        <section class="panel embedded-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Anexos e mídia</h2>
+              <small>Guarde os arquivos no Google Drive e cole os links aqui.</small>
+            </div>
+            <button class="secondary-btn" id="addOpportunityAttachmentBtn" type="button">Adicionar anexo</button>
+          </div>
+          <label class="full">Pasta do Google Drive do lead
+            <input id="opportunityDriveFolder" type="url" maxlength="300" placeholder="https://drive.google.com/drive/folders/..." />
+          </label>
+          <div class="attachment-list" id="opportunityAttachmentRows"></div>
+        </section>
+        <section class="panel embedded-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Proposta fotovoltaica</h2>
+              <small>Base para gerar proposta técnica/comercial em PDF.</small>
+            </div>
+            <button class="secondary-btn" id="generateOpportunityProposalBtn" type="button">Gerar proposta</button>
+          </div>
+          <div class="form-grid">
+            <label>Consumo médio (kWh/mês)
+              <input id="proposalConsumption" type="number" min="0" step="0.01" />
+            </label>
+            <label>Geração estimada (kWh/mês)
+              <input id="proposalGeneration" type="number" min="0" step="0.01" />
+            </label>
+            <label>Potência do sistema (kWp)
+              <input id="proposalPower" type="number" min="0" step="0.01" />
+            </label>
+            <label>Tipo de inversor
+              <select id="proposalInverterType">
+                <option value="microinversor">Micro inversor</option>
+                <option value="convencional">Inversor convencional</option>
+                <option value="hibrido">Inversor híbrido</option>
+              </select>
+            </label>
+            <label>Marca/modelo do inversor
+              <input id="proposalInverterBrand" maxlength="100" />
+            </label>
+            <label>Marca/modelo das placas
+              <input id="proposalModuleBrand" maxlength="100" />
+            </label>
+            <label>Potência da placa (Wp)
+              <input id="proposalModulePower" type="number" min="0" step="1" />
+            </label>
+            <label>Tipo de instalação
+              <select id="proposalRoofType">
+                <option value="telha_colonial">Telha colonial</option>
+                <option value="metalico">Metálico</option>
+                <option value="fibrocimento">Fibrocimento</option>
+                <option value="madeira">Madeira</option>
+                <option value="laje">Laje</option>
+                <option value="solo">Solo</option>
+              </select>
+            </label>
+            <label>Baterias / ciclos
+              <input id="proposalBattery" maxlength="100" placeholder="Ex.: 6000 ciclos" />
+            </label>
+            <label>Investimento
+              <input id="proposalInvestment" type="number" min="0" step="0.01" />
+            </label>
+            <label class="full">Observações da proposta
+              <textarea id="proposalNotes" rows="3" maxlength="800"></textarea>
+            </label>
+          </div>
+        </section>
+        <section class="panel embedded-panel">
+          <div class="panel-head">
             <h2>Histórico</h2>
           </div>
           <div id="opportunityHistory" class="report-list"></div>
@@ -2185,6 +2274,23 @@
         <menu class="modal-actions">
           <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
           <button class="primary-btn" value="default" type="submit">Salvar oportunidade</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="crmMapDialog">
+      <form method="dialog" class="modal large-modal">
+        <div class="modal-head">
+          <h2>Mapa de leads</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
+        </div>
+        <p class="muted">Lista os leads com endereço ou coordenadas. Use os botões para abrir no Google Maps e montar rotas.</p>
+        <div class="map-actions">
+          <button class="secondary-btn" id="openCrmRouteBtn" type="button">Abrir rota com leads visíveis</button>
+        </div>
+        <div class="map-lead-list" id="crmMapList"></div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Fechar</button>
         </menu>
       </form>
     </dialog>
@@ -2666,6 +2772,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/estoque-iluminar-data.js?v=20260711-api-bancos1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260714-entrega-tecnica1"></script>
+    <script src="app.js?v=20260714-crm-proposta-anexos1"></script>
   </body>
 </html>

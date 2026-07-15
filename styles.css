@@ -1348,6 +1348,56 @@ button.project-chip {
   color: var(--danger);
 }
 
+.attachment-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.attachment-row {
+  display: grid;
+  grid-template-columns: 120px minmax(160px, 1fr) minmax(220px, 1.4fr) minmax(160px, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.attachment-row label,
+.map-lead-item {
+  min-width: 0;
+}
+
+.map-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
+.map-lead-list {
+  display: grid;
+  gap: 10px;
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.map-lead-item {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) minmax(140px, 0.8fr) minmax(260px, 1.5fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.map-lead-item small {
+  color: var(--muted);
+}
+
 .card-actions {
   display: flex;
   justify-content: flex-end;
@@ -2366,7 +2416,9 @@ dialog::backdrop {
   .installation-kpis,
   .installation-layout,
   .installation-efficiency-preview,
-  .technical-photo-grid {
+  .technical-photo-grid,
+  .attachment-row,
+  .map-lead-item {
     grid-template-columns: 1fr;
   }
 
