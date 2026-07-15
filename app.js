@@ -3155,19 +3155,19 @@ function setOpportunityProposalForm(proposal = {}) {
 
 function inverterWarrantyLabel(type) {
   if (type === "microinversor") return "Micro inversor: 15 anos";
-  if (type === "hibrido") return "Inversor híbrido: conforme fabricante, base comercial de 10 anos";
+  if (type === "hibrido") return "Inversor h\u00edbrido: conforme fabricante, base comercial de 10 anos";
   return "Inversor convencional: 10 anos";
 }
 
 function roofTypeLabel(type) {
   return {
     telha_colonial: "Telha colonial",
-    metalico: "Metálico",
+    metalico: "Met\u00e1lico",
     fibrocimento: "Fibrocimento",
     madeira: "Madeira",
     laje: "Laje",
     solo: "Solo",
-  }[type] || "Não informado";
+  }[type] || "N\u00e3o informado";
 }
 
 function proposalChartSvg(consumption, generation) {
@@ -3196,7 +3196,7 @@ function proposalChartSvg(consumption, generation) {
       <text x="${x}" y="${height - 18}" font-size="12" fill="#10231d">${month}</text>
     `;
   }).join("");
-  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Consumo x gera??o por m?s">
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Consumo x gera&ccedil;&atilde;o por m&ecirc;s">
     <rect width="${width}" height="${height}" fill="#fff"/>
     ${grid}
     ${bars}
@@ -3227,8 +3227,8 @@ function proposalHtml(opportunity, proposal) {
   const paybackYears = annualSavings ? investment / annualSavings : 0;
   const twentyFiveYearSavings = annualSavings ? annualSavings * 25 - investment : 0;
   const warranties = [
-    "Placas: 15 anos contra defeito de fabrica??o",
-    "Efici?ncia das placas: 30 anos",
+    "Placas: 15 anos contra defeito de fabrica\u00e7\u00e3o",
+    "Efici\u00eancia das placas: 30 anos",
     inverterWarrantyLabel(proposal.inverterType),
     proposal.battery ? `Baterias: ${escapeHtml(proposal.battery)}` : "",
   ].filter(Boolean);
@@ -3272,38 +3272,38 @@ function proposalHtml(opportunity, proposal) {
       <section class="hero">
         <h1>${escapeHtml(opportunity.number || opportunity.title || "Proposta")} - ${escapeHtml(client)}</h1>
         <p>${escapeHtml(opportunity.company || "")}</p>
-        <p>Conforme solicitado, apresentamos a proposta comercial para fornecimento de sistema fotovoltaico conectado ? rede el?trica, dimensionado com base no consumo informado e na gera??o estimada para o local de instala??o.</p>
+        <p>Conforme solicitado, apresentamos a proposta comercial para fornecimento de sistema fotovoltaico conectado &agrave; rede el&eacute;trica, dimensionado com base no consumo informado e na gera&ccedil;&atilde;o estimada para o local de instala&ccedil;&atilde;o.</p>
       </section>
-      <h2>Resumo t?cnico</h2>
+      <h2>Resumo t&eacute;cnico</h2>
       <section class="grid four">
-        <div class="box"><span>Pot?ncia total</span><div class="big">${formatNumber(proposal.powerKwp || 0)} kWp</div></div>
-        <div class="box"><span>Gera??o m?dia</span><div class="big">${formatNumber(avgGeneration)} kWh/m?s</div></div>
-        <div class="box"><span>Consumo m?dio</span><div class="big">${formatNumber(avgConsumption)} kWh/m?s</div></div>
+        <div class="box"><span>Pot&ecirc;ncia total</span><div class="big">${formatNumber(proposal.powerKwp || 0)} kWp</div></div>
+        <div class="box"><span>Gera&ccedil;&atilde;o m&eacute;dia</span><div class="big">${formatNumber(avgGeneration)} kWh/m&ecirc;s</div></div>
+        <div class="box"><span>Consumo m&eacute;dio</span><div class="big">${formatNumber(avgConsumption)} kWh/m&ecirc;s</div></div>
         <div class="box"><span>Cobertura estimada</span><div class="big">${formatNumber(coverage)}%</div></div>
       </section>
-      <h2>Radia??o solar considerada no projeto</h2>
-      <p>O dimensionamento considera a disponibilidade m?dia de radia??o solar da regi?o, efeitos sazonais ao longo do ano, inclina??o, orienta??o dos m?dulos e condi??es clim?ticas t?picas. A gera??o pode variar m?s a m?s conforme temperatura, sombreamento, limpeza dos m?dulos e disponibilidade da rede el?trica.</p>
-      <p>Os valores de gera??o mensal abaixo s?o estimativas t?cnicas utilizadas para comparar a energia consumida pelo cliente com a energia prevista do sistema proposto.</p>
+      <h2>Radia&ccedil;&atilde;o solar considerada no projeto</h2>
+      <p>O dimensionamento considera a disponibilidade m&eacute;dia de radia&ccedil;&atilde;o solar da regi&atilde;o, efeitos sazonais ao longo do ano, inclina&ccedil;&atilde;o, orienta&ccedil;&atilde;o dos m&oacute;dulos e condi&ccedil;&otilde;es clim&aacute;ticas t&iacute;picas. A gera&ccedil;&atilde;o pode variar m&ecirc;s a m&ecirc;s conforme temperatura, sombreamento, limpeza dos m&oacute;dulos e disponibilidade da rede el&eacute;trica.</p>
+      <p>Os valores de gera&ccedil;&atilde;o mensal abaixo s&atilde;o estimativas t&eacute;cnicas utilizadas para comparar a energia consumida pelo cliente com a energia prevista do sistema proposto.</p>
       <section class="chart">
-        <h2>Consumo x Gera??o</h2>
+        <h2>Consumo x Gera&ccedil;&atilde;o</h2>
         ${proposalChartSvg(consumptionValues, generationValues)}
       </section>
       <table>
-        <thead><tr><th>M?s</th>${PROPOSAL_MONTHS.map((month) => `<th>${month}</th>`).join("")}<th>M?dia</th></tr></thead>
+        <thead><tr><th>M&ecirc;s</th>${PROPOSAL_MONTHS.map((month) => `<th>${month}</th>`).join("")}<th>M&eacute;dia</th></tr></thead>
         <tbody>
           <tr><th>En. Cons</th>${consumptionValues.map((value) => `<td>${formatNumber(value, 0)}</td>`).join("")}<td>${formatNumber(avgConsumption, 0)}</td></tr>
           <tr><th>En. Gerada</th>${generationValues.map((value) => `<td>${formatNumber(value, 0)}</td>`).join("")}<td>${formatNumber(avgGeneration, 0)}</td></tr>
         </tbody>
       </table>
-      <h2>Composi??o do projeto</h2>
+      <h2>Composi&ccedil;&atilde;o do projeto</h2>
       <table>
         <thead><tr><th>Item</th><th>Quantidade</th></tr></thead>
         <tbody>
-          <tr><td>M?dulo fotovoltaico ${escapeHtml(proposal.moduleBrand || "A definir")} ${proposal.modulePowerWp ? `${formatNumber(proposal.modulePowerWp, 0)} Wp` : ""}</td><td>${formatNumber(proposal.moduleQuantity || 0, 0)}</td></tr>
+          <tr><td>M&oacute;dulo fotovoltaico ${escapeHtml(proposal.moduleBrand || "A definir")} ${proposal.modulePowerWp ? `${formatNumber(proposal.modulePowerWp, 0)} Wp` : ""}</td><td>${formatNumber(proposal.moduleQuantity || 0, 0)}</td></tr>
           <tr><td>Inversor ${escapeHtml(proposal.inverterBrand || "A definir")} - ${escapeHtml(inverterWarrantyLabel(proposal.inverterType).split(":")[0])}</td><td>${formatNumber(proposal.inverterQuantity || 0, 0)}</td></tr>
-          <tr><td>Estrutura de fixa??o para ${escapeHtml(roofTypeLabel(proposal.roofType))}</td><td>1 kit</td></tr>
-          <tr><td><strong>Cabos solares 6 mm?</strong>, conectores e prote??es necess?rios para instala??o</td><td>Incluso</td></tr>
-          <tr><td>Monitoramento, aterramento, string box/prote??es e homologa??o conforme escopo</td><td>Incluso</td></tr>
+          <tr><td>Estrutura de fixa&ccedil;&atilde;o para ${escapeHtml(roofTypeLabel(proposal.roofType))}</td><td>1 kit</td></tr>
+          <tr><td><strong>Cabos solares 6 mm&sup2;</strong>, conectores e prote&ccedil;&otilde;es necess&aacute;rios para instala&ccedil;&atilde;o</td><td>Incluso</td></tr>
+          <tr><td>Monitoramento, aterramento, string box/prote&ccedil;&otilde;es e homologa&ccedil;&atilde;o conforme escopo</td><td>Incluso</td></tr>
         </tbody>
       </table>
       <h2>Garantias</h2>
@@ -3313,26 +3313,26 @@ function proposalHtml(opportunity, proposal) {
         <div class="box"><span>Economia estimada anual</span><div class="big">${annualSavings ? money(annualSavings) : "Informar kWh"}</div></div>
         <div class="box"><span>Payback estimado</span><div class="big">${paybackYears ? `${formatNumber(paybackYears, 1)} anos` : "A calcular"}</div></div>
         <div class="box"><span>Economia projetada em 25 anos</span><div class="big">${annualSavings ? money(twentyFiveYearSavings) : "A calcular"}</div></div>
-        <div class="box"><span>Valor m?dio do kWh</span><div class="big">${tariff ? money(tariff) : "N?o informado"}</div></div>
+        <div class="box"><span>Valor m&eacute;dio do kWh</span><div class="big">${tariff ? money(tariff) : "N\u00e3o informado"}</div></div>
       </section>
       <div class="investment page-break">
-        <h2>Pre?o, entrega e condi??es de pagamento</h2>
+        <h2>Pre&ccedil;o, entrega e condi&ccedil;&otilde;es de pagamento</h2>
         <section class="grid">
           <div><span>Valor total do sistema</span><div class="big">${money(investment)}</div></div>
           <div><span>Forma de pagamento</span><div class="big">${escapeHtml(proposal.paymentTerms || "A negociar")}</div></div>
-          <div><span>Prazo de entrega</span><div>${escapeHtml(proposal.deliveryDeadline || "Ap?s chegada do kit, at? 20 dias ?teis para instala??o, sujeito ? aprova??o da concession?ria.")}</div></div>
-          <div><span>Gera??o m?dia</span><div>${formatNumber(avgGeneration)} kWh/m?s</div></div>
+          <div><span>Prazo de entrega</span><div>${escapeHtml(proposal.deliveryDeadline || "Ap\u00f3s chegada do kit, at\u00e9 20 dias \u00fateis para instala\u00e7\u00e3o, sujeito \u00e0 aprova\u00e7\u00e3o da concession\u00e1ria.")}</div></div>
+          <div><span>Gera&ccedil;&atilde;o m&eacute;dia</span><div>${formatNumber(avgGeneration)} kWh/m&ecirc;s</div></div>
         </section>
       </div>
-      <h2>Observa??es comerciais</h2>
-      <p>${escapeHtml(proposal.notes || "Proposta sujeita ? vistoria t?cnica, disponibilidade de rede, aprova??o da concession?ria, assinatura de contrato e disponibilidade dos equipamentos no ato da compra.")}</p>
+      <h2>Observa&ccedil;&otilde;es comerciais</h2>
+      <p>${escapeHtml(proposal.notes || "Proposta sujeita \u00e0 vistoria t\u00e9cnica, disponibilidade de rede, aprova\u00e7\u00e3o da concession\u00e1ria, assinatura de contrato e disponibilidade dos equipamentos no ato da compra.")}</p>
       <h2>Aceite da proposta</h2>
-      <p>Esta proposta, quando assinada, formaliza o aceite das condi??es t?cnicas e comerciais acima e servir? como base para emiss?o/assinatura do contrato de presta??o de servi?os.</p>
+      <p>Esta proposta, quando assinada, formaliza o aceite das condi&ccedil;&otilde;es t&eacute;cnicas e comerciais acima e servir&aacute; como base para emiss&atilde;o/assinatura do contrato de presta&ccedil;&atilde;o de servi&ccedil;os.</p>
       <section class="signatures">
-        <div class="signature-line"><strong>Lumeris Engenharia</strong><br>Respons?vel comercial</div>
-        <div class="signature-line"><strong>${escapeHtml(client)}</strong><br>${escapeHtml(proposal.acceptanceData || "CPF/CNPJ, endere?o e respons?vel pelo aceite")}</div>
+        <div class="signature-line"><strong>Lumeris Engenharia</strong><br>Respons&aacute;vel comercial</div>
+        <div class="signature-line"><strong>${escapeHtml(client)}</strong><br>${escapeHtml(proposal.acceptanceData || "CPF/CNPJ, endere\u00e7o e respons\u00e1vel pelo aceite")}</div>
       </section>
-      <footer>Documento gerado pelo CRM Lumeris. Para envio ao cliente, salve como PDF na janela de impress?o.</footer>
+      <footer>Documento gerado pelo CRM Lumeris. Para envio ao cliente, salve como PDF na janela de impress&atilde;o.</footer>
       <script>window.addEventListener("load", () => setTimeout(() => window.print(), 400));</script>
     </body>
   </html>`;
