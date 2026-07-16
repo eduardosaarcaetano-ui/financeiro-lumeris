@@ -2779,24 +2779,164 @@ dialog::backdrop {
 }
 
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    font-size: 9px !important;
+    line-height: 1.2 !important;
+  }
+
   .sidebar,
   .topbar-actions,
   .toolbar,
-  .row-actions {
-    display: none;
+  .row-actions,
+  .toast,
+  dialog,
+  button {
+    display: none !important;
   }
 
   .app-shell {
-    display: block;
+    display: block !important;
   }
 
   .main {
-    padding: 0;
+    padding: 0 !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .view {
+    display: none !important;
+  }
+
+  .view.active {
+    display: block !important;
+  }
+
+  .topbar {
+    display: block !important;
+    margin: 0 0 6px !important;
+    padding: 0 !important;
+  }
+
+  .topbar small {
+    font-size: 8px !important;
+  }
+
+  .topbar h1 {
+    font-size: 18px !important;
+    margin: 2px 0 6px !important;
   }
 
   .panel,
   .kpi,
   .table-wrap {
-    box-shadow: none;
+    box-shadow: none !important;
+    border-color: #bbb !important;
+    break-inside: avoid;
+  }
+
+  .panel {
+    padding: 8px !important;
+    margin-bottom: 6px !important;
+    border-radius: 4px !important;
+  }
+
+  .panel-head {
+    display: block !important;
+    margin-bottom: 5px !important;
+  }
+
+  .panel h2,
+  .panel-head h2 {
+    font-size: 11px !important;
+    margin: 0 0 4px !important;
+  }
+
+  .kpi-grid,
+  .report-kpis,
+  .report-grid,
+  .project-report-grid,
+  .dashboard-grid,
+  .sector-grid {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 5px !important;
+  }
+
+  .kpi {
+    min-height: 0 !important;
+    padding: 7px !important;
+    border-radius: 4px !important;
+  }
+
+  .kpi span,
+  .kpi small {
+    font-size: 8px !important;
+  }
+
+  .kpi strong {
+    font-size: 14px !important;
+    margin-top: 3px !important;
+  }
+
+  .report-list,
+  .dre-list {
+    gap: 4px !important;
+  }
+
+  .report-item,
+  .dre-row {
+    min-height: 0 !important;
+    padding: 5px 7px !important;
+    border-radius: 3px !important;
+    font-size: 9px !important;
+  }
+
+  .report-item strong,
+  .dre-row strong {
+    font-size: 9px !important;
+  }
+
+  .dre-total {
+    padding: 7px !important;
+  }
+
+  table {
+    font-size: 8px !important;
+  }
+
+  th,
+  td {
+    padding: 4px 5px !important;
+  }
+
+  #relatorios .report-grid {
+    grid-template-columns: 2fr 1fr !important;
+    align-items: start !important;
+  }
+
+  #relatorios .panel {
+    break-inside: avoid;
+  }
+
+  #relatorios .dre-row {
+    padding: 4px 6px !important;
+  }
+
+  #relatorios .dre-total {
+    font-size: 10px !important;
   }
 }
