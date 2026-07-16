@@ -74,7 +74,7 @@ const MOCK_DESCRIPTIONS = {
 const SECTOR_ALLOWED_VIEWS = {
   financeiro: ["dashboard", "receber", "pagar", "banco", "apisbancarias", "notasfiscais", "estoque", "relatorios", "pessoas"],
   vendas: ["dashboard", "crm", "vendas"],
-  projetos: ["dashboard", "projetos", "protocolos", "instalacoes"],
+  projetos: ["projetos", "protocolos", "instalacoes"],
   instaladores: ["dashboard", "instalacoes"],
   engenharia: ["dashboard", "projetos", "protocolos", "instalacoes"],
   diretoria: ["dashboard", "projetos", "protocolos", "instalacoes", "crm", "vendas", "relatorios"],
