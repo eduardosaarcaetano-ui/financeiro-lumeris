@@ -2418,6 +2418,57 @@ dialog::backdrop {
   align-items: stretch;
 }
 
+.segmented-control {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.segmented-control button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.segmented-control button:last-child {
+  border-right: 0;
+}
+
+.segmented-control button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.crm-view-toggle {
+  margin-left: auto;
+}
+
+.crm-lead-list-wrap {
+  max-height: 68vh;
+}
+
+.crm-lead-list-table {
+  min-width: 1180px;
+}
+
+.crm-lead-list-table td strong,
+.crm-lead-list-table td small {
+  display: block;
+}
+
+.crm-lead-list-table td small {
+  color: var(--muted);
+  margin-top: 3px;
+}
+
 .pipeline-column {
   min-width: 245px;
   min-height: 62vh;

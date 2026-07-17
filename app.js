@@ -202,6 +202,7 @@ const STOCK_EXIT_TYPE_LABELS = {
 };
 
 let currentCrmTab = "funil";
+let currentCrmView = "kanban";
 let pendingOpportunityConversion = null;
 let pendingWonOpportunity = null;
 let technicalReportDraftPhotos = [];
@@ -407,6 +408,8 @@ const els = {
   opportunityWonServiceType: document.querySelector("#opportunityWonServiceType"),
   opportunityWonCreateProject: document.querySelector("#opportunityWonCreateProject"),
   crmKanbanMetrics: document.querySelector("#crmKanbanMetrics"),
+  crmLeadListTable: document.querySelector("#crmLeadListTable"),
+  crmLeadListSummary: document.querySelector("#crmLeadListSummary"),
   sellerDialog: document.querySelector("#sellerDialog"),
   sellerForm: document.querySelector("#sellerForm"),
   sellerName: document.querySelector("#sellerName"),
@@ -1003,6 +1006,9 @@ function bindEvents() {
   els.toggleLostOpportunitiesBtn?.addEventListener("click", () => {
     showLostOpportunities = !showLostOpportunities;
     renderPipelineBoard();
+  });
+  document.querySelectorAll("[data-crm-view]").forEach((button) => {
+    button.addEventListener("click", () => setCrmView(button.dataset.crmView));
   });
   updateCrmReportPeriodUi();
 
@@ -8656,6 +8662,16 @@ function setCrmTab(tab) {
   });
 }
 
+function setCrmView(view) {
+  currentCrmView = view === "lista" ? "lista" : "kanban";
+  document.querySelectorAll("[data-crm-view]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.crmView === currentCrmView);
+  });
+  document.querySelectorAll("[data-crm-view-panel]").forEach((panel) => {
+    panel.classList.toggle("hidden", panel.dataset.crmViewPanel !== currentCrmView);
+  });
+}
+
 function hydrateSellerOptions() {
   const activeSellers = state.sellers.filter((seller) => seller.active);
   const options = activeSellers.map((seller) => `<option value="${seller.id}">${escapeHtml(seller.name)}</option>`).join("");
@@ -8861,6 +8877,51 @@ function renderPipelineBoard() {
   });
   document.querySelectorAll("[data-opportunity-stage-select]").forEach((select) => {
     select.addEventListener("change", () => handleStageSelect(select.dataset.opportunityStageSelect, select.value));
+  });
+  renderCrmLeadList();
+  setCrmView(currentCrmView);
+}
+
+function crmPipelineRows() {
+  return state.opportunities
+    .filter((item) => showLostOpportunities || item.stage !== "perdido")
+    .sort((a, b) => (b.stageChangedAt || b.updatedAt || "").localeCompare(a.stageChangedAt || a.updatedAt || ""));
+}
+
+function crmStageLabel(stageKey) {
+  return OPPORTUNITY_STAGES.find((stage) => stage.key === stageKey)?.label || stageKey || "-";
+}
+
+function renderCrmLeadList() {
+  if (!els.crmLeadListTable) return;
+  const rows = crmPipelineRows();
+  if (els.crmLeadListSummary) {
+    els.crmLeadListSummary.textContent = `${rows.length} lead(s) ${showLostOpportunities ? "incluindo perdidos" : "sem perdidos"}`;
+  }
+  els.crmLeadListTable.innerHTML = rows.length ? rows.map((item) => {
+    const client = state.people.find((person) => person.id === item.personId);
+    const phone = item.phone || client?.contact || "";
+    const email = item.email || "";
+    return `
+      <tr>
+        <td><strong>${escapeHtml(personName(item.personId))}</strong><small>${escapeHtml(item.title || item.number || "")}</small></td>
+        <td>${escapeHtml(phone || "-")}</td>
+        <td>${escapeHtml(email || "-")}</td>
+        <td>${escapeHtml(item.company || "-")}</td>
+        <td><span class="status ${item.stage === "ganho" ? "baixado" : item.stage === "perdido" ? "vencido" : "aberto"}">${escapeHtml(crmStageLabel(item.stage))}</span></td>
+        <td class="money">${money(item.value)}</td>
+        <td>${escapeHtml(sellerName(item.sellerId) || item.owner || "Sem respons\u00e1vel")}</td>
+        <td>${escapeHtml(item.projectId ? projectName(item.projectId) : "Sem projeto")}</td>
+        <td>${formatDate((item.stageChangedAt || item.updatedAt || item.createdAt || "").slice(0, 10))}</td>
+        <td class="row-actions"><button type="button" data-crm-list-edit="${item.id}">Editar</button></td>
+      </tr>`;
+  }).join("") : `<tr><td colspan="10">${emptyMessage("Nenhum lead encontrado.")}</td></tr>`;
+
+  document.querySelectorAll("[data-crm-list-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const opportunity = state.opportunities.find((item) => item.id === button.dataset.crmListEdit);
+      if (opportunity) openOpportunityDialog(opportunity);
+    });
   });
 }
 

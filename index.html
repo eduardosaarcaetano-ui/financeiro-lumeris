@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260716-print-compacto1" />
+    <link rel="stylesheet" href="styles.css?v=20260717-crm-lista1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -1569,9 +1569,38 @@
               <button class="primary-btn" id="newOpportunityBtn" type="button">Nova oportunidade</button>
               <button class="secondary-btn" id="toggleLostOpportunitiesBtn" type="button">Mostrar perdidos</button>
               <button class="secondary-btn" id="manageSellersBtn" type="button">Gerenciar vendedores</button>
+              <div class="segmented-control crm-view-toggle" aria-label="Visualização do CRM">
+                <button type="button" class="active" data-crm-view="kanban">Kanban</button>
+                <button type="button" data-crm-view="lista">Lista</button>
+              </div>
             </div>
             <div class="crm-kanban-metrics" id="crmKanbanMetrics"></div>
-            <div class="pipeline-board" id="pipelineBoard"></div>
+            <div class="pipeline-board" id="pipelineBoard" data-crm-view-panel="kanban"></div>
+            <section class="panel hidden" data-crm-view-panel="lista">
+              <div class="panel-head">
+                <h2>Lista de leads</h2>
+                <small id="crmLeadListSummary">0 lead(s)</small>
+              </div>
+              <div class="table-wrap crm-lead-list-wrap">
+                <table class="crm-lead-list-table">
+                  <thead>
+                    <tr>
+                      <th>Lead / cliente</th>
+                      <th>Telefone</th>
+                      <th>E-mail</th>
+                      <th>Empresa</th>
+                      <th>Etapa</th>
+                      <th>Valor</th>
+                      <th>Responsável</th>
+                      <th>Projeto</th>
+                      <th>Último movimento</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody id="crmLeadListTable"></tbody>
+                </table>
+              </div>
+            </section>
           </div>
 
           <div class="crm-panel hidden" data-crm-panel="followup">
@@ -2885,6 +2914,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/estoque-iluminar-data.js?v=20260711-api-bancos1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260717-crm-instalacoes1"></script>
+    <script src="app.js?v=20260717-crm-lista1"></script>
   </body>
 </html>
