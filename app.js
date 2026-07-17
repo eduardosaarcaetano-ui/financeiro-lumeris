@@ -445,6 +445,8 @@ const els = {
   crmSearch: document.querySelector("#crmSearch"),
   crmMinValue: document.querySelector("#crmMinValue"),
   crmMaxValue: document.querySelector("#crmMaxValue"),
+  crmCloseStart: document.querySelector("#crmCloseStart"),
+  crmCloseEnd: document.querySelector("#crmCloseEnd"),
   crmPendingOnly: document.querySelector("#crmPendingOnly"),
   crmStaleOnly: document.querySelector("#crmStaleOnly"),
   kanbanBoard: document.querySelector("#kanbanBoard"),
@@ -1069,6 +1071,8 @@ function bindEvents() {
     "#crmSearch",
     "#crmMinValue",
     "#crmMaxValue",
+    "#crmCloseStart",
+    "#crmCloseEnd",
     "#crmPendingOnly",
     "#crmStaleOnly",
     "#receberStatus",
@@ -2718,14 +2722,19 @@ function filteredOpportunities() {
   const search = els.crmSearch.value.toLowerCase().trim();
   const minValue = Number(els.crmMinValue.value || 0);
   const maxValue = Number(els.crmMaxValue.value || 0);
+  const closeStart = els.crmCloseStart?.value || "";
+  const closeEnd = els.crmCloseEnd?.value || "";
+  const filteringByCloseDate = Boolean(closeStart || closeEnd);
 
   return state.opportunities.filter((item) => {
     const haystack = [personName(item.personId), item.company, item.phone, item.number, projectName(item.projectId), item.owner, normalizeTags(item.tags).join(" ")].join(" ").toLowerCase();
+    const wonDate = opportunityWonDate(item);
     return (els.crmUnitFilter.value === "todos" || !els.crmUnitFilter.value || item.unitId === els.crmUnitFilter.value)
       && (!els.crmPipelineFilter.value || item.pipelineId === els.crmPipelineFilter.value)
       && (els.crmOwnerFilter.value === "todos" || !els.crmOwnerFilter.value || item.owner === els.crmOwnerFilter.value)
       && (els.crmStageFilter.value === "todos" || !els.crmStageFilter.value || item.stageId === els.crmStageFilter.value)
       && (els.crmProjectFilter.value === "todos" || item.projectId === els.crmProjectFilter.value)
+      && (!filteringByCloseDate || (isOpportunityWon(item) && (!closeStart || wonDate >= closeStart) && (!closeEnd || wonDate <= closeEnd)))
       && (!search || haystack.includes(search))
       && (!minValue || Number(item.value || 0) >= minValue)
       && (!maxValue || Number(item.value || 0) <= maxValue)
@@ -2735,7 +2744,13 @@ function filteredOpportunities() {
 }
 
 function kanbanColumn(stage, opportunities) {
-  const items = opportunities.filter((item) => item.stageId === stage.id);
+  const isWonStage = stage.id === "ganho" || String(stage.name || "").toLowerCase().includes("ganha");
+  const items = opportunities
+    .filter((item) => item.stageId === stage.id)
+    .sort((a, b) => {
+      if (isWonStage) return opportunityWonDate(b).localeCompare(opportunityWonDate(a));
+      return (b.lastMovedAt || b.updatedAt || b.createdAt || "").localeCompare(a.lastMovedAt || a.updatedAt || a.createdAt || "");
+    });
   const total = sum(items.map((item) => item.value));
   const overdue = items.filter(isActivityDue).length;
   return `
@@ -2755,6 +2770,7 @@ function kanbanColumn(stage, opportunities) {
 function opportunityCard(item) {
   const flags = [item.pendingActivity ? "Pendente" : "", isActivityDue(item) ? "Hoje/atrasada" : "", isOpportunityStale(item) ? "Sem movimento" : ""].filter(Boolean);
   const movedDate = item.lastMovedAt?.slice(0, 10) || item.updatedAt?.slice(0, 10) || todayIso;
+  const wonDate = isOpportunityWon(item) ? opportunityWonDate(item) : "";
   const project = item.projectId ? projectName(item.projectId) : "";
   const attachmentCount = Array.isArray(item.attachments) ? item.attachments.length : 0;
   const hasLocation = opportunityLocationText(item);
@@ -2762,12 +2778,13 @@ function opportunityCard(item) {
     <article class="opportunity-card" draggable="true" data-opportunity-id="${item.id}">
       <div class="opportunity-card-top">
         <strong>${escapeHtml(personName(item.personId))}</strong>
-        <span>${formatDate(movedDate)}</span>
+        <span>${formatDate(wonDate || movedDate)}</span>
       </div>
       <button class="opportunity-card-main" type="button" data-opportunity-action="edit" data-id="${item.id}">
         ${escapeHtml(item.number || "Sem numero")}
       </button>
       <span class="muted">${escapeHtml(item.company || unitName(item.unitId) || "Sem empresa")}</span>
+      ${wonDate ? `<span class="muted">Ganho em ${formatDate(wonDate)}</span>` : ""}
       <div class="opportunity-meta"><span>${money(item.value)}</span><strong>${escapeHtml(item.owner || "Sem responsavel")}</strong></div>
       <div class="tag-row">
         ${project ? `<span>${escapeHtml(project)}</span>` : ""}
@@ -3679,6 +3696,8 @@ function clearCrmFilters() {
   els.crmSearch.value = "";
   els.crmMinValue.value = "";
   els.crmMaxValue.value = "";
+  if (els.crmCloseStart) els.crmCloseStart.value = "";
+  if (els.crmCloseEnd) els.crmCloseEnd.value = "";
   els.crmPendingOnly.checked = false;
   els.crmStaleOnly.checked = false;
   renderAll();
@@ -9534,7 +9553,7 @@ function renderCrmReports() {
 
   const avgTicket = won.length ? sum(won.map((item) => item.value)) / won.length : 0;
   const avgCloseDays = won.length
-    ? won.reduce((total, item) => total + Math.max(0, daysBetween((item.wonAt || "").slice(0, 10), (item.createdAt || "").slice(0, 10))), 0) / won.length
+    ? won.reduce((total, item) => total + Math.max(0, daysBetween(opportunityWonDate(item), (item.createdAt || "").slice(0, 10))), 0) / won.length
     : 0;
 
   els.crmAvgTicket.textContent = money(avgTicket);
