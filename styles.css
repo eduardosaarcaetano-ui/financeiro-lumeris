@@ -54,18 +54,23 @@ button {
 }
 
 .brand {
-  display: flex;
-  gap: 12px;
+  display: grid;
+  gap: 8px;
   align-items: center;
 }
 
 .brand-logo {
-  width: 74px;
-  height: 42px;
+  width: 100%;
+  max-width: 178px;
+  height: 74px;
   object-fit: contain;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #020403;
   border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.brand strong {
+  display: block;
 }
 
 .brand small {
@@ -192,23 +197,26 @@ button {
 
 .login-card {
   width: 100%;
-  max-width: 390px;
+  max-width: 460px;
   background: var(--surface);
   border-radius: 16px;
   box-shadow: var(--shadow);
-  padding: 32px;
+  padding: 36px;
   display: grid;
   gap: 16px;
 }
 
 .login-brand {
   justify-content: center;
-  margin-bottom: 4px;
+  justify-items: center;
+  margin-bottom: 8px;
+  text-align: center;
 }
 
 .login-brand .brand-logo {
-  width: 118px;
-  height: 66px;
+  width: min(100%, 330px);
+  max-width: 330px;
+  height: 126px;
 }
 
 .login-brand strong,
@@ -400,18 +408,18 @@ body[data-view="dashboard"] #newTransactionBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 28px;
+  gap: 34px;
   margin-bottom: 18px;
   background: #070908;
   color: #ffffff;
   overflow: hidden;
-  min-height: 116px;
+  min-height: 156px;
   text-align: left;
 }
 
 .dashboard-brand-panel img {
-  width: min(240px, 32vw);
-  height: 76px;
+  width: min(440px, 42vw);
+  height: 118px;
   object-fit: contain;
 }
 
