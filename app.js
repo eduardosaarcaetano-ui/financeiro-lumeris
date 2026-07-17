@@ -72,12 +72,12 @@ const MOCK_DESCRIPTIONS = {
 // updateSessionUi() (menu) consultam a mesma função canAccessView(), então não existe
 // como uma tela ficar acessível por engano num lugar e bloqueada em outro.
 const SECTOR_ALLOWED_VIEWS = {
-  financeiro: ["dashboard", "receber", "pagar", "banco", "apisbancarias", "notasfiscais", "estoque", "relatorios", "pessoas"],
+  financeiro: ["dashboard", "receber", "pagar", "banco", "apisbancarias", "notasfiscais", "relatorios", "pessoas"],
   vendas: ["dashboard", "crm", "vendas"],
-  projetos: ["projetos", "protocolos", "instalacoes"],
+  projetos: ["projetos", "protocolos", "instalacoes", "estoque"],
   instaladores: ["dashboard", "instalacoes"],
-  engenharia: ["dashboard", "projetos", "protocolos", "instalacoes"],
-  diretoria: ["dashboard", "projetos", "protocolos", "instalacoes", "crm", "vendas", "relatorios"],
+  engenharia: ["dashboard", "projetos", "protocolos", "instalacoes", "estoque"],
+  diretoria: ["dashboard", "projetos", "protocolos", "instalacoes", "estoque", "crm", "vendas", "relatorios"],
 };
 
 const SAVE_SCOPE_FIELDS = {
