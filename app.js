@@ -403,6 +403,9 @@ const els = {
   opportunityWonDialog: document.querySelector("#opportunityWonDialog"),
   opportunityWonForm: document.querySelector("#opportunityWonForm"),
   opportunityWonSummary: document.querySelector("#opportunityWonSummary"),
+  opportunityWonClosedDate: document.querySelector("#opportunityWonClosedDate"),
+  opportunityWonServiceType: document.querySelector("#opportunityWonServiceType"),
+  opportunityWonCreateProject: document.querySelector("#opportunityWonCreateProject"),
   crmKanbanMetrics: document.querySelector("#crmKanbanMetrics"),
   sellerDialog: document.querySelector("#sellerDialog"),
   sellerForm: document.querySelector("#sellerForm"),
@@ -673,6 +676,8 @@ const els = {
   installationServiceType: document.querySelector("#installationServiceType"),
   installationStatus: document.querySelector("#installationStatus"),
   installationClosedDate: document.querySelector("#installationClosedDate"),
+  installationPostSaleDueDate: document.querySelector("#installationPostSaleDueDate"),
+  installationPostSaleContactedAt: document.querySelector("#installationPostSaleContactedAt"),
   installationDeadlineDate: document.querySelector("#installationDeadlineDate"),
   installationScheduledDate: document.querySelector("#installationScheduledDate"),
   installationCompletedDate: document.querySelector("#installationCompletedDate"),
@@ -948,13 +953,18 @@ function bindEvents() {
   els.opportunityWonForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const opportunity = pendingWonOpportunity;
+    const wonSettings = opportunityWonSettingsFromDialog();
     pendingWonOpportunity = null;
     els.opportunityWonDialog.close();
     if (!opportunity || event.submitter?.value === "cancel") return;
-  if (event.submitter.value === "sale") convertOpportunityToSale(opportunity);
-  if (event.submitter.value === "project") convertOpportunityToProject(opportunity);
-  if (event.submitter.value === "contract") generateContractFromOpportunity(opportunity);
+    applyOpportunityWonSettings(opportunity, wonSettings);
+    if (event.submitter.value === "sale") convertOpportunityToSale(opportunity);
+    if (event.submitter.value === "project") convertOpportunityToProject(opportunity);
+    if (event.submitter.value === "installation") createInstallationFromWonOpportunity(opportunity, wonSettings);
+    if (event.submitter.value === "contract") generateContractFromOpportunity(opportunity, wonSettings);
   });
+
+  els.opportunityWonServiceType?.addEventListener("change", syncOpportunityWonProjectChoice);
 
   // Ganchos para vincular a oportunidade de volta à venda/projeto gerado, sem alterar
   // saveSale()/saveProject() — eles rodam DEPOIS dos handlers originais (mesma ordem de
@@ -1379,6 +1389,9 @@ function normalizeState(data) {
     driveFolderUrl: "",
     attachments: [],
     proposal: {},
+    serviceType: "",
+    postSaleDueDate: "",
+    closedDate: "",
     lostReason: "",
     stageChangedAt: item.createdAt || new Date().toISOString(),
     stageHistory: [],
@@ -1487,6 +1500,8 @@ function normalizeState(data) {
     serviceType: "instalacao_projeto",
     status: "programada",
     closedDate: "",
+    postSaleDueDate: "",
+    postSaleContactedAt: "",
     deadlineDate: "",
     scheduledDate: "",
     completedDate: "",
@@ -1596,6 +1611,9 @@ function normalizeState(data) {
     driveFolderUrl: "",
     attachments: [],
     proposal: {},
+    serviceType: "",
+    postSaleDueDate: "",
+    closedDate: "",
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     lastMovedAt: "",
@@ -4254,7 +4272,7 @@ function hydrateProjectOptions() {
   refreshSearchableSelect(els.stockEntryProject);
   refreshSearchableSelect(els.stockExitProject);
   refreshSearchableSelect(els.stockFilterProject);
-  els.installationProject.innerHTML = projectOptions;
+  els.installationProject.innerHTML = optionalProjectOptions;
   els.installationCustomer.innerHTML = `<option value="">Sem cliente vinculado</option>${state.people
     .filter((person) => person.type === "cliente" || person.type === "ambos")
     .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
@@ -5738,6 +5756,8 @@ function openInstallationForProject(project) {
   els.installationCustomer.value = project.customerId;
   els.installationServiceType.value = "instalacao_projeto";
   els.installationClosedDate.value = todayIso;
+  els.installationPostSaleDueDate.value = addBusinessDaysIso(todayIso, 2);
+  els.installationPostSaleContactedAt.value = "";
   els.installationDeadlineDate.value = addBusinessDaysIso(todayIso, 15);
   els.installationScheduledDate.value = project.endDate || "";
   updateInstallationFormCalculations();
@@ -5750,6 +5770,8 @@ function resetInstallationForm() {
   els.installationStatus.value = "sem_programacao";
   els.installationServiceType.value = "instalacao_projeto";
   els.installationClosedDate.value = todayIso;
+  els.installationPostSaleDueDate.value = addBusinessDaysIso(todayIso, 2);
+  els.installationPostSaleContactedAt.value = "";
   els.installationDeadlineDate.value = addBusinessDaysIso(todayIso, 15);
   renderInstallationLaborRows();
   setTechnicalReportForm({}, "instalacao_projeto");
@@ -5766,6 +5788,10 @@ function installationTypeLabel(type) {
     retrabalho: "Retrabalho",
     pos_venda: "P\u00f3s venda",
   }[type] || "Instala\u00e7\u00e3o de projeto";
+}
+
+function installationRequiresProject(serviceType) {
+  return ["instalacao_projeto", "ampliacao"].includes(serviceType);
 }
 
 function installationStatusLabel(status) {
@@ -5992,6 +6018,8 @@ function currentInstallationFromForm() {
     serviceType: els.installationServiceType.value,
     status: els.installationStatus.value,
     closedDate: els.installationClosedDate.value,
+    postSaleDueDate: els.installationPostSaleDueDate.value || addBusinessDaysIso(els.installationClosedDate.value || todayIso, 2),
+    postSaleContactedAt: els.installationPostSaleContactedAt.value,
     deadlineDate: els.installationDeadlineDate.value,
     scheduledDate: els.installationScheduledDate.value,
     completedDate: els.installationCompletedDate.value || todayIso,
@@ -6007,7 +6035,7 @@ function currentInstallationFromForm() {
 
 function generateTechnicalDeliveryPdf(installation = null) {
   const source = installation || currentInstallationFromForm();
-  if (!source.projectId) {
+  if (!source.projectId && !source.customerId) {
     toast("Selecione o projeto antes de gerar a entrega técnica.");
     return;
   }
@@ -6054,6 +6082,30 @@ function isInstallationLate(item) {
   if (["concluida", "cancelada"].includes(item.status)) return false;
   const deadline = installationDeadline(item);
   return Boolean(deadline && deadline < todayIso);
+}
+
+function installationPostSaleDueDate(item) {
+  return item.postSaleDueDate || addBusinessDaysIso(item.closedDate || (item.createdAt || "").slice(0, 10) || todayIso, 2);
+}
+
+function isPostSaleContactPending(item) {
+  if (["concluida", "cancelada"].includes(normalizeInstallationStatus(item.status))) return false;
+  return !item.postSaleContactedAt;
+}
+
+function isPostSaleContactLate(item) {
+  return isPostSaleContactPending(item) && installationPostSaleDueDate(item) < todayIso;
+}
+
+function startOfWeekIso(date = today) {
+  const copy = new Date(date);
+  const day = copy.getDay() || 7;
+  copy.setDate(copy.getDate() - day + 1);
+  return toIso(copy);
+}
+
+function endOfWeekIso(date = today) {
+  return toIso(addDays(parseDate(startOfWeekIso(date)), 6));
 }
 
 function installationMonthRef(item) {
@@ -6104,6 +6156,9 @@ function renderInstallationLaborRows(entries = []) {
 }
 
 function updateInstallationFormCalculations() {
+  if (els.installationClosedDate?.value && !els.installationPostSaleDueDate.value) {
+    els.installationPostSaleDueDate.value = addBusinessDaysIso(els.installationClosedDate.value, 2);
+  }
   if (els.installationClosedDate?.value && !els.installationDeadlineDate.value) {
     els.installationDeadlineDate.value = addBusinessDaysIso(els.installationClosedDate.value, 15);
   }
@@ -6166,11 +6221,26 @@ function renderInstallationKpis() {
   const late = state.installations.filter(isInstallationLate);
   const inProgress = state.installations.filter((item) => item.status === "em_andamento");
   const unscheduled = state.installations.filter((item) => isInstallationWaitingScheduling(item) || !item.scheduledDate);
+  const weekStart = startOfWeekIso();
+  const weekEnd = endOfWeekIso();
+  const postSalePending = state.installations.filter(isPostSaleContactPending);
+  const postSaleLate = state.installations.filter(isPostSaleContactLate);
+  const enteredWeek = state.installations.filter((item) => {
+    const ref = item.closedDate || (item.createdAt || "").slice(0, 10);
+    return ref && ref >= weekStart && ref <= weekEnd;
+  });
+  const completedWeek = state.installations.filter((item) => {
+    const completed = item.completedDate || (item.status === "concluida" ? (item.updatedAt || "").slice(0, 10) : "");
+    return completed && completed >= weekStart && completed <= weekEnd;
+  });
   const efficiencyRows = state.installations.filter((item) => item.status === "concluida" || Number(item.panels || 0) || item.labor?.length);
   const ownCost = sum(efficiencyRows.map(installationOwnLaborCost));
   const outsourceCost = sum(efficiencyRows.map(installationOutsourceCost));
   const saving = outsourceCost - ownCost;
   els.installationKpis.innerHTML = [
+    { label: "P\u00f3s-venda pendente", value: postSalePending.length, hint: `${postSaleLate.length} contato(s) fora do prazo de 2 dias \u00fateis`, tone: postSaleLate.length ? "danger" : postSalePending.length ? "warn" : "ok" },
+    { label: "Entraram na semana", value: enteredWeek.length, hint: `${formatDate(weekStart)} at\u00e9 ${formatDate(weekEnd)}`, tone: "neutral" },
+    { label: "Realizados na semana", value: completedWeek.length, hint: `${formatDate(weekStart)} at\u00e9 ${formatDate(weekEnd)}`, tone: "ok" },
     { label: "Realizados no mês", value: completedMonth.length, hint: `${formatDate(monthStart)} até ${formatDate(monthEnd)}`, tone: "neutral" },
     { label: "Em atraso", value: late.length, hint: "Prazo de 15 dias úteis vencido", tone: late.length ? "danger" : "ok" },
     { label: "Em andamento", value: inProgress.length, hint: "Execução aberta", tone: "warn" },
@@ -6203,13 +6273,15 @@ function renderInstallations() {
       const deadline = installationDeadline(item);
       const efficiency = installationEfficiency(item);
       const late = isInstallationLate(item);
+      const postSaleDue = installationPostSaleDueDate(item);
+      const postSaleText = item.postSaleContactedAt ? `P\u00f3s-venda em ${formatDate(item.postSaleContactedAt)}` : `Contato at\u00e9 ${formatDate(postSaleDue)}`;
       return `
         <tr class="${late ? "danger-row" : ""}">
           <td><strong>${formatDate(deadline)}</strong>${late ? `<small class="danger-text">Atrasado</small>` : `<small>${daysBetween(deadline, todayIso)} dia(s)</small>`}</td>
           <td>${formatDate(item.scheduledDate)}<small>${item.completedDate ? `Concluído em ${formatDate(item.completedDate)}` : "Agenda"}</small></td>
           <td>${escapeHtml(installationTypeLabel(item.serviceType))}</td>
           <td><strong>${escapeHtml(personName(item.customerId))}</strong><small>${escapeHtml(projectName(item.projectId))}</small></td>
-          <td><span class="status ${item.status === "concluida" ? "baixado" : late ? "vencido" : "aberto"}">${escapeHtml(installationStatusLabel(item.status))}</span></td>
+          <td><span class="status ${item.status === "concluida" ? "baixado" : late || isPostSaleContactLate(item) ? "vencido" : "aberto"}">${escapeHtml(installationStatusLabel(item.status))}</span><small>${escapeHtml(postSaleText)}</small></td>
           <td>${escapeHtml(item.team || "Sem equipe")}<small>${(item.labor || []).length} pessoa(s) com custo</small></td>
           <td><strong class="${efficiency.saving >= 0 ? "ok-text" : "danger-text"}">${money(efficiency.saving)}</strong><small>${item.panels || 0} placa(s) · equipe ${money(efficiency.own)}</small></td>
           <td class="row-actions">
@@ -6231,8 +6303,12 @@ function saveInstallation(event) {
   const id = els.installationId.value || crypto.randomUUID();
   const existing = state.installations.find((item) => item.id === id);
   const project = state.projects.find((item) => item.id === els.installationProject.value);
-  if (!project) {
+  if (installationRequiresProject(els.installationServiceType.value) && !project) {
     toast("Selecione um projeto ganho para controlar a instalação.");
+    return;
+  }
+  if (!project && !els.installationCustomer.value) {
+    toast("Selecione um cliente para servi\u00e7o sem projeto.");
     return;
   }
   const data = {
@@ -6242,6 +6318,8 @@ function saveInstallation(event) {
     serviceType: els.installationServiceType.value,
     status: els.installationStatus.value,
     closedDate: els.installationClosedDate.value,
+    postSaleDueDate: els.installationPostSaleDueDate.value || addBusinessDaysIso(els.installationClosedDate.value || todayIso, 2),
+    postSaleContactedAt: els.installationPostSaleContactedAt.value,
     deadlineDate: els.installationDeadlineDate.value || addBusinessDaysIso(els.installationClosedDate.value || todayIso, 15),
     scheduledDate: els.installationScheduledDate.value,
     completedDate: els.installationCompletedDate.value || (els.installationStatus.value === "concluida" ? todayIso : ""),
@@ -6277,6 +6355,8 @@ function handleInstallationAction(action, id) {
     els.installationServiceType.value = installation.serviceType || "instalacao_projeto";
     els.installationStatus.value = normalizeInstallationStatus(installation.status);
     els.installationClosedDate.value = installation.closedDate || (installation.createdAt || "").slice(0, 10) || todayIso;
+    els.installationPostSaleDueDate.value = installation.postSaleDueDate || addBusinessDaysIso(els.installationClosedDate.value, 2);
+    els.installationPostSaleContactedAt.value = installation.postSaleContactedAt || "";
     els.installationDeadlineDate.value = installation.deadlineDate || addBusinessDaysIso(els.installationClosedDate.value, 15);
     els.installationScheduledDate.value = installation.scheduledDate;
     els.installationCompletedDate.value = installation.completedDate || "";
@@ -8740,6 +8820,9 @@ function saveOpportunity() {
   renderAll();
   els.opportunityDialog.close();
   toast("Oportunidade salva.");
+  if (data.stage === "ganho" && (!existing || existing.stage !== "ganho") && !data.installationId && !data.contractId) {
+    openOpportunityWonDialog(data);
+  }
 }
 
 function renderPipelineBoard() {
@@ -8878,9 +8961,122 @@ function confirmOpportunityLost() {
   toast("Oportunidade marcada como perdida.");
 }
 
+function syncOpportunityWonProjectChoice() {
+  if (!els.opportunityWonCreateProject || !els.opportunityWonServiceType) return;
+  els.opportunityWonCreateProject.checked = installationRequiresProject(els.opportunityWonServiceType.value);
+}
+
+function opportunityWonSettingsFromDialog() {
+  const serviceType = els.opportunityWonServiceType?.value || "instalacao_projeto";
+  return {
+    closedDate: els.opportunityWonClosedDate?.value || todayIso,
+    serviceType,
+    createProject: Boolean(els.opportunityWonCreateProject?.checked) && installationRequiresProject(serviceType),
+  };
+}
+
+function applyOpportunityWonSettings(opportunity, settings = {}) {
+  const closedDate = settings.closedDate || todayIso;
+  opportunity.closedDate = closedDate;
+  opportunity.serviceType = settings.serviceType || opportunity.serviceType || "instalacao_projeto";
+  opportunity.postSaleDueDate = addBusinessDaysIso(closedDate, 2);
+  opportunity.wonAt = new Date(`${closedDate}T12:00:00`).toISOString();
+  opportunity.updatedAt = new Date().toISOString();
+  persist("crm");
+}
+
+function ensureProjectFromWonOpportunity(opportunity, settings = {}) {
+  if (opportunity.projectId && state.projects.some((project) => project.id === opportunity.projectId)) return opportunity.projectId;
+  const now = new Date().toISOString();
+  const closedDate = settings.closedDate || opportunity.closedDate || todayIso;
+  const projectId = crypto.randomUUID();
+  const project = {
+    id: projectId,
+    code: "",
+    name: opportunity.title || `Projeto ${personName(opportunity.personId)}`,
+    customerId: opportunity.personId,
+    status: "homologacao",
+    startDate: closedDate,
+    endDate: "",
+    contractValue: Number(opportunity.value || 0),
+    expectedCosts: 0,
+    targetMargin: 20,
+    costCenterId: crypto.randomUUID(),
+    notes: `Criado automaticamente a partir de oportunidade ganha no CRM. P\u00f3s-venda at\u00e9 ${formatDate(addBusinessDaysIso(closedDate, 2))}.`,
+    createdAt: now,
+    updatedAt: now,
+  };
+  state.projects.push(project);
+  upsertCostCenter(project);
+  opportunity.projectId = projectId;
+  return projectId;
+}
+
+function createInstallationFromWonOpportunity(opportunity, settings = {}) {
+  const now = new Date().toISOString();
+  const serviceType = settings.serviceType || opportunity.serviceType || "instalacao_projeto";
+  const closedDate = settings.closedDate || opportunity.closedDate || todayIso;
+  const postSaleDueDate = addBusinessDaysIso(closedDate, 2);
+  const deadlineDate = addBusinessDaysIso(closedDate, 15);
+  const projectId = settings.createProject ? ensureProjectFromWonOpportunity(opportunity, settings) : (opportunity.projectId || "");
+  const existing = state.installations.find((item) => item.opportunityId === opportunity.id);
+  const installation = {
+    ...(existing || {}),
+    id: existing?.id || crypto.randomUUID(),
+    projectId,
+    customerId: opportunity.personId,
+    serviceType,
+    status: existing?.status || (projectId && installationRequiresProject(serviceType) ? "aguardando_projeto" : "sem_programacao"),
+    closedDate,
+    postSaleDueDate,
+    postSaleContactedAt: existing?.postSaleContactedAt || "",
+    deadlineDate,
+    scheduledDate: existing?.scheduledDate || "",
+    completedDate: existing?.completedDate || "",
+    panels: existing?.panels || Number(opportunity.proposal?.moduleQuantity || 0),
+    team: existing?.team || "",
+    labor: existing?.labor || [],
+    technicalReport: existing?.technicalReport || {
+      warrantyStartDate: "",
+      technician: "",
+      whatsapp: "",
+      email: "",
+      summary: "",
+      photos: [],
+      generatedAt: "",
+    },
+    materials: existing?.materials || "",
+    notes: [
+      existing?.notes || "",
+      `Gerado pelo CRM em ${formatDate(todayIso)}. Fechamento em ${formatDate(closedDate)}. Contato p\u00f3s-venda at\u00e9 ${formatDate(postSaleDueDate)}.`,
+      opportunity.driveFolderUrl ? `Pasta/anexos do lead: ${opportunity.driveFolderUrl}` : "",
+    ].filter(Boolean).join("\n"),
+    conclusion: existing?.conclusion || "",
+    opportunityId: opportunity.id,
+    contractId: opportunity.contractId || "",
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  };
+  if (existing) {
+    const index = state.installations.findIndex((item) => item.id === existing.id);
+    state.installations[index] = installation;
+  } else {
+    state.installations.push(installation);
+  }
+  opportunity.installationId = installation.id;
+  opportunity.updatedAt = now;
+  persist(["crm", "projetos"]);
+  renderAll();
+  setView("instalacoes");
+  toast("Ganho enviado para Instala\u00e7\u00f5es com prazo de p\u00f3s-venda.");
+}
+
 function openOpportunityWonDialog(opportunity) {
   pendingWonOpportunity = opportunity;
   els.opportunityWonSummary.textContent = `${opportunity.title} · ${personName(opportunity.personId)} · ${money(opportunity.value)}`;
+  if (els.opportunityWonClosedDate) els.opportunityWonClosedDate.value = opportunity.closedDate || (opportunity.wonAt || "").slice(0, 10) || todayIso;
+  if (els.opportunityWonServiceType) els.opportunityWonServiceType.value = opportunity.serviceType || "instalacao_projeto";
+  syncOpportunityWonProjectChoice();
   els.opportunityWonDialog.showModal();
 }
 
@@ -8907,7 +9103,7 @@ function convertOpportunityToProject(opportunity) {
   toast("Revise os dados do projeto e clique em Salvar projeto para concluir a conversão.");
 }
 
-function generateContractFromOpportunity(opportunity) {
+function generateContractFromOpportunity(opportunity, settings = {}) {
   if (opportunity.contractId) {
     toast("Essa oportunidade já possui contrato gerado.");
     setView("homologacao");
@@ -8919,6 +9115,8 @@ function generateContractFromOpportunity(opportunity) {
   const projectId = crypto.randomUUID();
   const installationId = crypto.randomUUID();
   const saleId = crypto.randomUUID();
+  const closedDate = settings.closedDate || opportunity.closedDate || todayIso;
+  const serviceType = settings.serviceType || opportunity.serviceType || "instalacao_projeto";
   const dueDate = opportunity.expectedCloseDate || todayIso;
   const title = opportunity.title || `Contrato ${personName(opportunity.personId)}`;
   const amount = Number(opportunity.value || 0);
@@ -8929,7 +9127,7 @@ function generateContractFromOpportunity(opportunity) {
     name: title,
     customerId: opportunity.personId,
     status: "homologacao",
-    startDate: todayIso,
+    startDate: closedDate,
     endDate: dueDate,
     contractValue: amount,
     expectedCosts: 0,
@@ -8943,7 +9141,7 @@ function generateContractFromOpportunity(opportunity) {
   state.sales.push({
     id: saleId,
     personId: opportunity.personId,
-    saleDate: todayIso,
+    saleDate: closedDate,
     description: title,
     category: "Contrato CRM",
     projectId,
@@ -8983,10 +9181,12 @@ function generateContractFromOpportunity(opportunity) {
     id: installationId,
     projectId,
     customerId: opportunity.personId,
-    serviceType: "instalacao_projeto",
+    serviceType,
     status: "aguardando_projeto",
-    closedDate: todayIso,
-    deadlineDate: addBusinessDaysIso(todayIso, 15),
+    closedDate,
+    postSaleDueDate: addBusinessDaysIso(closedDate, 2),
+    postSaleContactedAt: "",
+    deadlineDate: addBusinessDaysIso(closedDate, 15),
     scheduledDate: dueDate,
     completedDate: "",
     panels: 0,
@@ -9014,6 +9214,9 @@ function generateContractFromOpportunity(opportunity) {
   opportunity.contractId = contractId;
   opportunity.contractGeneratedAt = now;
   opportunity.installationId = installationId;
+  opportunity.closedDate = closedDate;
+  opportunity.serviceType = serviceType;
+  opportunity.postSaleDueDate = addBusinessDaysIso(closedDate, 2);
   opportunity.updatedAt = now;
 
   persist(["crm", "financeiro", "projetos"]);
@@ -9239,7 +9442,7 @@ function isOpportunityLost(item) {
 }
 
 function opportunityWonDate(item) {
-  return (item.wonAt || item.stageChangedAt || item.lastMovedAt || item.updatedAt || item.createdAt || "").slice(0, 10);
+  return (item.closedDate || item.wonAt || item.stageChangedAt || item.lastMovedAt || item.updatedAt || item.createdAt || "").slice(0, 10);
 }
 
 function opportunityLostDate(item) {

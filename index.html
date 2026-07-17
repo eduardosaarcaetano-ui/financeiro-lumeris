@@ -933,6 +933,12 @@
               <label>Data de fechamento
                 <input id="installationClosedDate" type="date" />
               </label>
+              <label>Prazo contato pós-venda
+                <input id="installationPostSaleDueDate" type="date" />
+              </label>
+              <label>Contato pós-venda realizado
+                <input id="installationPostSaleContactedAt" type="date" />
+              </label>
               <label>Prazo limite
                 <input id="installationDeadlineDate" type="date" />
               </label>
@@ -2814,10 +2820,30 @@
           <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <p class="muted" id="opportunityWonSummary"></p>
-        <p>Deseja gerar um lançamento a partir dessa oportunidade?</p>
+        <div class="form-grid">
+          <label>Data do fechamento / contrato
+            <input id="opportunityWonClosedDate" type="date" />
+          </label>
+          <label>Tipo de serviço para instalações
+            <select id="opportunityWonServiceType">
+              <option value="instalacao_projeto">Instalação de projeto</option>
+              <option value="ampliacao">Ampliação</option>
+              <option value="manutencao_preventiva">Manutenção preventiva</option>
+              <option value="manutencao_corretiva">Manutenção corretiva</option>
+              <option value="retrabalho">Retrabalho</option>
+              <option value="pos_venda">P&oacute;s venda</option>
+            </select>
+          </label>
+          <label class="full checkbox-line">
+            <input id="opportunityWonCreateProject" type="checkbox" />
+            Criar projeto quando este ganho exigir obra/homologação
+          </label>
+        </div>
+        <p class="muted">O pós-venda deve contatar o cliente em até 2 dias úteis. Manutenções podem ir direto para Instalações sem criar projeto.</p>
         <menu class="modal-actions">
           <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Não gerar agora</button>
           <button class="secondary-btn" id="opportunityWonSaleBtn" value="sale" type="submit">Gerar venda parcelada</button>
+          <button class="secondary-btn" value="installation" type="submit">Enviar para instalações</button>
           <button class="primary-btn" id="opportunityWonProjectBtn" value="project" type="submit">Gerar projeto</button>
           <button class="primary-btn" value="contract" type="submit">Gerar contrato e iniciar operação</button>
         </menu>
@@ -2859,6 +2885,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/estoque-iluminar-data.js?v=20260711-api-bancos1"></script>
     <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260716-print-compacto1"></script>
+    <script src="app.js?v=20260717-crm-instalacoes1"></script>
   </body>
 </html>
