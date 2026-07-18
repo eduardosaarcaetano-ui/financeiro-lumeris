@@ -1578,6 +1578,25 @@ function normalizeState(data) {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   ...item,
+ })).map((item) => ({
+  ...item,
+  labor: Array.isArray(item.labor) ? item.labor : [],
+  technicalReport: {
+   warrantyStartDate: "",
+   technician: "",
+   whatsapp: "",
+   email: "",
+   summary: "",
+   photos: [],
+   generatedAt: "",
+   ...(item.technicalReport && typeof item.technicalReport === "object" ? item.technicalReport : {}),
+  },
+ })).map((item) => ({
+  ...item,
+  technicalReport: {
+   ...item.technicalReport,
+   photos: Array.isArray(item.technicalReport.photos) ? item.technicalReport.photos : [],
+  },
  }));
 
  normalized.installationWorkers = normalized.installationWorkers.map((item) => ({
@@ -2961,7 +2980,7 @@ function roundCurrency(value) {
 }
 
 function projectName(projectId) {
- return state.projects.find((project) => project.id === projectId).name || "Sem projeto";
+ return state.projects.find((project) => project.id === projectId)?.name || "Sem projeto";
 }
 
 function extractProjectCode(value) {
@@ -4083,11 +4102,11 @@ function nextOpportunityNumber() {
 }
 
 function stageName(stageId) {
- return state.opportunityStages.find((stage) => stage.id === stageId).name || "";
+ return state.opportunityStages.find((stage) => stage.id === stageId)?.name || "";
 }
 
 function unitName(unitId) {
- return state.crmUnits.find((unit) => unit.id === unitId).name || "Sem unidade";
+ return state.crmUnits.find((unit) => unit.id === unitId)?.name || "Sem unidade";
 }
 
 function isActivityDue(item) {
@@ -5286,7 +5305,7 @@ function closeProjectDrawer() {
 }
 
 function costCenterName(costCenterId) {
- return state.costCenters.find((item) => item.id === costCenterId).name || "Não criado";
+ return state.costCenters.find((item) => item.id === costCenterId)?.name || "Não criado";
 }
 
 // ===================== Central de Protocolos e Concession?rias =====================
@@ -5334,11 +5353,11 @@ function protocolStatusLabel(statusId) {
 }
 
 function utilityCompanyName(id) {
- return state.utilityCompanies.find((item) => item.id === id).name || "Não informado";
+ return state.utilityCompanies.find((item) => item.id === id)?.name || "Não informado";
 }
 
 function activityTypeName(id) {
- return state.protocolActivityTypes.find((item) => item.id === id).name || "Não informado";
+ return state.protocolActivityTypes.find((item) => item.id === id)?.name || "Não informado";
 }
 
 function userName(id) {
@@ -6801,7 +6820,7 @@ function renderInstallationKpis() {
   const completed = item.completedDate || (item.status === "concluida" ? (item.updatedAt || "").slice(0, 10) : "");
   return completed && completed >= weekStart && completed <= weekEnd;
  });
- const efficiencyRows = state.installations.filter((item) => item.status === "concluida" || Number(item.panels || 0) || item.labor.length);
+ const efficiencyRows = state.installations.filter((item) => item.status === "concluida" || Number(item.panels || 0) || (item.labor || []).length);
  const ownCost = sum(efficiencyRows.map(installationOwnLaborCost));
  const outsourceCost = sum(efficiencyRows.map(installationOutsourceCost));
  const saving = outsourceCost - ownCost;
@@ -9231,7 +9250,7 @@ function ensureIluminarStockLoaded() {
 // ---- CRM ----
 
 function sellerName(id) {
- return state.sellers.find((seller) => seller.id === id).name || "Sem vendedor";
+ return state.sellers.find((seller) => seller.id === id)?.name || "Sem vendedor";
 }
 
 function opportunityLabel(opportunity) {
@@ -11598,7 +11617,7 @@ function isInPeriod(date, start, end) {
 }
 
 function personName(id) {
- return state.people.find((person) => person.id === id).name || "Sem cadastro";
+ return state.people.find((person) => person.id === id)?.name || "Sem cadastro";
 }
 
 function personTypeLabel(type) {
