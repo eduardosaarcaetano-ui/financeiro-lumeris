@@ -2329,6 +2329,7 @@ async function pushToSheets() {
   remoteUpdatedAt = result.updatedAt || remoteUpdatedAt;
   Object.assign(state, sectorState);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  renderAll();
   setSyncStatus("Sincronizado com o Google Sheets", "ok");
  } catch (error) {
   console.error(error);
@@ -2358,6 +2359,7 @@ async function retrySyncAfterConflict(scopes, localState) {
  remoteUpdatedAt = retryResult.updatedAt || remoteUpdatedAt;
  Object.assign(state, sectorState);
  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+ renderAll();
  setSyncStatus("Sincronizado com o Google Sheets", "ok");
 }
 
@@ -6918,24 +6920,52 @@ function saveInstallation(event) {
   outsourcingCost: Number(els.installationOutsourcingCost.value || 0),
   team: els.installationTeam.value.trim(),
   labor: installationLaborEntriesFromForm(),
+  technicalReport: technicalReportFromForm(),
   materials: els.installationMaterials.value.trim(),
   notes: els.installationNotes.value.trim(),
   conclusion: els.installationConclusion.value.trim(),
-  opportunityId: existing.opportunityId || "",
-  contractId: existing.contractId || "",
-  createdAt: existing.createdAt || new Date().toISOString(),
+  opportunityId: existing?.opportunityId || "",
+  contractId: existing?.contractId || "",
+  createdAt: existing?.createdAt || new Date().toISOString(),
   updatedAt: new Date().toISOString(),
  };
 
  const index = state.installations.findIndex((item) => item.id === id);
  if (index >= 0) state.installations[index] = data;
  else state.installations.push(data);
+ syncProjectFromInstallation(data);
+ mirrorSiblingInstallationStatus(data);
 
  persist("projetos");
  renderAll();
  resetInstallationForm();
  setInstallationFormVisible(false);
  toast("Serviço salvo.");
+}
+
+function syncProjectFromInstallation(installation) {
+ if (!installation.projectId) return;
+ const project = state.projects.find((item) => item.id === installation.projectId);
+ if (!project) return;
+ const status = normalizeInstallationStatus(installation.status);
+ if (status === "concluida") {
+  project.status = "concluido";
+  project.endDate = project.endDate || installation.completedDate || todayIso;
+  project.updatedAt = installation.updatedAt || new Date().toISOString();
+ }
+}
+
+function mirrorSiblingInstallationStatus(installation) {
+ if (!installation.projectId || !installation.serviceType) return;
+ state.installations.forEach((item) => {
+  if (item.id === installation.id) return;
+  if (item.projectId !== installation.projectId) return;
+  if ((item.serviceType || "instalacao_projeto") !== installation.serviceType) return;
+  if (normalizeInstallationStatus(item.status) === "cancelada") return;
+  item.status = installation.status;
+  item.completedDate = installation.completedDate;
+  item.updatedAt = installation.updatedAt;
+ });
 }
 
 function deleteCurrentInstallation() {
@@ -6996,6 +7026,8 @@ function handleInstallationAction(action, id) {
    warrantyStartDate: installation.technicalReport.warrantyStartDate || installation.completedDate,
   };
   installation.updatedAt = new Date().toISOString();
+  syncProjectFromInstallation(installation);
+  mirrorSiblingInstallationStatus(installation);
   persist("projetos");
   renderAll();
   toast("Serviço concluído.");
