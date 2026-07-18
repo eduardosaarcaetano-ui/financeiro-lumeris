@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260717-logo-wide1" />
+    <link rel="stylesheet" href="styles.cssv=20260717-logo-wide1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -831,7 +831,7 @@
                       <th>Projeto</th>
                       <th>Protocolo</th>
                       <th>Responsável</th>
-                      <th>Tipo</th>
+                      <th>Projeto</th>
                       <th>Última movimentação</th>
                       <th>Prioridade</th>
                     </tr>
@@ -860,7 +860,10 @@
           <section class="panel installation-filters">
             <div class="panel-head">
               <h2>Agenda e desempenho</h2>
-              <button class="secondary-btn" id="resetInstallationFilters" type="button">Limpar filtros</button>
+              <div class="row-actions">
+                <button class="primary-btn" id="toggleInstallationFormBtn" type="button">Novo serviço / instalação</button>
+                <button class="secondary-btn" id="resetInstallationFilters" type="button">Limpar filtros</button>
+              </div>
             </div>
             <div class="filters-grid">
               <label>De
@@ -888,6 +891,7 @@
                   <option value="aguardando_material">Aguardando material</option>
                   <option value="aguardando_cliente">Aguardando cliente</option>
                   <option value="aguardando_instalacao">Aguardando instalação</option>
+                  <option value="aguardando_entrega_tecnica">Aguardando entrega técnica</option>
                   <option value="programada">Programada</option>
                   <option value="em_andamento">Em andamento</option>
                   <option value="concluida">Concluída</option>
@@ -903,7 +907,7 @@
           </section>
 
           <div class="project-layout installation-layout">
-            <form class="panel form-panel" id="installationForm">
+            <form class="panel form-panel installation-form-panel hidden" id="installationForm">
               <h2>Serviço / instalação</h2>
               <input type="hidden" id="installationId" />
               <label class="full">Projeto
@@ -929,6 +933,7 @@
                   <option value="aguardando_material">Aguardando material</option>
                   <option value="aguardando_cliente">Aguardando cliente</option>
                   <option value="aguardando_instalacao">Aguardando instalação</option>
+                  <option value="aguardando_entrega_tecnica">Aguardando entrega técnica</option>
                   <option value="programada">Programada</option>
                   <option value="em_andamento">Em andamento</option>
                   <option value="concluida">Concluída</option>
@@ -957,14 +962,30 @@
               <label>Quantidade de placas
                 <input id="installationPanels" type="number" min="0" step="1" placeholder="0" />
               </label>
-              <label>Equipe responsável
-                <input id="installationTeam" maxlength="120" placeholder="Equipe, técnico ou parceiro" />
+              <label>Terceiro contratado / pago
+                <input id="installationOutsourcingCost" type="number" min="0" step="0.01" placeholder="0,00" />
+              </label>
+              <label>Responsável pelo serviço
+                <input id="installationTeam" maxlength="120" placeholder="Técnico, parceiro ou responsável" />
               </label>
               <section class="full installation-labor-card">
                 <div class="panel-head tight">
-                  <h3>Custo da equipe no serviço</h3>
+                  <h3>Custo dos funcionários no serviço</h3>
                   <small>Compare com terceirização a R$ 120,00 por placa instalada.</small>
                 </div>
+                <div class="installation-worker-register">
+                  <input id="installationWorkerName" maxlength="80" placeholder="Nome do técnico, ajudante ou engenheiro" />
+                  <select id="installationWorkerRole">
+                    <option value="Técnico">Técnico</option>
+                    <option value="Ajudante">Ajudante</option>
+                    <option value="Engenheiro">Engenheiro</option>
+                    <option value="Eletricista">Eletricista</option>
+                    <option value="Auxiliar">Auxiliar</option>
+                  </select>
+                  <input id="installationWorkerDailyRate" type="number" min="0" step="0.01" placeholder="Diária R$" />
+                  <button class="secondary-btn" id="addInstallationWorkerBtn" type="button">Cadastrar funcionário</button>
+                </div>
+                <div class="installation-worker-list" id="installationWorkerList"></div>
                 <div id="installationLaborRows" class="installation-labor-rows"></div>
               </section>
               <label class="full">Materiais
@@ -1005,10 +1026,13 @@
                 </div>
               </section>
               <div class="installation-efficiency-preview" id="installationEfficiencyPreview"></div>
-              <button class="primary-btn" type="submit">Salvar serviço</button>
+              <div class="modal-actions installation-form-actions full">
+                <button class="primary-btn" type="submit">Salvar serviço</button>
+                <button class="secondary-btn danger-btn hidden" id="deleteInstallationBtn" type="button">Excluir serviço</button>
+              </div>
             </form>
 
-            <section class="panel">
+            <section class="panel installation-list-panel">
               <div class="panel-head">
                 <h2>Serviços programados</h2>
                 <small id="installationListSummary"></small>
@@ -1024,6 +1048,7 @@
                       <th>Status</th>
                       <th>Equipe</th>
                       <th>Eficiência</th>
+                      <th>Custo / margem</th>
                       <th>Ações</th>
                     </tr>
                   </thead>
@@ -1778,6 +1803,10 @@
                   Financeiro
                 </label>
                 <label class="checkbox-line">
+                  <input type="checkbox" data-user-sector="comercial" checked />
+                  Comercial
+                </label>
+                <label class="checkbox-line">
                   <input type="checkbox" data-user-sector="vendas" checked />
                   Vendas
                 </label>
@@ -2204,8 +2233,11 @@
           <label>Etapa
             <select id="opportunityStage"></select>
           </label>
+          <label>Data de fechamento
+            <input id="opportunityClosedDate" type="date" />
+          </label>
           <label>Responsável
-            <input id="opportunityOwner" maxlength="80" placeholder="Comercial responsável" />
+            <select id="opportunityOwner"></select>
           </label>
           <label>Telefone
             <input id="opportunityPhone" maxlength="40" />
@@ -2918,8 +2950,8 @@
     </datalist>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="assets/estoque-iluminar-data.js?v=20260711-api-bancos1"></script>
-    <script src="assets/vendas-2026-data.js?v=20260709-vendas-2026-1"></script>
-    <script src="app.js?v=20260717-logo-wide1"></script>
+    <script src="assets/estoque-iluminar-data.jsv=20260711-api-bancos1"></script>
+    <script src="assets/vendas-2026-data.jsv=20260709-vendas-2026-1"></script>
+    <script src="app.jsv=20260717-logo-wide1"></script>
   </body>
 </html>

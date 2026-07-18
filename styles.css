@@ -388,6 +388,16 @@ body[data-view="dashboard"] #newTransactionBtn {
   color: var(--ink);
 }
 
+.danger-btn {
+  border-color: rgba(170, 47, 47, 0.45);
+  color: var(--danger);
+  background: #fff8f8;
+}
+
+.danger-btn:hover {
+  border-color: var(--danger);
+}
+
 .icon-btn {
   width: 40px;
   padding: 0;
@@ -933,12 +943,29 @@ td strong {
 }
 
 .project-dashboard-table {
-  min-width: 1480px;
+  min-width: 1720px;
+  table-layout: fixed;
 }
 
 .project-dashboard-table th,
 .project-dashboard-table td {
   vertical-align: middle;
+}
+
+.project-dashboard-table th:first-child,
+.project-dashboard-table td:first-child {
+  width: 260px;
+  min-width: 260px;
+  white-space: normal;
+}
+
+.project-dashboard-table td:first-child strong {
+  display: block;
+  max-width: 240px;
+  line-height: 1.35;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: auto;
 }
 
 .project-dashboard-row {
@@ -2106,7 +2133,17 @@ tr:last-child td {
 }
 
 .installation-layout {
-  grid-template-columns: minmax(420px, 0.9fr) minmax(640px, 1.4fr);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+}
+
+.installation-form-panel {
+  width: 100%;
+}
+
+.installation-list-panel {
+  width: 100%;
 }
 
 .installation-labor-card {
@@ -2138,6 +2175,19 @@ tr:last-child td {
   background: var(--surface);
 }
 
+.technical-photo-slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.technical-photo-slot-head span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .technical-photo-preview {
   display: grid;
   place-items: center;
@@ -2148,10 +2198,39 @@ tr:last-child td {
   overflow: hidden;
 }
 
+.technical-photo-preview.has-photos {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  place-items: stretch;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px;
+}
+
+.technical-photo-thumb {
+  position: relative;
+  min-height: 116px;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
 .technical-photo-preview img {
   width: 100%;
-  height: 150px;
+  height: 120px;
   object-fit: cover;
+}
+
+.danger-mini {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  border-color: rgba(185, 28, 28, 0.35);
+  color: #b91c1c;
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .compact-actions {
@@ -2171,9 +2250,42 @@ tr:last-child td {
   gap: 8px;
 }
 
+.installation-worker-register {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.2fr) minmax(120px, 0.8fr) 120px auto;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.installation-worker-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.installation-worker-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+}
+
+.installation-worker-chip button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 999px;
+  color: var(--danger);
+}
+
 .installation-labor-row {
   display: grid;
-  grid-template-columns: 24px minmax(120px, 1.5fr) minmax(90px, 1fr) 82px 110px minmax(120px, 1.2fr);
+  grid-template-columns: 24px minmax(150px, 1.1fr) minmax(120px, 1.1fr) minmax(90px, 0.8fr) 96px 74px 108px minmax(120px, 1fr);
   gap: 8px;
   align-items: center;
 }
@@ -2207,8 +2319,24 @@ tr:last-child td {
   vertical-align: top;
 }
 
+.installation-table {
+  min-width: 1120px;
+}
+
 .installation-table td {
   min-width: 120px;
+}
+
+.installation-table th:nth-child(4),
+.installation-table td:nth-child(4) {
+  min-width: 260px;
+}
+
+.installation-table th:nth-child(5),
+.installation-table td:nth-child(5),
+.installation-table th:nth-child(8),
+.installation-table td:nth-child(8) {
+  min-width: 170px;
 }
 
 .installation-table td small {
@@ -2490,6 +2618,7 @@ dialog::backdrop {
 .pipeline-column-head {
   display: grid;
   gap: 2px;
+  position: relative;
   padding: 8px 10px;
   border-bottom: 1px solid var(--line);
   background: #f1f5f2;
@@ -2507,6 +2636,51 @@ dialog::backdrop {
   font-size: 11px;
   font-weight: 600;
   text-transform: none;
+}
+
+.pipeline-column-collapsed {
+  min-height: 100px;
+  border-color: #d29a9a;
+  background: #fff7f7;
+}
+
+.pipeline-column-toggle {
+  width: 100%;
+  height: 100%;
+  min-height: 96px;
+  display: grid;
+  gap: 6px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.pipeline-column-toggle strong {
+  font-size: 12px;
+}
+
+.pipeline-column-toggle span,
+.pipeline-column-toggle em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  text-transform: none;
+}
+
+.pipeline-head-toggle {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: pointer;
 }
 
 .pipeline-column-alert {
@@ -2816,6 +2990,11 @@ dialog::backdrop {
   }
 
   .editable-installment-row {
+    grid-template-columns: 1fr;
+  }
+
+  .installation-worker-register,
+  .installation-labor-row {
     grid-template-columns: 1fr;
   }
 
