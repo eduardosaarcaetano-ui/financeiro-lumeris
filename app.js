@@ -1004,7 +1004,7 @@ function bindEvents() {
  // saveSale()/saveProject() ? eles rodam DEPOIS dos handlers originais (mesma ordem de
  // registro), ent?o checam o resultado real (o que foi de fato criado) em vez de assumir.
  els.saleDialog.addEventListener("close", () => {
-  if (pendingOpportunityConversion.kind === "sale") {
+  if (pendingOpportunityConversion?.kind === "sale") {
    const created = state.sales.length > pendingOpportunityConversion.saleCountBefore;
    pendingOpportunityConversion = null;
    if (created) toast("Venda gerada a partir da oportunidade.");
@@ -1012,7 +1012,7 @@ function bindEvents() {
  });
 
  els.projectForm.addEventListener("submit", () => {
-  if (pendingOpportunityConversion.kind === "project") {
+  if (pendingOpportunityConversion?.kind === "project") {
    const { opportunityId, projectId } = pendingOpportunityConversion;
    if (state.projects.some((project) => project.id === projectId)) {
     const opportunity = state.opportunities.find((item) => item.id === opportunityId);
@@ -4810,9 +4810,9 @@ function projectFieldFromNotes(notes, field) {
 
 function projectExecutionPercent(project, installation, summary) {
  if (project.status === "concluido") return 100;
- if (installation.status === "concluida") return 100;
- if (["em_instalacao", "aguardando_vistoria"].includes(project.status) || installation.status === "em_execucao") return 75;
- if (["instalacao_agendada", "aguardando_instalacao"].includes(project.status) || installation.scheduledDate) return 55;
+ if (installation?.status === "concluida") return 100;
+ if (["em_instalacao", "aguardando_vistoria"].includes(project.status) || installation?.status === "em_execucao") return 75;
+ if (["instalacao_agendada", "aguardando_instalacao"].includes(project.status) || installation?.scheduledDate) return 55;
  if (["homologacao", "aguardando_documentacao"].includes(project.status)) return 35;
  if ((summary.invoiced || summary.contracted) > 0) return 20;
  return project.status === "orcamento" ? 10 : 0;
@@ -4846,7 +4846,7 @@ function projectCostsOverBudget(summary) {
 }
 
 function isProjectInstallationLate(installation) {
- return Boolean(installation.scheduledDate && installation.scheduledDate < todayIso && installation.status !== "concluida");
+ return Boolean(installation?.scheduledDate && installation.scheduledDate < todayIso && installation.status !== "concluida");
 }
 
 function projectFinancialSituation(summary, project) {
