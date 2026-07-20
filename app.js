@@ -5,7 +5,7 @@ const LEGACY_STORAGE_KEYS = ["financeiro-lumeris-v2", "financeiro-lumeris-v1"];
 // na sua planilha para que todos os usu?rios passem a compartilhar os mesmos dados.
 const SHEETS_ENDPOINT = "https://script.google.com/macros/s/AKfycbw6UqQ8YH0jMLdvDfSumh6h8zZfBSh91NIOd6oqJo_DP5bgP88N8lLl25daHvwCUWSq/exec";
 const SYNC_DEBOUNCE_MS = 800;
-const SYNC_TIMEOUT_MS = 18000;
+const SYNC_TIMEOUT_MS = 45000;
 const FORCE_MAINTENANCE_MODE = false;
 const FORCE_MAINTENANCE_MESSAGE = "Sistema em manutencao para ajustes. Por favor, aguarde a liberacao.";
 let remoteUpdatedAt = "";
@@ -2131,7 +2131,7 @@ async function initRemoteSync() {
 
  setSyncStatus("Carregando dados compartilhados?", "syncing");
  try {
-  const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, 8000);
+  const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, SYNC_TIMEOUT_MS);
   const result = await response.json();
   if (!result.ok) throw new Error(result.error || "Falha ao carregar");
   remoteUpdatedAt = result.updatedAt || "";
@@ -2226,7 +2226,7 @@ function mergeStateForScopes(remoteState, localState, scopes) {
 }
 
 async function fetchRemoteForSectorSave() {
- const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, 8000);
+ const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, SYNC_TIMEOUT_MS);
  const result = await response.json();
  if (!result.ok) throw new Error(result.error || "Falha ao carregar versao atual");
  return {
