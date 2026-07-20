@@ -5885,7 +5885,7 @@ function saveProtocol() {
  const newStatus = els.protocolStatus.value;
  const data = {
   id,
-  internalNumber: existing.internalNumber || els.protocolInternalNumber.value || nextProtocolInternalNumber(),
+  internalNumber: existing?.internalNumber || els.protocolInternalNumber.value || nextProtocolInternalNumber(),
   protocolNumber: els.protocolNumber.value.trim().slice(0, 15),
   activityTypeId: els.protocolActivityType.value,
   utilityCompanyId: els.protocolUtility.value,
@@ -5900,9 +5900,9 @@ function saveProtocol() {
   expectedDate: els.protocolExpectedDate.value,
   priority: els.protocolPriority.value,
   notes: els.protocolNotes.value.trim(),
-  checklist: existing.checklist || [],
+  checklist: existing?.checklist || [],
   lastMovementAt: now,
-  createdAt: existing.createdAt || now,
+  createdAt: existing?.createdAt || now,
   updatedAt: now,
  };
 
