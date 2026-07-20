@@ -3040,7 +3040,10 @@ function setView(view) {
  els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
  els.views.forEach((section) => section.classList.toggle("active", section.id === activeView));
  els.viewTitle.textContent = viewNames[view];
- if (activeView === "vendas") setSalesTab(view === "rankvendas" ? "ranking" : "vendas");
+ if (activeView === "vendas") {
+  setSalesTab(view === "rankvendas" ? "ranking" : "vendas");
+  document.querySelector("#salesTabs").classList.toggle("hidden", view === "rankvendas");
+ }
  const isFinancialEntryView = activeView === "receber" || activeView === "pagar";
  document.querySelector("#newSaleBtn").classList.toggle("hidden", !isFinancialEntryView || !canAccessView("receber"));
  document.querySelector("#newTransactionBtn").classList.toggle("hidden", !isFinancialEntryView || (!canAccessView("receber") && !canAccessView("pagar")));
