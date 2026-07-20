@@ -6418,6 +6418,8 @@ function installationStatusLabel(status) {
   aguardando_projeto: "Aguardando projeto",
   aguardando_material: "Aguardando material",
   aguardando_cliente: "Aguardando cliente",
+  aguardando_concessionaria: "Aguardando concession\u00e1ria",
+  aguardando_fabricante: "Aguardando fabricante",
   aguardando_instalacao: "Aguardando instala\u00e7\u00e3o",
   aguardando_entrega_tecnica: "Aguardando entrega t\u00e9cnica",
   programada: "Programada",
