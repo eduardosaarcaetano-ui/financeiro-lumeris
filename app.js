@@ -82,7 +82,7 @@ const SECTOR_ALLOWED_VIEWS = {
 };
 
 const SAVE_SCOPE_FIELDS = {
- crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "sellers", "interactions", "tasks"],
+ crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "sellers", "interactions", "tasks"],
  financeiro: ["transactions", "bankAccounts", "bankMovements", "bankApiConfigs", "invoices"],
  protocolo: ["protocols", "protocolHistory", "utilityCompanies", "protocolActivityTypes"],
  estoque: ["stockItems", "stockMovements", "stockLocations"],
@@ -452,6 +452,17 @@ const els = {
  crmLostCount: document.querySelector("#crmLostCount"),
  crmStageConversionReport: document.querySelector("#crmStageConversionReport"),
  crmSellerRankingTable: document.querySelector("#crmSellerRankingTable"),
+ salesRankForm: document.querySelector("#salesRankForm"),
+ salesRankSeller: document.querySelector("#salesRankSeller"),
+ salesRankClient: document.querySelector("#salesRankClient"),
+ salesRankCity: document.querySelector("#salesRankCity"),
+ salesRankAmount: document.querySelector("#salesRankAmount"),
+ salesRankPeriod: document.querySelector("#salesRankPeriod"),
+ salesRankFilterPeriod: document.querySelector("#salesRankFilterPeriod"),
+ salesRankSellerSuggestions: document.querySelector("#salesRankSellerSuggestions"),
+ salesRankEntries: document.querySelector("#salesRankEntries"),
+ salesRankList: document.querySelector("#salesRankList"),
+ salesRankSummary: document.querySelector("#salesRankSummary"),
  openSalesRankMonthTvBtn: document.querySelector("#openSalesRankMonthTvBtn"),
  openSalesRankYearTvBtn: document.querySelector("#openSalesRankYearTvBtn"),
  toggleLostOpportunitiesBtn: document.querySelector("#toggleLostOpportunitiesBtn"),
@@ -763,6 +774,7 @@ const viewNames = {
  receber: "Contas a receber",
  pagar: "Contas a pagar",
  vendas: "Vendas parceladas",
+ rankvendas: "Rank Vendas",
  projetos: "Projetos e centros de custo",
  protocolos: "Central de Protocolos",
  instalacoes: "Instalações",
@@ -887,6 +899,15 @@ function bindEvents() {
  });
  updateInvoiceFormForKind(currentInvoiceKind);
  els.invoiceIssueDate.value = todayIso;
+
+ document.querySelectorAll("[data-sales-tab]").forEach((button) => {
+  button.addEventListener("click", () => setSalesTab(button.dataset.salesTab));
+ });
+ els.salesRankForm.addEventListener("submit", saveManualSalesRankEntry);
+ els.salesRankFilterPeriod.addEventListener("change", renderManualSalesRanking);
+ els.salesRankEntries.addEventListener("click", handleManualSalesRankAction);
+ els.salesRankPeriod.value = todayIso.slice(0, 7);
+ els.salesRankFilterPeriod.value = todayIso.slice(0, 7);
 
  document.querySelectorAll("[data-stock-tab]").forEach((button) => {
   button.addEventListener("click", () => setStockTab(button.dataset.stockTab));
@@ -1346,6 +1367,7 @@ function loadState() {
    { id: crypto.randomUUID(), type: "fornecedor", name: "Fornecedor Exemplo", document: "", contact: "(11) 99999-0000" },
   ],
   sales: [],
+  salesRankingEntries: [],
   crmUnits: [],
   crmPipelines: [],
   opportunityStages: [],
@@ -1380,6 +1402,7 @@ function normalizeState(data) {
  const normalized = {
   people: Array.isArray(data.people) ? data.people : [],
   sales: Array.isArray(data.sales) ? data.sales : [],
+  salesRankingEntries: Array.isArray(data.salesRankingEntries) ? data.salesRankingEntries : [],
   crmUnits: Array.isArray(data.crmUnits) ? data.crmUnits : [],
   crmPipelines: Array.isArray(data.crmPipelines) ? data.crmPipelines : [],
   opportunityStages: Array.isArray(data.opportunityStages) ? data.opportunityStages : [],
@@ -2519,10 +2542,15 @@ function allowedViewsForSectors(sectors) {
  return [...new Set(sectors.flatMap((sector) => SECTOR_ALLOWED_VIEWS[sector] || []))];
 }
 
+function canonicalView(view) {
+ return view === "rankvendas" ? "vendas" : view;
+}
+
 function canAccessView(view) {
  if (isAdmin()) return true;
- if (view === "usuarios") return false;
- return allowedViewsForSectors(currentUserSectors()).includes(view);
+ const baseView = canonicalView(view);
+ if (baseView === "usuarios") return false;
+ return allowedViewsForSectors(currentUserSectors()).includes(baseView);
 }
 
 function defaultViewForRole() {
@@ -3007,11 +3035,13 @@ function setView(view) {
   toast("Acesso restrito para o seu perfil.");
   view = defaultViewForRole();
  }
- document.body.dataset.view = view;
+ const activeView = canonicalView(view);
+ document.body.dataset.view = activeView;
  els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
- els.views.forEach((section) => section.classList.toggle("active", section.id === view));
+ els.views.forEach((section) => section.classList.toggle("active", section.id === activeView));
  els.viewTitle.textContent = viewNames[view];
- const isFinancialEntryView = view === "receber" || view === "pagar";
+ if (activeView === "vendas") setSalesTab(view === "rankvendas" ? "ranking" : "vendas");
+ const isFinancialEntryView = activeView === "receber" || activeView === "pagar";
  document.querySelector("#newSaleBtn").classList.toggle("hidden", !isFinancialEntryView || !canAccessView("receber"));
  document.querySelector("#newTransactionBtn").classList.toggle("hidden", !isFinancialEntryView || (!canAccessView("receber") && !canAccessView("pagar")));
 }
@@ -4497,6 +4527,98 @@ function renderSales() {
  document.querySelector("#salesTable").innerHTML = sales.length ?
    sales.map((sale) => saleRow(sale)).join("")
   : `<tr><td colspan="8">${emptyMessage("Nenhuma venda parcelada cadastrada.")}</td></tr>`;
+ renderManualSalesRanking();
+}
+
+function setSalesTab(tab) {
+ document.querySelectorAll("[data-sales-tab]").forEach((button) => {
+  button.classList.toggle("active", button.dataset.salesTab === tab);
+ });
+ document.querySelectorAll("[data-sales-panel]").forEach((panel) => {
+  panel.classList.toggle("hidden", panel.dataset.salesPanel !== tab);
+ });
+ if (tab === "ranking") renderManualSalesRanking();
+}
+
+function saveManualSalesRankEntry(event) {
+ event.preventDefault();
+ const seller = els.salesRankSeller.value.trim();
+ const client = els.salesRankClient.value.trim();
+ const amount = Number(els.salesRankAmount.value);
+ const period = els.salesRankPeriod.value;
+ if (!seller || !client || !period || amount <= 0) {
+  toast("Preencha vendedor, cliente, valor e período.");
+  return;
+ }
+ state.salesRankingEntries.push({
+  id: crypto.randomUUID(),
+  seller,
+  client,
+  city: els.salesRankCity.value.trim(),
+  amount: roundCurrency(amount),
+  period,
+  source: "manual",
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+ });
+ if (!persist("crm")) return;
+ els.salesRankForm.reset();
+ els.salesRankPeriod.value = period;
+ els.salesRankFilterPeriod.value = period;
+ renderManualSalesRanking();
+ toast("Venda adicionada ao ranking.");
+}
+
+function renderManualSalesRanking() {
+ if (!els.salesRankList) return;
+ const period = els.salesRankFilterPeriod.value || todayIso.slice(0, 7);
+ const entries = state.salesRankingEntries
+  .filter((item) => item.period === period)
+  .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+ const grouped = new Map();
+ entries.forEach((item) => {
+  const key = item.seller.trim().toLocaleLowerCase("pt-BR");
+  const current = grouped.get(key) || { seller: item.seller.trim(), total: 0, count: 0 };
+  current.total += Number(item.amount || 0);
+  current.count += 1;
+  grouped.set(key, current);
+ });
+ const ranking = [...grouped.values()].sort((a, b) => b.total - a.total || b.count - a.count || a.seller.localeCompare(b.seller));
+ const total = sum(entries.map((item) => Number(item.amount || 0)));
+ els.salesRankSummary.textContent = `${entries.length} venda${entries.length === 1 ? "" : "s"} · ${money(total)}`;
+ els.salesRankList.innerHTML = ranking.length ? ranking.map((row, index) => `
+  <article class="sales-rank-card ${index < 3 ? `place-${index + 1}` : ""}">
+   <span class="sales-rank-position">${index + 1}º</span>
+   <div class="sales-rank-avatar">${escapeHtml(row.seller.slice(0, 1).toUpperCase())}</div>
+   <div class="sales-rank-person">
+    <small>${index === 0 ? "1º lugar" : `${index + 1}º lugar`}</small>
+    <strong>${escapeHtml(row.seller)}</strong>
+    <span>${row.count} venda${row.count === 1 ? "" : "s"}</span>
+   </div>
+   <strong class="sales-rank-value">${money(row.total)}</strong>
+  </article>`).join("") : emptyMessage("Nenhuma venda lançada neste período.");
+ els.salesRankEntries.innerHTML = entries.length ? entries.map((item) => `
+  <article class="sales-rank-entry">
+   <div><strong>${escapeHtml(item.client)}</strong><span>${escapeHtml(item.seller)}${item.city ? ` · ${escapeHtml(item.city)}` : ""}</span></div>
+   <strong>${money(item.amount)}</strong>
+   <button type="button" data-action="delete-rank-entry" data-id="${item.id}" aria-label="Excluir lançamento">Excluir</button>
+  </article>`).join("") : emptyMessage("Nenhum lançamento manual neste período.");
+ const names = [...new Set([
+  ...state.sellers.filter((item) => item.active !== false).map((item) => item.name),
+  ...state.salesRankingEntries.map((item) => item.seller),
+ ].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+ els.salesRankSellerSuggestions.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
+}
+
+function handleManualSalesRankAction(event) {
+ const button = event.target.closest("[data-action='delete-rank-entry']");
+ if (!button) return;
+ const entry = state.salesRankingEntries.find((item) => item.id === button.dataset.id);
+ if (!entry || !window.confirm(`Excluir a venda de ${entry.client} do ranking?`)) return;
+ state.salesRankingEntries = state.salesRankingEntries.filter((item) => item.id !== entry.id);
+ persist("crm");
+ renderManualSalesRanking();
+ toast("Lançamento excluído do ranking.");
 }
 
 function saleRow(sale) {
@@ -4765,10 +4887,6 @@ function hydrateProjectOptions() {
 
 function projectLabel(project) {
  return project.name || project.code || "Projeto sem nome";
-}
-
-function projectStatusLabel(status) {
- return { ativo: "Ativo", orcamento: "Or?amento", homologacao: "Homologação", concluido: "Concluído", pausado: "Pausado" }[status] || status;
 }
 
 function projectStatusLabel(status) {

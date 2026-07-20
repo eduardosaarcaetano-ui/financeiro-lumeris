@@ -1591,6 +1591,123 @@ button.project-chip {
   color: #b34d2f;
 }
 
+.sales-rank-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.35fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.sales-rank-entry-panel .form-grid {
+  margin-top: 18px;
+}
+
+.sales-rank-head {
+  align-items: flex-end;
+}
+
+.sales-rank-head label {
+  min-width: 180px;
+  margin-left: auto;
+}
+
+.sales-rank-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.sales-rank-card {
+  display: grid;
+  grid-template-columns: 42px 46px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 76px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.sales-rank-card.place-1 {
+  border-color: #e6a52c;
+  background: linear-gradient(90deg, #fff8e7, var(--surface));
+}
+
+.sales-rank-card.place-2 { border-left: 4px solid #9aa5a1; }
+.sales-rank-card.place-3 { border-left: 4px solid #b86c45; }
+
+.sales-rank-position {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--muted);
+}
+
+.sales-rank-avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.sales-rank-person { min-width: 0; }
+.sales-rank-person small,
+.sales-rank-person span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+.sales-rank-person strong {
+  display: block;
+  margin: 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sales-rank-value { color: var(--primary); white-space: nowrap; }
+
+.sales-rank-recent {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.sales-rank-recent h3 { margin: 0 0 10px; }
+
+.sales-rank-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.sales-rank-entry span { display: block; color: var(--muted); font-size: 12px; }
+.sales-rank-entry button {
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 980px) {
+  .sales-rank-layout { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 620px) {
+  .sales-rank-card { grid-template-columns: 34px 40px minmax(0, 1fr); }
+  .sales-rank-value { grid-column: 3; }
+  .sales-rank-head { align-items: stretch; }
+  .sales-rank-head label { width: 100%; margin-left: 0; }
+}
+
 .ranking-tv-screen {
   min-height: 100vh;
   padding: 48px;

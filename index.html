@@ -62,6 +62,8 @@
           <div class="nav-group">
             <span class="nav-group-title">Vendas</span>
             <button class="nav-item" data-view="crm" type="button">CRM</button>
+            <button class="nav-item" data-view="rankvendas" type="button">Rank Vendas</button>
+            <button class="nav-item" data-view="vendas" type="button">Vendas</button>
           </div>
           <div class="nav-group">
             <span class="nav-group-title">Financeiro</span>
@@ -392,26 +394,82 @@
         </section>
 
         <section class="view" id="vendas">
-          <div class="toolbar">
-            <input id="salesSearch" type="search" placeholder="Buscar venda, cliente ou categoria" />
-            <button class="primary-btn" id="newSaleInlineBtn" type="button">Cadastrar venda parcelada</button>
+          <div class="toolbar invoice-kind-tabs" id="salesTabs">
+            <button type="button" class="chip-tab active" data-sales-tab="vendas">Vendas parceladas</button>
+            <button type="button" class="chip-tab" data-sales-tab="ranking">Rank de vendas</button>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Cliente</th>
-                  <th>Descrição</th>
-                  <th>Parcelas</th>
-                  <th>Categoria</th>
-                  <th class="money">Total</th>
-                  <th class="money">Recebido</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody id="salesTable"></tbody>
-            </table>
+
+          <div data-sales-panel="vendas">
+            <div class="toolbar">
+              <input id="salesSearch" type="search" placeholder="Buscar venda, cliente ou categoria" />
+              <button class="primary-btn" id="newSaleInlineBtn" type="button">Cadastrar venda parcelada</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Cliente</th>
+                    <th>Descrição</th>
+                    <th>Parcelas</th>
+                    <th>Categoria</th>
+                    <th class="money">Total</th>
+                    <th class="money">Recebido</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="salesTable"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="hidden" data-sales-panel="ranking">
+            <div class="sales-rank-layout">
+              <section class="panel sales-rank-entry-panel">
+                <div class="panel-head">
+                  <div>
+                    <h2>Registrar venda no ranking</h2>
+                    <small>Lançamento manual até a integração com o fechamento.</small>
+                  </div>
+                </div>
+                <form class="form-grid" id="salesRankForm">
+                  <label class="full">Vendedor
+                    <input id="salesRankSeller" required maxlength="100" list="salesRankSellerSuggestions" placeholder="Nome do vendedor" />
+                  </label>
+                  <label>Cliente
+                    <input id="salesRankClient" required maxlength="140" placeholder="Nome do cliente" />
+                  </label>
+                  <label>Cidade
+                    <input id="salesRankCity" maxlength="100" placeholder="Cidade" />
+                  </label>
+                  <label>Valor (R$)
+                    <input id="salesRankAmount" required type="number" min="0.01" step="0.01" placeholder="0,00" />
+                  </label>
+                  <label>Período
+                    <input id="salesRankPeriod" required type="month" />
+                  </label>
+                  <button class="primary-btn full" type="submit">Adicionar ao ranking</button>
+                </form>
+                <datalist id="salesRankSellerSuggestions"></datalist>
+                <div class="sales-rank-recent">
+                  <h3>Lançamentos do período</h3>
+                  <div id="salesRankEntries"></div>
+                </div>
+              </section>
+
+              <section class="panel sales-rank-board">
+                <div class="panel-head sales-rank-head">
+                  <div>
+                    <h2>Ranking de vendas</h2>
+                    <small id="salesRankSummary">0 vendas no período</small>
+                  </div>
+                  <label>Período
+                    <input id="salesRankFilterPeriod" type="month" />
+                  </label>
+                </div>
+                <div class="sales-rank-list" id="salesRankList"></div>
+              </section>
+            </div>
           </div>
         </section>
 
@@ -2952,6 +3010,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/estoque-iluminar-data.js?v=20260718-layout-fix1"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
-    <script src="app.js?v=20260720-operational-test-exclude1"></script>
+    <script src="app.js?v=20260720-sales-rank-nav1"></script>
   </body>
 </html>
