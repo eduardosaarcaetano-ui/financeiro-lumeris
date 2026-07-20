@@ -3016,34 +3016,42 @@ function setView(view) {
  document.querySelector("#newTransactionBtn").classList.toggle("hidden", !isFinancialEntryView || (!canAccessView("receber") && !canAccessView("pagar")));
 }
 
+function safeRender(label, renderFn) {
+ try {
+  renderFn();
+ } catch (error) {
+  console.error(`Falha ao renderizar ${label}:`, error);
+ }
+}
+
 function renderAll() {
  els.currentPeriod.textContent = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
   month: "long",
   year: "numeric",
  }).format(today);
- hydrateCrmOptions();
- renderCrm();
- renderDashboard();
- renderTransactionTables();
- renderSales();
- renderProjects();
- renderProjectReports();
- renderProtocols();
- renderInstallations();
- renderBank();
- renderPeople();
- renderInvoices();
- renderStock();
- renderBankApiConfigs();
- renderCrm();
- renderReports();
- hydratePersonOptions();
- hydrateSalePeople();
- hydrateProjectOptions();
- hydrateInvoicePersonOptions();
- hydrateStatusOptions();
- runDailyBankApiSync();
+ safeRender("opcoes do CRM", hydrateCrmOptions);
+ safeRender("CRM", renderCrm);
+ safeRender("dashboard", renderDashboard);
+ safeRender("lancamentos", renderTransactionTables);
+ safeRender("vendas", renderSales);
+ safeRender("projetos", renderProjects);
+ safeRender("relatorios de projetos", renderProjectReports);
+ safeRender("protocolos", renderProtocols);
+ safeRender("instalacoes", renderInstallations);
+ safeRender("bancos", renderBank);
+ safeRender("cadastros", renderPeople);
+ safeRender("notas fiscais", renderInvoices);
+ safeRender("estoque", renderStock);
+ safeRender("APIs bancarias", renderBankApiConfigs);
+ safeRender("CRM final", renderCrm);
+ safeRender("relatorios", renderReports);
+ safeRender("opcoes de pessoas", hydratePersonOptions);
+ safeRender("opcoes de vendas", hydrateSalePeople);
+ safeRender("opcoes de projetos", hydrateProjectOptions);
+ safeRender("opcoes de notas fiscais", hydrateInvoicePersonOptions);
+ safeRender("opcoes de status", hydrateStatusOptions);
+ safeRender("sincronizacao diaria bancaria", runDailyBankApiSync);
 }
 
 function hydrateCrmOptions() {
