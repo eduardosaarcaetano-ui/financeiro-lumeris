@@ -73,12 +73,12 @@ const MOCK_DESCRIPTIONS = {
 // como uma tela ficar acess?vel por engano num lugar e bloqueada em outro.
 const SECTOR_ALLOWED_VIEWS = {
  financeiro: ["dashboard", "receber", "pagar", "banco", "apisbancarias", "notasfiscais", "relatorios", "pessoas"],
- comercial: ["dashboard", "crm", "vendas"],
- vendas: ["dashboard", "crm", "vendas"],
+ comercial: ["crm", "vendas"],
+ vendas: ["crm", "vendas"],
  projetos: ["projetos", "protocolos", "instalacoes", "estoque"],
- instaladores: ["dashboard", "instalacoes"],
- engenharia: ["dashboard", "projetos", "protocolos", "instalacoes", "estoque"],
- diretoria: ["dashboard", "projetos", "protocolos", "instalacoes", "estoque", "crm", "vendas", "relatorios"],
+ instaladores: ["instalacoes"],
+ engenharia: ["projetos", "protocolos", "instalacoes", "estoque"],
+ diretoria: ["projetos", "protocolos", "instalacoes", "estoque", "crm", "vendas", "relatorios"],
 };
 
 const SAVE_SCOPE_FIELDS = {
