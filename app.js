@@ -5671,22 +5671,22 @@ function clearProtocolFilters() {
 function openProtocolDialog(protocol = null) {
  els.protocolForm.reset();
  hydrateProtocolOptions();
- els.protocolId.value = protocol.id || "";
- els.protocolInternalNumber.value = protocol.internalNumber || nextProtocolInternalNumber();
- els.protocolNumber.value = protocol.protocolNumber || "";
- els.protocolActivityType.value = protocol.activityTypeId || els.protocolActivityType.value;
- els.protocolUtility.value = protocol.utilityCompanyId || els.protocolUtility.value;
- els.protocolCustomer.value = protocol.customerId || "";
- els.protocolCity.value = protocol.city || "";
- els.protocolConsumerUnit.value = protocol.consumerUnit || "";
- els.protocolProject.value = protocol.projectId || "";
- els.protocolStatus.value = protocol.status || "novo";
- els.protocolResponsible.value = protocol.responsibleUserId || "";
- els.protocolOpenedAt.value = protocol.openedAt || todayIso;
- els.protocolDeadline.value = protocol.utilityDeadline || "";
- els.protocolExpectedDate.value = protocol.expectedDate || "";
- els.protocolPriority.value = protocol.priority || "media";
- els.protocolNotes.value = protocol.notes || "";
+ els.protocolId.value = protocol?.id || "";
+ els.protocolInternalNumber.value = protocol?.internalNumber || nextProtocolInternalNumber();
+ els.protocolNumber.value = protocol?.protocolNumber || "";
+ els.protocolActivityType.value = protocol?.activityTypeId || els.protocolActivityType.value;
+ els.protocolUtility.value = protocol?.utilityCompanyId || els.protocolUtility.value;
+ els.protocolCustomer.value = protocol?.customerId || "";
+ els.protocolCity.value = protocol?.city || "";
+ els.protocolConsumerUnit.value = protocol?.consumerUnit || "";
+ els.protocolProject.value = protocol?.projectId || "";
+ els.protocolStatus.value = protocol?.status || "novo";
+ els.protocolResponsible.value = protocol?.responsibleUserId || "";
+ els.protocolOpenedAt.value = protocol?.openedAt || todayIso;
+ els.protocolDeadline.value = protocol?.utilityDeadline || "";
+ els.protocolExpectedDate.value = protocol?.expectedDate || "";
+ els.protocolPriority.value = protocol?.priority || "media";
+ els.protocolNotes.value = protocol?.notes || "";
  els.protocolDialogTitle.textContent = protocol ? "Editar protocolo" : "Novo protocolo";
  els.protocolDialog.showModal();
 }
