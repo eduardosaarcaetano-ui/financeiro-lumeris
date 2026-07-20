@@ -4132,15 +4132,67 @@ function currentCrmUser() {
  return localStorage.getItem("financeiro-lumeris-user") || "Usu?rio local";
 }
 
+function isOperationalTestText(value) {
+ return normalizeText(value || "").includes("teste crm ponta a ponta");
+}
+
+function isOperationalTestRecord(record = {}) {
+ return [
+  record.name,
+  record.title,
+  record.description,
+  record.category,
+  record.notes,
+  record.observations,
+ ].some(isOperationalTestText);
+}
+
+function isOperationalTestProject(projectOrId) {
+ const project = typeof projectOrId === "string" ? state.projects.find((item) => item.id === projectOrId) : projectOrId;
+ return Boolean(project && isOperationalTestRecord(project));
+}
+
+function isOperationalTestTransaction(transaction) {
+ if (!transaction) return false;
+ if (isOperationalTestRecord(transaction)) return true;
+ if (isOperationalTestProject(transaction.projectId)) return true;
+ return normalizeAllocations(transaction).some((allocation) => isOperationalTestProject(allocation.projectId));
+}
+
+function isOperationalTestInstallation(installation) {
+ return Boolean(installation && (isOperationalTestRecord(installation) || isOperationalTestProject(installation.projectId)));
+}
+
+function isOperationalTestSale(sale) {
+ return Boolean(sale && (isOperationalTestRecord(sale) || isOperationalTestProject(sale.projectId)));
+}
+
+function isOperationalTestStockMovement(movement) {
+ return Boolean(movement && (isOperationalTestRecord(movement) || isOperationalTestProject(movement.projectId)));
+}
+
+function businessTransactions() {
+ return state.transactions.filter((item) => !isOperationalTestTransaction(item));
+}
+
+function businessProjects() {
+ return state.projects.filter((item) => !isOperationalTestProject(item));
+}
+
+function businessInstallations() {
+ return state.installations.filter((item) => !isOperationalTestInstallation(item));
+}
+
 function renderDashboard() {
- const receber = state.transactions.filter((item) => item.type === "receber");
- const pagar = state.transactions.filter((item) => item.type === "pagar");
+ const transactions = businessTransactions();
+ const receber = transactions.filter((item) => item.type === "receber");
+ const pagar = transactions.filter((item) => item.type === "pagar");
  const receberAberto = sum(receber.filter((item) => item.status === "aberto"));
  const pagarAberto = sum(pagar.filter((item) => item.status === "aberto"));
  const receberVencidoItems = receber.filter(isOverdue);
  const receberVencido = sum(receberVencidoItems);
  const pagarVencido = sum(pagar.filter(isOverdue));
- const realizadoMes = sum(state.transactions.filter(isPaidThisMonth).map(signedAmount));
+ const realizadoMes = sum(transactions.filter(isPaidThisMonth).map(signedAmount));
 
  document.querySelector("#kpiReceberAberto").textContent = money(receberAberto);
  document.querySelector("#kpiPagarAberto").textContent = money(pagarAberto);
@@ -4159,10 +4211,10 @@ function renderDashboard() {
 }
 
 function renderSectorOverview(receberAberto, pagarAberto) {
- const monthSales = state.sales.filter((sale) => isInPeriod(sale.saleDate, currentMonthStart, currentMonthEnd));
+ const monthSales = state.sales.filter((sale) => !isOperationalTestSale(sale) && isInPeriod(sale.saleDate, currentMonthStart, currentMonthEnd));
  const monthSalesTotal = sum(monthSales.map((sale) => sale.total || 0));
- const activeProjects = state.projects.filter((project) => !["concluido", "cancelado"].includes(project.status));
- const scheduledInstallations = state.installations.filter((item) => !["concluida", "cancelada"].includes(item.status));
+ const activeProjects = businessProjects().filter((project) => !["concluido", "cancelado"].includes(project.status));
+ const scheduledInstallations = businessInstallations().filter((item) => !["concluida", "cancelada"].includes(item.status));
  const stockTotal = sum(state.stockItems.map((item) => (item.quantity || 0) * (item.averageCost || 0)));
  const monthInvoices = state.invoices.filter((invoice) => invoice.kind !== "despesa" && invoice.status !== "cancelada" && isInPeriod(invoice.issueDate, currentMonthStart, currentMonthEnd));
  const monthInvoicesTotal = sum(monthInvoices.map(accountingValueOf));
@@ -4174,7 +4226,7 @@ function renderSectorOverview(receberAberto, pagarAberto) {
  document.querySelector("#dashboardProjectsCount").textContent = String(activeProjects.length);
  document.querySelector("#dashboardProjectsSmall").textContent = `${state.projects.filter((project) => project.status === "homologacao").length} em homologação`;
  document.querySelector("#dashboardInstallationsCount").textContent = String(scheduledInstallations.length);
- document.querySelector("#dashboardInstallationsSmall").textContent = `${state.installations.filter((item) => item.status === "concluida").length} concluída(s)`;
+ document.querySelector("#dashboardInstallationsSmall").textContent = `${businessInstallations().filter((item) => item.status === "concluida").length} concluída(s)`;
  document.querySelector("#dashboardStockValue").textContent = money(stockTotal);
  document.querySelector("#dashboardStockSmall").textContent = `${state.stockItems.length} item(ns) cadastrados`;
  document.querySelector("#dashboardInvoicesTotal").textContent = money(monthInvoicesTotal);
@@ -4261,9 +4313,10 @@ function latestBankAccounts() {
 
 function renderCashflowBars() {
  const months = Array.from({ length: 6 }, (_, index) => addMonths(startOfMonth(today), index));
+ const transactions = businessTransactions();
  const rows = months.map((month) => {
   const key = monthKey(month);
-  const tx = state.transactions.filter((item) => monthKey(parseDate(item.dueDate)) === key && item.status === "aberto");
+  const tx = transactions.filter((item) => monthKey(parseDate(item.dueDate)) === key && item.status === "aberto");
   return {
    label: new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(month),
    inTotal: sum(tx.filter((item) => item.type === "receber")),
@@ -4288,7 +4341,7 @@ function renderCashflowBars() {
 }
 
 function renderUpcoming() {
- const upcoming = state.transactions
+ const upcoming = businessTransactions()
   .filter((item) => item.status === "aberto")
   .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
   .slice(0, 8);
@@ -4308,7 +4361,7 @@ function renderInvoiceDashboardKpis() {
  const materialTotal = sum(monthInvoices.filter((item) => item.kind === "material").map(accountingValueOf));
  const expenseTotal = sum(monthInvoices.filter((item) => item.kind === "despesa").map(accountingValueOf));
 
- const monthExpenses = state.transactions.filter((item) => item.type === "pagar" && isInPeriod(item.dueDate, currentMonthStart, currentMonthEnd));
+ const monthExpenses = businessTransactions().filter((item) => item.type === "pagar" && isInPeriod(item.dueDate, currentMonthStart, currentMonthEnd));
  const expenseNoInvoice = sum(monthExpenses.filter((item) => !item.invoiceId));
 
  const issuedPending = sum(state.invoices.filter((item) => (item.kind === "servico" || item.kind === "material") && ["emitida", "recebida_parcial"].includes(item.status)).map(accountingValueOf));
@@ -4336,7 +4389,7 @@ function renderTransactionTable(type) {
  const tbody = document.querySelector(`#${type}Table`);
  const colspan = type === "receber" ? 8 : 7;
 
- const rows = state.transactions
+ const rows = businessTransactions()
   .filter((item) => item.type === type)
   .filter((item) => matchesTransaction(item, search, statusFilter))
   .filter((item) => (!periodStart || item.dueDate >= periodStart) && (!periodEnd || item.dueDate <= periodEnd))
@@ -4792,7 +4845,7 @@ function filteredProjectDashboardRows() {
 }
 
 function projectTransactions(projectId) {
- return state.transactions.filter((transaction) => transaction.projectId === projectId || transaction.costCenterId === projectId);
+ return businessTransactions().filter((transaction) => transaction.projectId === projectId || transaction.costCenterId === projectId);
 }
 
 function latestProjectInstallation(projectId) {
@@ -6809,28 +6862,29 @@ function installationMatchesFilters(item) {
 
 function renderInstallationKpis() {
  if (!els.installationKpis) return;
+ const installations = businessInstallations();
  const monthStart = todayIso.slice(0, 8) + "01";
  const monthEnd = toIso(endOfMonth(today));
- const completedMonth = state.installations.filter((item) => {
+ const completedMonth = installations.filter((item) => {
   const completed = item.completedDate || (item.status === "concluida" ? (item.updatedAt || "").slice(0, 10) : "");
   return completed && completed >= monthStart && completed <= monthEnd;
  });
- const late = state.installations.filter(isInstallationLate);
- const inProgress = state.installations.filter(isInstallationInProgress);
- const unscheduled = state.installations.filter(isInstallationWaitingScheduling);
+ const late = installations.filter(isInstallationLate);
+ const inProgress = installations.filter(isInstallationInProgress);
+ const unscheduled = installations.filter(isInstallationWaitingScheduling);
  const weekStart = startOfWeekIso();
  const weekEnd = endOfWeekIso();
- const postSalePending = state.installations.filter(isPostSaleContactPending);
- const postSaleLate = state.installations.filter(isPostSaleContactLate);
- const enteredWeek = state.installations.filter((item) => {
+ const postSalePending = installations.filter(isPostSaleContactPending);
+ const postSaleLate = installations.filter(isPostSaleContactLate);
+ const enteredWeek = installations.filter((item) => {
   const ref = item.closedDate || (item.createdAt || "").slice(0, 10);
   return ref && ref >= weekStart && ref <= weekEnd;
  });
- const completedWeek = state.installations.filter((item) => {
+ const completedWeek = installations.filter((item) => {
   const completed = item.completedDate || (item.status === "concluida" ? (item.updatedAt || "").slice(0, 10) : "");
   return completed && completed >= weekStart && completed <= weekEnd;
  });
- const efficiencyRows = state.installations.filter((item) => item.status === "concluida" || Number(item.panels || 0) || (item.labor || []).length);
+ const efficiencyRows = installations.filter((item) => item.status === "concluida" || Number(item.panels || 0) || (item.labor || []).length);
  const ownCost = sum(efficiencyRows.map(installationOwnLaborCost));
  const outsourceCost = sum(efficiencyRows.map(installationOutsourceCost));
  const saving = outsourceCost - ownCost;
@@ -7069,6 +7123,24 @@ function renderProjectReports() {
 }
 
 function projectSummary(project) {
+ if (isOperationalTestProject(project)) {
+  return {
+   project,
+   contracted: 0,
+   invoiced: 0,
+   received: 0,
+   receivable: 0,
+   expectedCosts: 0,
+   costs: 0,
+   payable: 0,
+   paid: 0,
+   expectedResult: 0,
+   realizedResult: 0,
+   grossResult: 0,
+   marginAmount: 0,
+   marginPercent: 0,
+  };
+ }
  const allocations = projectAllocations(project.id);
  const revenueAllocations = allocations.filter((entry) => entry.transaction.type === "receber");
  const costAllocations = allocations.filter((entry) => entry.transaction.type === "pagar");
@@ -7102,7 +7174,7 @@ function projectSummary(project) {
 }
 
 function projectAllocations(projectId) {
- const transactionEntries = state.transactions.flatMap((transaction) => {
+ const transactionEntries = businessTransactions().flatMap((transaction) => {
   const allocations = normalizeAllocations(transaction);
   return allocations
    .filter((allocation) => allocation.projectId === projectId)
@@ -7263,7 +7335,7 @@ function renderLowMarginProjects(summaries) {
 }
 
 function renderUnallocatedExpenses() {
- const rows = state.transactions
+ const rows = businessTransactions()
   .filter((transaction) => transaction.type === "pagar" && !normalizeAllocations(transaction).length)
   .sort((a, b) => b.dueDate.localeCompare(a.dueDate))
   .slice(0, 20);
@@ -8778,7 +8850,7 @@ function hydrateStockCatalogOptions() {
   ...openInvoices.map((item) => `<option value="${item.id}">NF ${escapeHtml(item.number)} ? ${escapeHtml(personName(item.personId))}</option>`),
  ].join("");
 
- const payables = state.transactions
+ const payables = businessTransactions()
   .filter((item) => item.type === "pagar")
   .sort((a, b) => b.dueDate.localeCompare(a.dueDate))
   .slice(0, 40);
@@ -9207,7 +9279,7 @@ function detailItem(label, value, full = false) {
 function renderStockAlerts() {
  const items = state.stockItems.filter((item) => item.active);
  const totalValue = sum(items.map((item) => Number(item.quantity || 0) * Number(item.averageCost || 0)));
- const monthMovements = state.stockMovements.filter((movement) => isInPeriod(movement.date, currentMonthStart, currentMonthEnd));
+ const monthMovements = state.stockMovements.filter((movement) => !isOperationalTestStockMovement(movement) && isInPeriod(movement.date, currentMonthStart, currentMonthEnd));
  const monthEntries = sum(monthMovements.filter((movement) => movement.type === "entrada").map((movement) => Number(movement.totalCost || 0)));
  const monthExits = sum(monthMovements.filter((movement) => movement.type === "saida").map((movement) => Number(movement.totalCost || 0)));
  els.stockTotalValue.textContent = money(totalValue);
@@ -11305,7 +11377,7 @@ function renderAllocationTotal() {
 
 function renderReports() {
  const period = getReportPeriod();
- const periodTransactions = state.transactions.filter((item) => isInPeriod(item.dueDate, period.start, period.end));
+ const periodTransactions = businessTransactions().filter((item) => isInPeriod(item.dueDate, period.start, period.end));
  const receberPeriod = periodTransactions.filter((item) => item.type === "receber");
  const pagarPeriod = periodTransactions.filter((item) => item.type === "pagar");
  const bankOnly = els.dreBasis.value === "caixa" ?
@@ -11373,7 +11445,7 @@ function renderInvoiceExpenseReport(despesa) {
 }
 
 function renderExpenseNoInvoiceReport(period) {
- const rows = state.transactions
+ const rows = businessTransactions()
   .filter((item) => item.type === "pagar" && !item.invoiceId && isInPeriod(item.dueDate, period.start, period.end))
   .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
  document.querySelector("#expenseNoInvoiceReport").innerHTML = rows.length ?
@@ -11386,7 +11458,7 @@ function renderExpenseNoInvoiceReport(period) {
 }
 
 function renderPaidNoInvoiceReport(period) {
- const rows = state.transactions
+ const rows = businessTransactions()
   .filter((item) => item.type === "pagar" && item.status === "pago" && !item.invoiceId && isInPeriod(item.paidDate, period.start, period.end))
   .sort((a, b) => a.paidDate.localeCompare(b.paidDate));
  document.querySelector("#paidNoInvoiceReport").innerHTML = rows.length ?
@@ -11399,7 +11471,7 @@ function renderPaidNoInvoiceReport(period) {
 }
 
 function renderReceivableNoInvoiceReport(period) {
- const rows = state.transactions
+ const rows = businessTransactions()
   .filter((item) => item.type === "receber" && !item.invoiceId && isInPeriod(item.dueDate, period.start, period.end))
   .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
  document.querySelector("#receivableNoInvoiceReport").innerHTML = rows.length ?
@@ -11515,7 +11587,7 @@ function renderCategoryReport(periodTransactions) {
 }
 
 function renderOverdueReport() {
- const overdue = state.transactions.filter(isOverdue).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+ const overdue = businessTransactions().filter(isOverdue).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
  document.querySelector("#overdueReport").innerHTML = overdue.length ?
    overdue.map((item) => `
    <article class="report-item">
@@ -11528,7 +11600,7 @@ function renderOverdueReport() {
 function calculateDre() {
  const period = getReportPeriod();
  const basis = els.dreBasis.value;
- const rows = state.transactions.filter((item) => {
+ const rows = businessTransactions().filter((item) => {
   const date = basis === "caixa" ? item.paidDate : item.dueDate;
   if (basis === "caixa" && !["recebido", "pago"].includes(item.status)) return false;
   return isInPeriod(date, period.start, period.end);
@@ -11616,7 +11688,7 @@ function importBackup(event) {
 
 function exportCsv(type) {
  const header = ["tipo", "pessoa", "descricao", "parcela", "categoria", "grupo_dre", "vencimento", "valor", "status", "baixa", "observacoes"];
- const rows = state.transactions
+ const rows = businessTransactions()
   .filter((item) => item.type === type)
   .map((item) => [item.type, personName(item.personId), item.description, installmentLabel(item), item.category, dreGroupLabel(item.dreGroup), item.dueDate, item.amount, item.status, item.paidDate, item.notes]);
  downloadCsv(`financeiro-lumeris-${type}-${todayIso}.csv`, [header, ...rows]);
@@ -11632,7 +11704,7 @@ function exportReport(report) {
  }
 
  const type = report === "receber-periodo" ? "receber" : "pagar";
- const rows = state.transactions
+ const rows = businessTransactions()
   .filter((item) => item.type === type && isInPeriod(item.dueDate, period.start, period.end))
   .map((item) => [personName(item.personId), item.description, item.category, dreGroupLabel(item.dreGroup), item.dueDate, item.amount, item.status, item.paidDate]);
  downloadCsv(`${type}-periodo-${period.start}-${period.end}.csv`, [["pessoa", "descricao", "categoria", "grupo_dre", "data", "valor", "status", "baixa"], ...rows]);
