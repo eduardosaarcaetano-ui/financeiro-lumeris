@@ -2588,7 +2588,7 @@ function opportunityOwnerSelectOptions(currentOpportunity = null) {
  const availableUsers = isAdmin() ? state.users.filter(isCommercialUser) : [sessionUser].filter(Boolean);
  const commercialUsers = availableUsers
   .sort((a, b) => (a.name || a.username).localeCompare(b.name || b.username));
- const currentOwner = currentOpportunity.owner || "";
+ const currentOwner = currentOpportunity?.owner || "";
  const hasLegacyOwner = currentOwner && !commercialUsers.some((user) => user.id === currentOpportunity.ownerUserId || (user.name || user.username) === currentOwner);
  return [
   `<option value="">Sem respons\u00e1vel</option>`,
@@ -2600,9 +2600,9 @@ function opportunityOwnerSelectOptions(currentOpportunity = null) {
 function setOpportunityOwnerValue(opportunity = null) {
  if (!els.opportunityOwner) return;
  els.opportunityOwner.innerHTML = opportunityOwnerSelectOptions(opportunity);
- const matchingUser = opportunity.ownerUserId ?
+ const matchingUser = opportunity?.ownerUserId ?
    state.users.find((user) => user.id === opportunity.ownerUserId)
-  : state.users.find((user) => isCommercialUser(user) && (user.name || user.username) === opportunity.owner);
+  : state.users.find((user) => isCommercialUser(user) && (user.name || user.username) === opportunity?.owner);
  if (matchingUser) {
   els.opportunityOwner.value = matchingUser.id;
  } else if (opportunity.owner) {
