@@ -1313,11 +1313,14 @@ function bindEvents() {
   els.protocolFilterStatus,
   els.protocolFilterResponsible,
   els.protocolFilterCity,
-  els.protocolFilterProject,
-  els.protocolFilterDeadline,
-  els.protocolFilterPriority,
-  els.protocolFilterPeriod,
- ].forEach((field) => field.addEventListener("input", renderProtocols));
+ els.protocolFilterProject,
+ els.protocolFilterDeadline,
+ els.protocolFilterPriority,
+ els.protocolFilterPeriod,
+ ].forEach((field) => {
+  field.addEventListener("input", renderProtocols);
+  field.addEventListener("change", renderProtocols);
+ });
  document.querySelector("#clearProtocolFilters").addEventListener("click", clearProtocolFilters);
  document.querySelectorAll("[data-close-protocol-drawer]").forEach((item) => item.addEventListener("click", closeProtocolDrawer));
  document.querySelectorAll("[data-protocol-tab]").forEach((button) => {
@@ -5620,10 +5623,16 @@ function matchesProtocolFilters(protocol) {
  if (search) {
   const haystack = normalizeText([
    personName(protocol.customerId),
+   projectName(protocol.projectId),
+   activityTypeName(protocol.activityTypeId),
+   utilityCompanyName(protocol.utilityCompanyId),
+   userName(protocol.responsibleUserId),
+   protocolStatusLabel(protocol.status),
    protocol.protocolNumber,
    protocol.internalNumber,
    protocol.consumerUnit,
    protocol.city,
+   protocol.notes,
   ].join(" "));
   if (!haystack.includes(search)) return false;
  }
@@ -5924,8 +5933,10 @@ function saveProtocol() {
  }
 
  persist(releasesProject ? ["protocolo", "projetos"] : "protocolo");
- renderAll();
  els.protocolDialog.close();
+ clearProtocolFilters();
+ setProtocolTab("tabela");
+ renderAll();
  toast("Protocolo salvo.");
 }
 
