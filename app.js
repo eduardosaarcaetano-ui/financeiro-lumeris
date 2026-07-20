@@ -4767,7 +4767,7 @@ function projectDashboardRows() {
   const execution = projectExecutionPercent(project, installation, summary);
   const priority = projectPriority(project, installation, summary);
   const health = projectHealthScore(project, installation, summary, execution);
-  const daysToInstallation = installation.scheduledDate ? daysBetween(installation.scheduledDate, todayIso) : null;
+  const daysToInstallation = installation?.scheduledDate ? daysBetween(installation.scheduledDate, todayIso) : null;
   return {
    project,
    summary,
