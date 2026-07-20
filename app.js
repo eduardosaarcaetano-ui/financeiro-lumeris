@@ -4757,10 +4757,10 @@ function projectDashboardRows() {
   const transactions = projectTransactions(project.id);
   const installation = latestProjectInstallation(project.id);
   const customer = state.people.find((person) => person.id === project.customerId);
-  const city = project.city || customer.city || projectFieldFromNotes(project.notes, "cidade") || "";
+  const city = project.city || customer?.city || projectFieldFromNotes(project.notes, "cidade") || "";
   const responsible =
    project.responsible ||
-   installation.team ||
+   installation?.team ||
    projectFieldFromNotes(project.notes, "responsavel") ||
    projectFieldFromNotes(project.notes, "responsavel tecnico") ||
    "";
