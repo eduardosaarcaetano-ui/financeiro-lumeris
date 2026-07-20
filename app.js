@@ -2462,7 +2462,7 @@ function currentSessionUser() {
 }
 
 function isAdmin() {
- return currentSessionUser().role === "administrador";
+ return currentSessionUser()?.role === "administrador";
 }
 
 function isMaintenanceActive() {
