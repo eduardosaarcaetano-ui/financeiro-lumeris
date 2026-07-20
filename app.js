@@ -2070,7 +2070,7 @@ function seedInstallationBacklog(normalized) {
    });
   }
 
-  const hasInstallation = normalized.installations.some((item) =>
+  const hasInstallation = project.skipAutoInstallation === true || normalized.installations.some((item) =>
    item.projectId === project.id ||
    normalizeText(item.notes).includes(normalizeText(seed.code))
   );
@@ -6941,6 +6941,10 @@ function saveInstallation(event) {
  const index = state.installations.findIndex((item) => item.id === id);
  if (index >= 0) state.installations[index] = data;
  else state.installations.push(data);
+ if (data.projectId) {
+  const linkedProject = state.projects.find((item) => item.id === data.projectId);
+  if (linkedProject) linkedProject.skipAutoInstallation = false;
+ }
  syncProjectFromInstallation(data);
  mirrorSiblingInstallationStatus(data);
 
@@ -6986,6 +6990,13 @@ function deleteCurrentInstallation() {
  if (!confirmed) return;
 
  state.installations = state.installations.filter((item) => item.id !== id);
+ if (installation.projectId) {
+  const project = state.projects.find((item) => item.id === installation.projectId);
+  if (project) {
+   project.skipAutoInstallation = true;
+   project.updatedAt = new Date().toISOString();
+  }
+ }
  state.opportunities.forEach((opportunity) => {
   if (opportunity.installationId === id) opportunity.installationId = "";
  });
