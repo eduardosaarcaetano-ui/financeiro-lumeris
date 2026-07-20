@@ -1032,21 +1032,6 @@ function bindEvents() {
   }
  });
 
- els.projectForm.addEventListener("submit", () => {
-  if (pendingOpportunityConversion?.kind === "project") {
-   const { opportunityId, projectId } = pendingOpportunityConversion;
-   if (state.projects.some((project) => project.id === projectId)) {
-    const opportunity = state.opportunities.find((item) => item.id === opportunityId);
-    if (opportunity) {
-     opportunity.projectId = projectId;
-     opportunity.updatedAt = new Date().toISOString();
-     persist();
-    }
-    pendingOpportunityConversion = null;
-   }
-  }
- });
-
  els.crmReportPeriod.addEventListener("change", () => {
   updateCrmReportPeriodUi();
   renderCrmReports();
@@ -4783,13 +4768,20 @@ function renderProjects() {
 }
 
 function saveProject() {
+ const projectNameValue = els.projectName.value.trim();
+ if (!projectNameValue) {
+  toast("Informe o nome do projeto.");
+  els.projectName.focus();
+  return null;
+ }
  const id = els.projectId.value || crypto.randomUUID();
  const existing = state.projects.find((project) => project.id === id);
  const costCenterId = existing?.costCenterId || crypto.randomUUID();
+ const now = new Date().toISOString();
  const project = {
   id,
   code: "",
-  name: els.projectName.value.trim(),
+  name: projectNameValue,
   customerId: els.projectCustomer.value,
   status: els.projectStatus.value,
   startDate: els.projectStartDate.value,
@@ -4799,6 +4791,8 @@ function saveProject() {
   targetMargin: Number(els.projectTargetMargin.value || 0),
   costCenterId,
   notes: els.projectNotes.value.trim(),
+  createdAt: existing?.createdAt || now,
+  updatedAt: now,
  };
 
  const index = state.projects.findIndex((item) => item.id === id);
@@ -4806,27 +4800,46 @@ function saveProject() {
  else state.projects.push(project);
 
  upsertCostCenter(project);
+ const linkedOpportunity = linkPendingOpportunityToProject(project);
  els.projectForm.reset();
  els.projectId.value = "";
  refreshSearchableSelect(els.projectCustomer);
- persist();
+ persist(linkedOpportunity ? ["projetos", "crm"] : "projetos");
  renderAll();
  els.projectReportSelect.value = project.id;
  renderProjectReports();
  toast("Projeto e centro de custo salvos.");
+ return project;
 }
 
 function upsertCostCenter(project) {
+ const existing = state.costCenters.find((item) => item.id === project.costCenterId);
+ const now = new Date().toISOString();
  const data = {
   id: project.costCenterId,
   projectId: project.id,
   code: project.name,
   name: project.name,
   active: project.status !== "concluido",
+  createdAt: existing?.createdAt || now,
+  updatedAt: now,
  };
  const index = state.costCenters.findIndex((item) => item.id === data.id);
  if (index >= 0) state.costCenters[index] = data;
  else state.costCenters.push(data);
+}
+
+function linkPendingOpportunityToProject(project) {
+ if (pendingOpportunityConversion?.kind !== "project") return false;
+ const { opportunityId, projectId } = pendingOpportunityConversion;
+ if (project.id !== projectId) return false;
+ const opportunity = state.opportunities.find((item) => item.id === opportunityId);
+ if (opportunity) {
+  opportunity.projectId = project.id;
+  opportunity.updatedAt = new Date().toISOString();
+ }
+ pendingOpportunityConversion = null;
+ return Boolean(opportunity);
 }
 
 function handleProjectAction(action, id) {
