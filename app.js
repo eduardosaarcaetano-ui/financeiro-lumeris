@@ -9960,8 +9960,8 @@ function latestInteractionFor(opportunityId) {
 function renderFollowUpList() {
  const activeOpportunities = opportunitiesVisibleToCurrentUser().filter((item) => !["ganho", "perdido"].includes(item.stage));
  const rows = activeOpportunities
-  .map((opportunity) => ({ opportunity, lastInteraction: latestInteractionFor(opportunity.id) }))
-  .map((row) => ({ ...row, nextFollowUp: row.lastInteraction.nextFollowUpDate || "" }))
+ .map((opportunity) => ({ opportunity, lastInteraction: latestInteractionFor(opportunity.id) }))
+  .map((row) => ({ ...row, nextFollowUp: row.lastInteraction?.nextFollowUpDate || "" }))
   .sort((a, b) => (a.nextFollowUp || "9999-99-99").localeCompare(b.nextFollowUp || "9999-99-99"));
 
  els.followUpList.innerHTML = rows.length ?
