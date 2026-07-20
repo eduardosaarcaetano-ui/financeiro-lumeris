@@ -8339,6 +8339,7 @@ function stockUserName(id) {
 }
 
 function appendStockMovement(entry) {
+ const sessionUser = currentSessionUser();
  state.stockMovements.push({
   id: crypto.randomUUID(),
   itemId: "",
@@ -8357,7 +8358,7 @@ function appendStockMovement(entry) {
   transactionId: "",
   exitType: "",
   reason: "",
-  responsibleUserId: currentSessionUser().id || "",
+  responsibleUserId: sessionUser?.id || "",
   recipientName: "",
   fromLocationId: "",
   toLocationId: "",
@@ -8392,7 +8393,7 @@ function importIluminarStock(options = {}) {
  let importedMovements = 0;
 
  [...payload.items, ...(payload.uncatalogedItems || [])].forEach((sourceItem) => {
-  const existing = findImportedStockItem(sourceItem);
+  const existing = findImportedStockItem(sourceItem) || {};
   const item = {
    id: existing.id || sourceItem.id || crypto.randomUUID(),
    internalCode: sourceItem.internalCode || "",
