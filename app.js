@@ -7010,7 +7010,7 @@ function renderInstallationKpis() {
  const outsourceCost = sum(efficiencyRows.map(installationOutsourceCost));
  const saving = outsourceCost - ownCost;
  els.installationKpis.innerHTML = [
-  { label: "P\u00f3s-venda pendente", value: postSalePending.length, hint: `${postSaleLate.length} contato(s) fora do prazo de 2 dias \u00fateis`, tone: postSaleLate.length ? "danger" : postSalePending.length ? "warn" : "ok" },
+  { label: "Atividades pendentes", value: postSalePending.length, hint: `${postSaleLate.length} atividade(s) fora do prazo de 2 dias \u00fateis`, tone: postSaleLate.length ? "danger" : postSalePending.length ? "warn" : "ok" },
   { label: "Entraram na semana", value: enteredWeek.length, hint: `${formatDate(weekStart)} at\u00e9 ${formatDate(weekEnd)}`, tone: "neutral" },
   { label: "Realizados na semana", value: completedWeek.length, hint: `${formatDate(weekStart)} at\u00e9 ${formatDate(weekEnd)}`, tone: "ok" },
   { label: "Realizados no mês", value: completedMonth.length, hint: `${formatDate(monthStart)} até ${formatDate(monthEnd)}`, tone: "neutral" },
