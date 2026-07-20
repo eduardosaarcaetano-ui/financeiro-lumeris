@@ -4607,7 +4607,7 @@ function renderProjects() {
 function saveProject() {
  const id = els.projectId.value || crypto.randomUUID();
  const existing = state.projects.find((project) => project.id === id);
- const costCenterId = existing.costCenterId || crypto.randomUUID();
+ const costCenterId = existing?.costCenterId || crypto.randomUUID();
  const project = {
   id,
   code: "",
