@@ -99,7 +99,7 @@ const SHARED_MERGE_FIELDS = ["people", "projects", "costCenters", "installations
 const ROLE_LABELS = {
  administrador: "Administrador",
  estoque: "Estoque",
- usuario: "Usu?rio",
+ usuario: "Usuário",
 };
 
 const SECTOR_LABELS = {
@@ -784,21 +784,21 @@ const viewNames = {
  projetos: "Projetos e centros de custo",
  protocolos: "Central de Protocolos",
  instalacoes: "Instalações",
- banco: "Conciliação banc?ria",
- apisbancarias: "APIs banc?rias",
+ banco: "Conciliação bancária",
+ apisbancarias: "APIs bancárias",
  notasfiscais: "Notas Fiscais",
  estoque: "Estoque",
  crm: "CRM",
  pessoas: "Clientes e fornecedores",
- relatorios: "Relatérios financeiros",
- usuarios: "Usu?rios",
+ relatorios: "Relatórios financeiros",
+ usuarios: "Usuários",
 };
 
 function getDefaultCrmStages() {
  return [
  { id: "triagem", name: "Triagem", color: "#3f6f8f", order: 1 },
  { id: "contato", name: "Destinados / Contato Inicial", color: "#5d7f3f", order: 2 },
- { id: "diagnostico", name: "Diagn?stico", color: "#a06418", order: 3 },
+ { id: "diagnostico", name: "Diagnóstico", color: "#a06418", order: 3 },
  { id: "proposta", name: "Proposta", color: "#146c5f", order: 4 },
  { id: "negociacao", name: "Negociação", color: "#8757a2", order: 5 },
  { id: "ganho", name: "Fechado - Ganho", color: "#25744f", order: 6 },
@@ -824,7 +824,7 @@ let stockAutoImportRunning = false;
 
 boot().catch((error) => {
  console.error("Falha ao iniciar o sistema:", error);
- els.loginError.textContent = "Erro ao carregar o sistema. Atualize a p?gina e tente novamente.";
+ els.loginError.textContent = "Erro ao carregar o sistema. Atualize a página e tente novamente.";
  els.loginSubmit.disabled = false;
  els.loginSubmit.textContent = "Entrar";
 });
@@ -853,7 +853,7 @@ async function boot() {
    })
    .catch((error) => {
     console.error(error);
-    setSyncStatus("Sem conex?o com o Sheets - usando dados locais", "error");
+    setSyncStatus("Sem conexão com o Sheets - usando dados locais", "error");
    });
  } finally {
   els.loginSubmit.disabled = false;
@@ -2172,7 +2172,7 @@ async function initRemoteSync() {
   }
  } catch (error) {
   console.error(error);
-  setSyncStatus("Sem conex?o com o Sheets ? usando dados locais", "error");
+  setSyncStatus("Sem conexão com o Sheets - usando dados locais", "error");
  }
 }
 
@@ -2403,7 +2403,7 @@ function syncScopeLabel(scopes) {
 }
 function setSyncStatus(text, kind) {
  if (!els.syncStatus) return;
- els.syncStatus.textContent = text;
+ els.syncStatus.textContent = displayText(text);
  els.syncStatus.dataset.state = kind;
 }
 
@@ -2713,13 +2713,13 @@ async function handleLogin(event) {
   const user = state.users.find((item) => item.username.toLowerCase() === normalizedUsername);
 
   if (!user || !user.active || !user.salt || !user.passwordHash) {
-   els.loginError.textContent = "Usu?rio ou senha inv?lidos.";
+   els.loginError.textContent = "Usuário ou senha inválidos.";
    return;
   }
 
   const hash = await hashPassword(password, user.salt);
   if (hash !== user.passwordHash) {
-   els.loginError.textContent = "Usu?rio ou senha inv?lidos.";
+   els.loginError.textContent = "Usuário ou senha inválidos.";
    return;
   }
 
@@ -2734,7 +2734,7 @@ async function handleLogin(event) {
   showApp();
  } catch (error) {
   console.error(error);
-  els.loginError.textContent = "Não foi possível entrar. Recarregue a p?gina e tente novamente.";
+  els.loginError.textContent = "Não foi possível entrar. Recarregue a página e tente novamente.";
  }
 }
 
@@ -2840,7 +2840,7 @@ async function saveUser(event) {
  persist("config");
  renderUsers();
  updateSessionUi();
- toast("Usu?rio salvo.");
+toast("Usuário salvo.");
 }
 
 function handleUserAction(action, id) {
@@ -2876,7 +2876,7 @@ function handleUserAction(action, id) {
  state.users = state.users.filter((item) => item.id !== id);
  persist("config");
  renderUsers();
- toast("Usu?rio exclu?do.");
+toast("Usuário excluído.");
 }
 
 function enhanceSearchableSelect(selectEl, { placeholder = "Buscar?" } = {}) {
@@ -3043,7 +3043,7 @@ function setView(view) {
  document.body.dataset.view = activeView;
  els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
  els.views.forEach((section) => section.classList.toggle("active", section.id === activeView));
- els.viewTitle.textContent = viewNames[view];
+ els.viewTitle.textContent = displayText(viewNames[view]);
  if (activeView === "vendas") {
   setSalesTab(view === "rankvendas" ? "ranking" : "vendas");
   document.querySelector("#salesTabs").classList.toggle("hidden", view === "rankvendas");
@@ -4166,7 +4166,7 @@ function isOpportunityStale(item) {
 }
 
 function currentCrmUser() {
- return localStorage.getItem("financeiro-lumeris-user") || "Usu?rio local";
+return localStorage.getItem("financeiro-lumeris-user") || "Usuário local";
 }
 
 function isOperationalTestText(value) {
@@ -4276,7 +4276,7 @@ function bankBalanceSourceLabel(account) {
  if (source === "ofx") return "saldo do OFX";
  if (source === "inter_api") return "saldo da API Inter";
  if (source === "manual") return "saldo manual informado";
- if (source.endsWith("_api")) return "saldo da API banc?ria";
+if (source.endsWith("_api")) return "saldo da API bancária";
  return "saldo dos movimentos";
 }
 
@@ -4309,11 +4309,11 @@ function renderBankBalances() {
  els.bankBalanceList.innerHTML = accounts.length ? `
    <article class="bank-balance-item bank-balance-total">
     <div>
-     <strong>Saldo total banc?rio</strong>
+     <strong>Saldo total bancário</strong>
      <span class="muted">${accounts.length} conta(s) somadas pelo saldo mais atual, incluindo investimentos vinculados</span>
     </div>
     <strong class="money">${money(totalBalance)}</strong>
-   </article> ?
+   </article>
    ${accounts.map(renderBankBalanceItem).join("")}`
   : emptyMessage("Importe um arquivo OFX na aba Banco para exibir os saldos das contas.");
 }
@@ -4324,7 +4324,7 @@ function renderBankBalanceItem(account) {
    <article class="bank-balance-item">
     <div>
      <strong>${escapeHtml(account.bankId)}</strong>
-     <span class="muted">Conta ${escapeHtml(account.accountId || "não identificada")} ? ${account.balanceDate ? formatDate(account.balanceDate) : "sem data"} ? ${bankBalanceSourceLabel(account)}</span>
+     <span class="muted">Conta ${escapeHtml(account.accountId || "não identificada")} - ${account.balanceDate ? formatDate(account.balanceDate) : "sem data"} - ${bankBalanceSourceLabel(account)}</span>
     </div>
     <strong class="money">${money(account.balance)}</strong>
    </article>`;
@@ -4334,13 +4334,13 @@ function renderBankBalanceItem(account) {
  return `
    <article class="bank-balance-item bank-balance-detail">
     <div>
-     <strong>Inter ? Conta ${escapeHtml(account.accountId || "não identificada")}</strong>
-     <span class="muted">${account.balanceDate ? formatDate(account.balanceDate) : "sem data"} ? ${bankBalanceSourceLabel(account)}</span>
+     <strong>Inter - Conta ${escapeHtml(account.accountId || "não identificada")}</strong>
+     <span class="muted">${account.balanceDate ? formatDate(account.balanceDate) : "sem data"} - ${bankBalanceSourceLabel(account)}</span>
     </div>
     <strong class="money">${money(account.balance)}</strong>
     <div>
      <strong>Investimentos Inter</strong>
-     <span class="muted">${investmentDate ? formatDate(investmentDate) : "sem data"} ? ${account.investmentSource ? "saldo de investimentos" : "aguardando API/valor configurado"}</span>
+     <span class="muted">${investmentDate ? formatDate(investmentDate) : "sem data"} - ${account.investmentSource ? "saldo de investimentos" : "aguardando API/valor configurado"}</span>
     </div>
     <strong class="money">${money(account.investmentBalance || 0)}</strong>
     <div>
@@ -5995,7 +5995,7 @@ function addProtocolHistory(protocolId, action, fromStatus, toStatus, notes = ""
   action,
   fromStatus,
   toStatus,
-  user: user ? (user.name || user.username) : "Usu?rio local",
+  user: user ? (user.name || user.username) : "Usuário local",
   createdAt: new Date().toISOString(),
   notes,
  });
@@ -7874,12 +7874,12 @@ function renderBankSyncList() {
  els.bankSyncList.innerHTML = accounts.length ?
    accounts.map((account) => {
     const provider = BANK_PROVIDERS[account.syncProvider] || BANK_PROVIDERS.mock;
-    const lastSync = account.lastSyncedAt ? `Ãšltima sincronização: ${new Date(account.lastSyncedAt).toLocaleString("pt-BR")}` : "Nunca sincronizado por API";
+    const lastSync = account.lastSyncedAt ? `Última sincronização: ${new Date(account.lastSyncedAt).toLocaleString("pt-BR")}` : "Nunca sincronizado por API";
     return `
    <article class="bank-sync-item">
     <div>
-     <strong>${escapeHtml(account.bankId)} ? Conta ${escapeHtml(account.accountId || "não identificada")}</strong>
-     <span class="muted">${escapeHtml(provider.label)} ? ${lastSync}</span>
+     <strong>${escapeHtml(account.bankId)} - Conta ${escapeHtml(account.accountId || "não identificada")}</strong>
+     <span class="muted">${escapeHtml(provider.label)} - ${escapeHtml(lastSync)}</span>
     </div>
     <button class="secondary-btn" type="button" data-sync-account="${escapeHtml(account.accountKey || `${account.bankId}-${account.accountId}`)}">Sincronizar extrato</button>
    </article>`;
@@ -7893,7 +7893,7 @@ function renderBankSyncList() {
 
 function bankAccountDisplayName(account) {
  if (!account) return "Conta não encontrada";
- return `${account.bankId || "Banco"} ? Conta ${account.accountId || "não identificada"}`;
+ return `${account.bankId || "Banco"} - Conta ${account.accountId || "não identificada"}`;
 }
 
 function hydrateBankApiAccountOptions() {
@@ -7966,7 +7966,7 @@ function saveBankApiConfig(event) {
  persist();
  renderAll();
  resetBankApiForm();
- toast("Configuração de API banc?ria salva.");
+toast("Configuração de API bancária salva.");
 }
 
 function applyBankApiConfigToAccount(config) {
@@ -7994,7 +7994,7 @@ function renderBankApiConfigs() {
     return `
    <article class="report-item">
     <strong><span>${escapeHtml(provider.label)} ? ${escapeHtml(bankAccountDisplayName(account))}</span><span>${config.active ? "Ativa" : "Inativa"}</span></strong>
-    <span class="muted">${config.autoDaily ? `Autom?tico di?rio ? ?ltimos ${config.lookbackDays} dia(s)` : "Autom?tico desligado"} ? ${config.lastSyncedAt ? `Ãšltima baixa: ${new Date(config.lastSyncedAt).toLocaleString("pt-BR")}` : "Nunca baixou extrato"}</span>
+    <span class="muted">${config.autoDaily ? `Automático diário - últimos ${config.lookbackDays} dia(s)` : "Automático desligado"} - ${config.lastSyncedAt ? `Última baixa: ${new Date(config.lastSyncedAt).toLocaleString("pt-BR")}` : "Nunca baixou extrato"}</span>
     <span class="muted">${escapeHtml(config.lastResult || config.notes || "Credenciais protegidas no backend seguro.")}</span>
     <div class="row-actions">
      <button type="button" data-bank-api-action="sync" data-id="${config.id}">Baixar agora</button>
@@ -8003,7 +8003,7 @@ function renderBankApiConfigs() {
     </div>
    </article>`;
    }).join("")
-  : emptyMessage("Nenhuma API banc?ria configurada.");
+  : emptyMessage("Nenhuma API bancária configurada.");
 
  document.querySelectorAll("[data-bank-api-action]").forEach((button) => {
   button.addEventListener("click", () => handleBankApiAction(button.dataset.bankApiAction, button.dataset.id));
@@ -8064,7 +8064,7 @@ async function syncBankApiConfig(config, { manual = false, auto = false } = {}) 
  if (!config.active && !manual) return;
  const account = accountByKey(config.accountKey);
  if (!account) {
-  if (manual) toast("Conta banc?ria não encontrada para essa configuração.");
+  if (manual) toast("Conta bancária não encontrada para essa configuração.");
   return;
  }
 
@@ -8123,7 +8123,7 @@ function openBankSyncDialog(accountKey) {
 
  els.bankSyncForm.reset();
  els.bankSyncAccountKey.value = accountKey;
- els.bankSyncTitle.textContent = `Sincronizar extrato ? ${account.bankId} ? Conta ${account.accountId || ""}`;
+ els.bankSyncTitle.textContent = `Sincronizar extrato - ${account.bankId} - Conta ${account.accountId || ""}`;
  els.bankSyncProvider.value = account.syncProvider || "mock";
  els.bankSyncEndpoint.value = account.syncEndpoint || "";
  els.bankSyncEnd.value = todayIso;
@@ -8230,7 +8230,7 @@ function hydrateBankAccountFilter() {
  const sorted = [...accounts.entries()].sort((a, b) => a[1].bankId.localeCompare(b[1].bankId) || String(a[1].accountId).localeCompare(String(b[1].accountId)));
  els.bankAccountFilter.innerHTML =
   `<option value="todas">Todas as contas</option>` +
-  sorted.map(([key, acc]) => `<option value="${escapeHtml(key)}">${escapeHtml(acc.bankId)} ? Conta ${escapeHtml(acc.accountId || "não identificada")}</option>`).join("");
+  sorted.map(([key, acc]) => `<option value="${escapeHtml(key)}">${escapeHtml(acc.bankId)} - Conta ${escapeHtml(acc.accountId || "não identificada")}</option>`).join("");
  els.bankAccountFilter.value = accounts.has(current) ? current : "todas";
 }
 
@@ -8296,7 +8296,7 @@ function bankRow(item) {
    <td>${item.type === "entrada" ? "Entrada" : "Saída"}</td>
    <td>
     <strong>${escapeHtml(item.description)}</strong>
-    <span class="muted block">${escapeHtml(item.bankId)} ? ${escapeHtml(item.documentNumber || item.fitid)} ? ${escapeHtml(bankMovementProjectLabel(item))}</span>
+    <span class="muted block">${escapeHtml(item.bankId)} - ${escapeHtml(item.documentNumber || item.fitid)} - ${escapeHtml(bankMovementProjectLabel(item))}</span>
    </td>
    <td>${escapeHtml(item.category || "-")}</td>
    <td>${dreGroupLabel(item.dreGroup)}</td>
@@ -8631,10 +8631,10 @@ function unlinkBankMovement(movement) {
 function suggestCategory(movement) {
  const text = movement.description.toLowerCase();
  if (text.includes("pix")) return movement.type === "entrada" ? "Recebimentos PIX" : "Pagamentos PIX";
- if (text.includes("tarifa") || text.includes("taxa")) return "Tarifas banc?rias";
+if (text.includes("tarifa") || text.includes("taxa")) return "Tarifas bancárias";
  if (text.includes("salario") || text.includes("folha")) return "Folha";
  if (text.includes("boleto")) return movement.type === "entrada" ? "Recebimento boleto" : "Pagamento boleto";
- return movement.type === "entrada" ? "Receitas financeiras" : "Despesas banc?rias";
+return movement.type === "entrada" ? "Receitas financeiras" : "Despesas bancárias";
 }
 
 function exportBankCsv() {
@@ -9551,7 +9551,7 @@ function openStockMovementDialog(id) {
   detailItem("Saldo depois", formatQuantity(movement.balanceAfter)),
   detailItem("Projeto", movement.projectId ? projectName(movement.projectId) : "Sem projeto"),
   detailItem("Funcion?rio/equipe", movement.recipientName || "Não informado"),
-  detailItem("Usu?rio respons?vel", stockUserName(movement.responsibleUserId)),
+ detailItem("Usuário responsável", stockUserName(movement.responsibleUserId)),
   detailItem("Motivo", movement.reason || "Não informado"),
   detailItem("Conta vinculada", transaction ? `${transaction.description} ? ${money(transaction.amount)} ? ${statusLabel(transaction.status)}` : "Sem conta vinculada"),
   detailItem("Observaúes", movement.notes || "Sem observaúes", true),
@@ -10841,7 +10841,7 @@ async function importInvoiceXml(event) {
 
 function parseInvoiceXml(xmlText) {
  const doc = new DOMParser().parseFromString(xmlText, "application/xml");
- if (doc.querySelector("parsererror")) throw new Error("XML inv?lido");
+ if (doc.querySelector("parsererror")) throw new Error("XML inválido");
  const tag = (...names) => {
   for (const name of names) {
    const node = [...doc.getElementsByTagName(name)][0];
@@ -11946,7 +11946,7 @@ function importBackup(event) {
   try {
    data = normalizeState(JSON.parse(reader.result));
   } catch {
-   toast("Arquivo inv?lido.");
+   toast("Arquivo inválido.");
    return;
   }
 
@@ -12127,11 +12127,60 @@ function monthKey(date) {
 }
 
 function emptyMessage(text) {
- return `<span class="muted">${text}</span>`;
+ return `<span class="muted">${displayText(text)}</span>`;
+}
+
+function displayText(value) {
+ return String(value ?? "")
+  .replace(/\s\?\s/g, " - ")
+  .replace(/Ãš/g, "Ú")
+  .replace(/banc\?ria/gi, (match) => match[0] === "B" ? "Bancária" : "bancária")
+  .replace(/usu\?rio/gi, (match) => match[0] === "U" ? "Usuário" : "usuário")
+  .replace(/usu\?rios/gi, (match) => match[0] === "U" ? "Usuários" : "usuários")
+  .replace(/relat\?rios/gi, (match) => match[0] === "R" ? "Relatórios" : "relatórios")
+  .replace(/diagn\?stico/gi, (match) => match[0] === "D" ? "Diagnóstico" : "diagnóstico")
+  .replace(/hist\?rico/gi, (match) => match[0] === "H" ? "Histórico" : "histórico")
+  .replace(/per\?odo/gi, (match) => match[0] === "P" ? "Período" : "período")
+  .replace(/pr\?ximo/gi, (match) => match[0] === "P" ? "Próximo" : "próximo")
+  .replace(/m\?ximo/gi, (match) => match[0] === "M" ? "Máximo" : "máximo")
+  .replace(/m\?nimo/gi, (match) => match[0] === "M" ? "Mínimo" : "mínimo")
+  .replace(/autom\?tico/gi, (match) => match[0] === "A" ? "Automático" : "automático")
+  .replace(/di\?rio/gi, (match) => match[0] === "D" ? "Diário" : "diário")
+  .replace(/v\?lido/gi, (match) => match[0] === "V" ? "Válido" : "válido")
+  .replace(/p\?gina/gi, (match) => match[0] === "P" ? "Página" : "página")
+  .replace(/endere\?o/gi, (match) => match[0] === "E" ? "Endereço" : "endereço")
+  .replace(/descri\?o/gi, (match) => match[0] === "D" ? "Descrição" : "descrição")
+  .replace(/diferen\?a/gi, (match) => match[0] === "D" ? "Diferença" : "diferença")
+  .replace(/lan\?amento/gi, (match) => match[0] === "L" ? "Lançamento" : "lançamento")
+  .replace(/lan\?amentos/gi, (match) => match[0] === "L" ? "Lançamentos" : "lançamentos")
+  .replace(/concession\?ria/gi, (match) => match[0] === "C" ? "Concessionária" : "concessionária")
+  .replace(/respons\?vel/gi, (match) => match[0] === "R" ? "Responsável" : "responsável")
+  .replace(/previs\?o/gi, (match) => match[0] === "P" ? "Previsão" : "previsão")
+  .replace(/pend\?ncia/gi, (match) => match[0] === "P" ? "Pendência" : "pendência")
+  .replace(/an\?lise/gi, (match) => match[0] === "A" ? "Análise" : "análise")
+  .replace(/el\?trico/gi, (match) => match[0] === "E" ? "Elétrico" : "elétrico")
+  .replace(/formul\?rios/gi, (match) => match[0] === "F" ? "Formulários" : "formulários")
+  .replace(/tamb\?m/gi, "também")
+  .replace(/est\?vel/gi, "estável")
+  .replace(/refer\?ncia/gi, (match) => match[0] === "R" ? "Referência" : "referência")
+  .replace(/fotogr\?fico/gi, (match) => match[0] === "F" ? "Fotográfico" : "fotográfico")
+  .replace(/ap\?s/gi, "após")
+  .replace(/in\?cio/gi, (match) => match[0] === "I" ? "Início" : "início")
+  .replace(/m\?dio/gi, (match) => match[0] === "M" ? "Médio" : "médio")
+  .replace(/c\?digo/gi, (match) => match[0] === "C" ? "Código" : "código")
+  .replace(/receb\?vel/gi, (match) => match[0] === "R" ? "Recebível" : "recebível")
+  .replace(/cont\?bil/gi, (match) => match[0] === "C" ? "Contábil" : "contábil")
+  .replace(/compat\?vel/gi, (match) => match[0] === "C" ? "Compatível" : "compatível")
+  .replace(/l\?quido/gi, (match) => match[0] === "L" ? "Líquido" : "líquido")
+  .replace(/prop\?sito/gi, "propósito")
+  .replace(/dispon\?vel/gi, "disponível")
+  .replace(/funúo/gi, "função")
+  .replace(/Deduúes/g, "Deduções")
+  .replace(/manutenúo/gi, "manutenção");
 }
 
 function escapeHtml(value) {
- return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+ return displayText(value).replace(/[&<>"']/g, (char) => ({
   "&": "&amp;",
   "<": "&lt;",
   ">": "&gt;",
@@ -12145,7 +12194,7 @@ function csvCell(value) {
 }
 
 function toast(message) {
- els.toast.textContent = message;
+ els.toast.textContent = displayText(message);
  els.toast.classList.add("show");
  window.clearTimeout(toast.timer);
  toast.timer = window.setTimeout(() => els.toast.classList.remove("show"), 2600);
