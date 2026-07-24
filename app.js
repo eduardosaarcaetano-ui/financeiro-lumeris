@@ -278,6 +278,7 @@ const els = {
  sessionUserName: document.querySelector("#sessionUserName"),
  sessionUserRole: document.querySelector("#sessionUserRole"),
  logoutBtn: document.querySelector("#logoutBtn"),
+ topbarLogoutBtn: document.querySelector("#topbarLogoutBtn"),
  userForm: document.querySelector("#userForm"),
  userId: document.querySelector("#userId"),
  userName: document.querySelector("#userName"),
@@ -876,6 +877,7 @@ function bindEvents() {
  ensureQuickProjectCustomerButton();
  els.loginForm.addEventListener("submit", handleLogin);
  els.logoutBtn.addEventListener("click", handleLogout);
+ els.topbarLogoutBtn.addEventListener("click", handleLogout);
  els.maintenanceLogoutBtn.addEventListener("click", handleLogout);
  els.userForm.addEventListener("submit", saveUser);
  els.userRole.addEventListener("change", updateUserSectorUi);
