@@ -2,7 +2,7 @@
 const LEGACY_STORAGE_KEYS = ["financeiro-lumeris-v2", "financeiro-lumeris-v1"];
 
 // URL de implantação do Google Apps Script (Web App). Preencha depois de publicar o Code.gs
-// na sua planilha para que todos os usu?rios passem a compartilhar os mesmos dados.
+// na sua planilha para que todos os usuários passem a compartilhar os mesmos dados.
 const SHEETS_ENDPOINT = "https://script.google.com/macros/s/AKfycbw6UqQ8YH0jMLdvDfSumh6h8zZfBSh91NIOd6oqJo_DP5bgP88N8lLl25daHvwCUWSq/exec";
 const SYNC_DEBOUNCE_MS = 800;
 const SYNC_TIMEOUT_MS = 45000;
@@ -36,20 +36,20 @@ const INVOICE_STATUS_OPTIONS_DESPESA = [
  { value: "cancelada", label: "Cancelada" },
 ];
 
-// Um ?nico menu "Notas Fiscais" com 3 sub-abas (kind), em vez de 3 telas separadas ?
-// evita triplicar formul?rio/lista/relatérios para dados que t?m a mesma forma.
+// Um único menu "Notas Fiscais" com 3 sub-abas (kind), em vez de 3 telas separadas,
+// evita triplicar formulário/lista/relatórios para dados que têm a mesma forma.
 const INVOICE_KIND_META = {
  servico: { label: "NF de Serviço emitida", direction: "emitida", personLabel: "Cliente", statusOptions: INVOICE_STATUS_OPTIONS_EMITIDA },
  material: { label: "NF de Material/Produto emitida", direction: "emitida", personLabel: "Cliente", statusOptions: INVOICE_STATUS_OPTIONS_EMITIDA },
  despesa: { label: "NF de despesa recebida", direction: "recebida", personLabel: "Fornecedor", statusOptions: INVOICE_STATUS_OPTIONS_DESPESA },
 };
 
-// Camada de integração banc?ria: cada provedor implementa fetchStatement(account, {start, end})
+// Camada de integração bancária: cada provedor implementa fetchStatement(account, {start, end})
 // e devolve movimentos no MESMO formato produzido por parseOfx, para reaproveitar dedupe/conciliação.
 // "inter" e "santander" nunca chamam o banco direto do navegador (impossível: exigem mTLS/segredos que
-// não podem existir num site est?tico) ? eles chamam um backend pr?prio que voc? hospeda e que guarda
+// não podem existir num site estático); eles chamam um backend próprio que você hospeda e que guarda
 // as credenciais reais. Enquanto esse backend não existir, use o provedor "mock".
-// (Referencia funúes declaradas mais abaixo ? seguro porque function declarations s?o hoisted.)
+// (Referencia funções declaradas mais abaixo é seguro porque function declarations são hoisted.)
 const BANK_PROVIDERS = {
  mock: { label: "Simulado (dados de teste)", requiresEndpoint: false, fetchStatement: (account, range) => mockFetchStatement(account, range) },
  inter: { label: "Banco Inter (API real via backend)", requiresEndpoint: true, fetchStatement: (account, range) => fetchStatementViaBackend("inter", account, range) },
@@ -62,19 +62,19 @@ const MANUAL_BANK_BALANCE_OVERRIDES = [
 
 const MOCK_DESCRIPTIONS = {
  "077": {
-  entrada: ["Pix recebido - Cliente Simulado", "Transfer?ncia recebida", "Rendimento de aplicação"],
+  entrada: ["Pix recebido - Cliente Simulado", "Transferência recebida", "Rendimento de aplicação"],
   saida: ["Pix enviado - Fornecedor Simulado", "Pagamento de boleto", "Tarifa de manutenúo"],
  },
  "033": {
-  entrada: ["TED recebida", "Dep?sito identificado", "Rendimento CDB"],
-  saida: ["D?bito autom?tico", "Compra no d?bito", "Pagamento de conv?nio"],
+  entrada: ["TED recebida", "Depósito identificado", "Rendimento CDB"],
+  saida: ["Débito automático", "Compra no débito", "Pagamento de convênio"],
  },
 };
 
-// Controle de acesso por papel. "administrador" (null) enxerga tudo; os demais pap?is
-// s? acessam as views listadas aqui. Este ? o ?nico lugar que decide isso ? setView() e
-// updateSessionUi() (menu) consultam a mesma funúo canAccessView(), ent?o não existe
-// como uma tela ficar acess?vel por engano num lugar e bloqueada em outro.
+// Controle de acesso por papel. "administrador" (null) enxerga tudo; os demais papéis
+// só acessam as views listadas aqui. Este é o único lugar que decide isso: setView() e
+// updateSessionUi() (menu) consultam a mesma função canAccessView(), então não existe
+// como uma tela ficar acessível por engano num lugar e bloqueada em outro.
 const SECTOR_ALLOWED_VIEWS = {
  financeiro: ["dashboard", "receber", "pagar", "banco", "apisbancarias", "notasfiscais", "relatorios", "pessoas"],
  comercial: ["crm", "vendas"],
@@ -116,9 +116,9 @@ const DEFAULT_USER_SECTORS = Object.keys(SECTOR_ALLOWED_VIEWS);
 let currentStockTab = "itens";
 let bankApiAutoSyncRunning = false;
 
-// Central de Protocolos: cadastro de concession?rias e tipos de atividade usa ids fixos
-// nos itens padr?o (em vez de crypto.randomUUID()) para que PROTOCOL_CHECKLIST_TEMPLATES
-// consiga referenciar o tipo de forma est?vel entre instalações diferentes do app.
+// Central de Protocolos: cadastro de concessionárias e tipos de atividade usa ids fixos
+// nos itens padrão (em vez de crypto.randomUUID()) para que PROTOCOL_CHECKLIST_TEMPLATES
+// consiga referenciar o tipo de forma estável entre instalações diferentes do app.
 const UTILITY_COMPANY_DEFAULTS = [
  { id: "cpfl_piratininga", name: "CPFL Piratininga" },
  { id: "cpfl_paulista", name: "CPFL Paulista" },
@@ -131,35 +131,35 @@ const UTILITY_COMPANY_DEFAULTS = [
 const PROTOCOL_ACTIVITY_TYPE_DEFAULTS = [
  { id: "consulta_viabilidade", name: "Consulta de viabilidade" },
  { id: "homologacao", name: "Homologação" },
- { id: "revisao_projeto", name: "Revis?o de projeto" },
+ { id: "revisao_projeto", name: "Revisão de projeto" },
  { id: "troca_medidor", name: "Troca de medidor" },
  { id: "troca_titularidade", name: "Troca de titularidade" },
  { id: "ligacao_nova", name: "Ligação nova" },
  { id: "aumento_carga", name: "Aumento de carga" },
  { id: "alteracao_demanda", name: "Alteração de demanda" },
- { id: "migracao_tarifaria", name: "Migração tarif?ria" },
+ { id: "migracao_tarifaria", name: "Migração tarifária" },
  { id: "vistoria", name: "Vistoria" },
- { id: "pendencia_documental", name: "Pend?ncia documental" },
- { id: "analise_tecnica", name: "An?lise técnica" },
+ { id: "pendencia_documental", name: "Pendência documental" },
+ { id: "analise_tecnica", name: "Análise técnica" },
  { id: "outro", name: "Outro" },
 ];
 
-// Cada item de checklist funciona tamb?m como controle de documento (status
+// Cada item de checklist funciona também como controle de documento (status
 // pendente/enviado/aprovado/rejeitado), evitando manter listas separadas de
 // "documentos enviados"/"documentos pendentes" que duplicariam a mesma informação.
 const PROTOCOL_CHECKLIST_TEMPLATES = {
- homologacao: ["ART", "Projeto el?trico", "Procuração", "Documento do cliente", "Conta de energia", "Memorial descritivo", "Formul?rios da concession?ria"],
+ homologacao: ["ART", "Projeto elétrico", "Procuração", "Documento do cliente", "Conta de energia", "Memorial descritivo", "Formulários da concessionária"],
 };
 
 const PROTOCOL_STATUSES = [
  { id: "novo", label: "Novo", tone: "neutral" },
  { id: "em_preparacao", label: "Em preparação", tone: "neutral" },
  { id: "protocolado", label: "Protocolado", tone: "warn" },
- { id: "em_analise", label: "Em an?lise", tone: "warn" },
+ { id: "em_analise", label: "Em análise", tone: "warn" },
  { id: "aguardando_documentos", label: "Aguardando documentos", tone: "warn" },
  { id: "aguardando_cliente", label: "Aguardando cliente", tone: "warn" },
- { id: "aguardando_concessionaria", label: "Aguardando concession?ria", tone: "warn" },
- { id: "pendencia_tecnica", label: "Pend?ncia técnica", tone: "danger" },
+ { id: "aguardando_concessionaria", label: "Aguardando concessionária", tone: "warn" },
+ { id: "pendencia_tecnica", label: "Pendência técnica", tone: "danger" },
  { id: "projeto_aprovado", label: "Projeto aprovado", tone: "ok" },
  { id: "projeto_reprovado", label: "Projeto reprovado", tone: "danger" },
  { id: "instalacao_liberada", label: "Instalação liberada", tone: "ok" },
@@ -177,18 +177,18 @@ const PROTOCOL_STALE_DAYS = 10;
 const PROTOCOL_ALERT_CATEGORIES = [
  { key: "vencidos", label: "Vencidos", apply: () => { els.protocolFilterDeadline.value = "atraso"; } },
  { key: "venceHoje", label: "Prazo termina hoje", apply: () => { els.protocolFilterDeadline.value = "hoje"; } },
- { key: "venceAmanha", label: "Prazo termina amanh?", apply: () => { els.protocolFilterDeadline.value = "semana"; } },
+ { key: "venceAmanha", label: "Prazo termina amanhã", apply: () => { els.protocolFilterDeadline.value = "semana"; } },
  { key: "aguardandoCliente", label: "Cliente aguardando resposta", apply: () => { els.protocolFilterStatus.value = "aguardando_cliente"; } },
- { key: "aguardandoDocumentos", label: "Concession?ria aguardando documentos", apply: () => { els.protocolFilterStatus.value = "aguardando_documentos"; } },
- { key: "paradoHaMuitosDias", label: `Parado h? mais de ${PROTOCOL_STALE_DAYS} dias`, apply: () => {} },
+ { key: "aguardandoDocumentos", label: "Concessionária aguardando documentos", apply: () => { els.protocolFilterStatus.value = "aguardando_documentos"; } },
+ { key: "paradoHaMuitosDias", label: `Parado há mais de ${PROTOCOL_STALE_DAYS} dias`, apply: () => {} },
 ];
 
 const STOCK_UNIT_LABELS = {
  unidade: "Unidade",
- peca: "Pe?a",
+ peca: "Peça",
  metro: "Metro",
  metro_quadrado: "Metro quadrado",
- metro_cubico: "Metro c?bico",
+ metro_cubico: "Metro cúbico",
  quilo: "Quilo",
  litro: "Litro",
  caixa: "Caixa",
@@ -199,11 +199,11 @@ const STOCK_UNIT_LABELS = {
 const STOCK_EXIT_TYPE_LABELS = {
  consumo_projeto: "Consumo em projeto",
  uso_interno: "Uso interno",
- transferencia: "Transfer?ncia",
+ transferencia: "Transferência",
  perda: "Perda",
  avaria: "Avaria",
  descarte: "Descarte",
- emprestimo: "Empr?stimo",
+ emprestimo: "Empréstimo",
  outro: "Outro",
 };
 
@@ -216,9 +216,9 @@ let opportunityAttachmentsDraft = [];
 let driveAutomationCapability = null;
 let showLostOpportunities = false;
 
-// Ordem do funil ? usada tanto para renderizar as colunas quanto para calcular
-// taxa de convers?o por est?gio nos relatérios. "ganho"/"perdido" s?o est?gios
-// terminais (não t?m "pr?ximo est?gio" para fins de convers?o sequencial).
+// Ordem do funil é usada tanto para renderizar as colunas quanto para calcular
+// taxa de conversão por estágio nos relatórios. "ganho"/"perdido" são estágios
+// terminais (não têm "próximo estágio" para fins de conversão sequencial).
 const OPPORTUNITY_STAGES = [
  { key: "prospeccao", label: "Prospecúo" },
  { key: "contato", label: "Contato" },
@@ -249,7 +249,7 @@ const INSTALLATION_BACKLOG_SEED = [
 const INTERACTION_TYPE_LABELS = {
  ligacao: "Ligação",
  email: "E-mail",
- reuniao: "Reuni?o",
+ reuniao: "Reunião",
  whatsapp: "WhatsApp",
  outro: "Outro",
 };
@@ -813,7 +813,7 @@ const dreGroups = [
  { key: "despesas_operacionais", label: "Despesas operacionais", sign: -1 },
  { key: "despesas_financeiras", label: "Despesas financeiras", sign: -1 },
  { key: "impostos", label: "Impostos", sign: -1 },
- { key: "transitoria", label: "Transit?ria", sign: 0 },
+ { key: "transitoria", label: "Transitória", sign: 0 },
  { key: "retirada", label: "Retirada", sign: -1 },
  { key: "outros", label: "Outros", sign: 1 },
 ];
@@ -1011,7 +1011,7 @@ function bindEvents() {
   event.preventDefault();
   if (event.submitter.value === "cancel") {
    els.opportunityLostDialog.close();
-   renderPipelineBoard(); // reverte o <select> que o usu?rio mudou visualmente, j? que nada foi salvo
+   renderPipelineBoard(); // reverte o <select> que o usuário mudou visualmente, já que nada foi salvo
    return;
   }
   confirmOpportunityLost();
@@ -1033,9 +1033,9 @@ function bindEvents() {
 
  els.opportunityWonServiceType.addEventListener("change", syncOpportunityWonProjectChoice);
 
- // Ganchos para vincular a oportunidade de volta ? venda/projeto gerado, sem alterar
- // saveSale()/saveProject() ? eles rodam DEPOIS dos handlers originais (mesma ordem de
- // registro), ent?o checam o resultado real (o que foi de fato criado) em vez de assumir.
+ // Ganchos para vincular a oportunidade de volta à venda/projeto gerado, sem alterar
+ // saveSale()/saveProject(); eles rodam DEPOIS dos handlers originais (mesma ordem de
+ // registro), então checam o resultado real (o que foi de fato criado) em vez de assumir.
  els.saleDialog.addEventListener("close", () => {
   if (pendingOpportunityConversion?.kind === "sale") {
    const created = state.sales.length > pendingOpportunityConversion.saleCountBefore;
@@ -2127,7 +2127,7 @@ function seedInstallationBacklog(normalized) {
      generatedAt: "",
     },
     materials: seed.note,
-    notes: `Cadastro inicial criado pela lista de instalações em andamento (${seed.code}). Etapa inicial: ${installationStatusLabel(status)}. Ao consumir material do estoque, use Saída de material > Consumo em projeto para baixar estoque e lan?ar custo direto no projeto.`,
+    notes: `Cadastro inicial criado pela lista de instalações em andamento (${seed.code}). Etapa inicial: ${installationStatusLabel(status)}. Ao consumir material do estoque, use Saída de material > Consumo em projeto para baixar estoque e lançar custo direto no projeto.`,
     conclusion: "",
     opportunityId: "",
     contractId: "",
@@ -2768,13 +2768,13 @@ function renderUsers() {
    users.map((user) => `
    <article class="person-item">
     <strong><span>${escapeHtml(user.name || user.username)}</span><span>${escapeHtml(userAccessLabel(user))}</span></strong>
-    <span class="muted">@${escapeHtml(user.username)} ? ${roleLabel(user.role)} ? ${user.active ? "Ativo" : "Inativo"}</span>
+    <span class="muted">@${escapeHtml(user.username)} - ${roleLabel(user.role)} - ${user.active ? "Ativo" : "Inativo"}</span>
     <div class="row-actions">
      <button type="button" data-user-action="edit" data-id="${user.id}">Editar</button>
      <button type="button" data-user-action="delete" data-id="${user.id}">Excluir</button>
-    </div> ?
+    </div>
    </article>`).join("")
-  : emptyMessage("Nenhum usu?rio cadastrado.");
+  : emptyMessage("Nenhum usuário cadastrado.");
 
  document.querySelectorAll("[data-user-action]").forEach((button) => {
   button.addEventListener("click", () => handleUserAction(button.dataset.userAction, button.dataset.id));
@@ -2784,7 +2784,7 @@ function renderUsers() {
 async function saveUser(event) {
  event.preventDefault();
  if (!isAdmin()) {
-  toast("Apenas administradores podem cadastrar usu?rios.");
+  toast("Apenas administradores podem cadastrar usuários.");
   return;
  }
  const id = els.userId.value || crypto.randomUUID();
@@ -2794,18 +2794,18 @@ async function saveUser(event) {
 
  const usernameTaken = state.users.some((item) => item.id !== id && item.username.toLowerCase() === username.toLowerCase());
  if (usernameTaken) {
-  toast("J? existe um usu?rio com esse login.");
+  toast("Já existe um usuário com esse login.");
   return;
  }
 
  if (!existing && !password) {
-  toast("Informe uma senha para o novo usu?rio.");
+  toast("Informe uma senha para o novo usuário.");
   return;
  }
 
  const sectors = els.userRole.value === "administrador" ? DEFAULT_USER_SECTORS.slice() : selectedUserSectors();
  if (els.userRole.value !== "administrador" && !sectors.length) {
-  toast("Selecione pelo menos um setor para o usu?rio.");
+  toast("Selecione pelo menos um setor para o usuário.");
   return;
  }
 
@@ -2845,7 +2845,7 @@ toast("Usuário salvo.");
 
 function handleUserAction(action, id) {
  if (!isAdmin()) {
-  toast("Apenas administradores podem gerenciar usu?rios.");
+  toast("Apenas administradores podem gerenciar usuários.");
   return;
  }
  const user = state.users.find((item) => item.id === id);
@@ -2864,12 +2864,12 @@ function handleUserAction(action, id) {
  }
 
  if (user.username === MASTER_USERNAME) {
-  toast("O usu?rio master não pode ser exclu?do.");
+  toast("O usuário master não pode ser excluído.");
   return;
  }
 
  if (getSession().userId === id) {
-  toast("Voc? não pode excluir o pr?prio usu?rio logado.");
+  toast("Você não pode excluir o próprio usuário logado.");
   return;
  }
 
@@ -3348,7 +3348,7 @@ async function checkDriveAutomationAvailable() {
 async function postDriveAutomation(action, payload, timeoutMs = 60000) {
  const available = await checkDriveAutomationAvailable();
  if (!available) {
-  throw new Error("Atualize e publique o Apps Script para ativar criação de pastas e upload autom?tico no Drive.");
+  throw new Error("Atualize e publique o Apps Script para ativar criação de pastas e upload automático no Drive.");
  }
  const response = await fetchWithTimeout(
   SHEETS_ENDPOINT,
@@ -3437,7 +3437,7 @@ async function handleOpportunityFiles(fileList) {
  } catch (error) {
   console.error(error);
   setOpportunityAttachmentStatus(error.message, "error");
-  toast("Upload autom?tico indispon?vel. Use o link da pasta do Drive.");
+  toast("Upload automático indisponível. Use o link da pasta do Drive.");
  } finally {
   if (els.opportunityFileInput) els.opportunityFileInput.value = "";
  }
@@ -3515,7 +3515,7 @@ function renderOpportunityAttachmentRows() {
        ["documento", "Documento"],
        ["pdf", "PDF"],
        ["planilha", "Planilha Excel"],
-       ["midia", "M?dia"],
+       ["midia", "Mídia"],
        ["outro", "Outro"],
       ].map(([value, label]) => `<option value="${value}" ${item.type === value ? "selected" : ""}>${label}</option>`).join("")}
      </select>
@@ -3530,7 +3530,7 @@ function renderOpportunityAttachmentRows() {
      <input data-attachment-notes maxlength="180" value="${escapeHtml(item.notes)}" />
     </label>
     <button class="secondary-btn" data-remove-opportunity-attachment="${item.id}" type="button">Remover</button>
-   </article> ?
+   </article>
   `).join("")
   : emptyMessage("Nenhum anexo registrado. Crie uma pasta no Drive para o lead e cole os links dos arquivos aqui.");
 }
@@ -3619,8 +3619,8 @@ function updateProposalPricingUi(syncInvestment = false) {
   </article>
   <article><span>Custo fixo</span><strong>${money(finalResult.fixedCost)}</strong></article>
   <article><span>Impostos + comiss\u00e3o</span><strong>${money(finalResult.taxCost + finalResult.commissionCost)}</strong></article>
-  <article><span>Pre?o m\u00ednimo</span><strong>${money(finalResult.minimumPrice)}</strong></article>
-  <article><span>Pre?o sugerido</span><strong>${money(finalResult.suggestedPrice)}</strong></article>
+  <article><span>Preço m\u00ednimo</span><strong>${money(finalResult.minimumPrice)}</strong></article>
+  <article><span>Preço sugerido</span><strong>${money(finalResult.suggestedPrice)}</strong></article>
   <article><span>Margem estimada</span><strong>${formatNumber(finalResult.margin * 100, 2)}%</strong></article>
  `;
 }
@@ -3678,7 +3678,7 @@ function renderProposalMonthlyRows(proposal = {}) {
   els.proposalGeneration.value = Math.round(averagePositive(generation) || 0);
  }
  els.proposalMonthlyRows.innerHTML = `
-  <div class="proposal-month-head">M?s</div>
+  <div class="proposal-month-head">Mês</div>
   <div class="proposal-month-head">Consumo</div>
   <div class="proposal-month-head">% ajuste</div>
   <div class="proposal-month-head">Geração</div>
@@ -3972,7 +3972,7 @@ function generateOpportunityProposalPdf() {
 function openCurrentOpportunityMap() {
  const locationText = opportunityLocationText(currentOpportunityDraftFromForm());
  if (!locationText) {
-  toast("Informe endere?o ou latitude/longitude para abrir o mapa.");
+  toast("Informe endereço ou latitude/longitude para abrir o mapa.");
   return;
  }
  window.open(googleMapsUrlFromLocation(locationText), "_blank");
@@ -3997,14 +3997,14 @@ function renderCrmMapList() {
      <a class="secondary-btn" href="${googleMapsUrlFromLocation(location)}" target="_blank" rel="noopener">Abrir no Google Maps</a>
     </article>`;
   }).join("")
-  : emptyMessage("Nenhum lead vis?vel possui endere?o ou coordenadas.");
+  : emptyMessage("Nenhum lead visível possui endereço ou coordenadas.");
 }
 
 function openVisibleCrmRoute() {
  const locations = filteredOpportunities().map(opportunityLocationText).filter(Boolean);
  const url = googleMapsRouteUrl(locations);
  if (!url) {
-  toast("Nenhum lead vis?vel possui localização para montar rota.");
+  toast("Nenhum lead visível possui localização para montar rota.");
   return;
  }
  window.open(url, "_blank");
@@ -4071,7 +4071,7 @@ function saveOpportunity() {
  const index = state.opportunities.findIndex((item) => item.id === id);
  if (index >= 0) {
   if (existing.stageId !== data.stageId) {
-   addOpportunityHistory(id, "mudan?a de etapa", existing.stageId, data.stageId);
+   addOpportunityHistory(id, "mudança de etapa", existing.stageId, data.stageId);
    data.lastMovedAt = now;
   }
   state.opportunities[index] = data;
@@ -4093,7 +4093,7 @@ function moveOpportunity(id, newStageId) {
  item.stageId = newStageId;
  item.updatedAt = new Date().toISOString();
  item.lastMovedAt = item.updatedAt;
- addOpportunityHistory(id, "mudan?a de etapa", previousStage, newStageId);
+ addOpportunityHistory(id, "mudança de etapa", previousStage, newStageId);
  persist();
  renderCrm();
 }
@@ -4106,9 +4106,9 @@ function renderOpportunityHistory(opportunityId) {
    rows.map((row) => `
    <article class="report-item">
     <strong><span>${escapeHtml(row.action)}</span><span>${formatDate(row.createdAt.slice(0, 10))}</span></strong>
-    <span class="muted">${escapeHtml(stageName(row.fromStageId) || "-")} ? ${escapeHtml(stageName(row.toStageId) || "-")} ? ${escapeHtml(row.user)}</span> ?
+    <span class="muted">${escapeHtml(stageName(row.fromStageId) || "-")} - ${escapeHtml(stageName(row.toStageId) || "-")} - ${escapeHtml(row.user)}</span>
    </article>`).join("")
-  : emptyMessage("Sem hist?rico registrado.");
+  : emptyMessage("Sem histórico registrado.");
 }
 
 function addOpportunityHistory(opportunityId, action, fromStageId, toStageId, notes = "") {
@@ -4235,7 +4235,7 @@ function renderDashboard() {
  document.querySelector("#kpiPagarAberto").textContent = money(pagarAberto);
  document.querySelector("#kpiReceberVencido").textContent = `${money(receberVencido)} vencido`;
  document.querySelector("#kpiReceberVencidoCard").textContent = money(receberVencido);
- document.querySelector("#kpiReceberVencidoCount").textContent = `${receberVencidoItems.length} lan?amento(s) vencido(s)`;
+ document.querySelector("#kpiReceberVencidoCount").textContent = `${receberVencidoItems.length} lançamento(s) vencido(s)`;
  document.querySelector("#kpiPagarVencido").textContent = `${money(pagarVencido)} vencido`;
  document.querySelector("#kpiSaldoPrevisto").textContent = money(receberAberto - pagarAberto);
  document.querySelector("#kpiRealizadoMes").textContent = money(realizadoMes);
@@ -4403,7 +4403,7 @@ function renderUpcoming() {
    upcoming.map((item) => `
    <article class="mini-item">
     <strong><span>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></strong>
-    <span class="muted">${formatDate(item.dueDate)} ? ${personName(item.personId)} ? ${item.type === "receber" ? "Receber" : "Pagar"}</span>
+    <span class="muted">${formatDate(item.dueDate)} - ${personName(item.personId)} - ${item.type === "receber" ? "Receber" : "Pagar"}</span>
    </article>`).join("")
   : emptyMessage("Nenhum vencimento em aberto.");
 }
@@ -4450,7 +4450,7 @@ function renderTransactionTable(type) {
 
  tbody.innerHTML = rows.length ?
    rows.map((item) => transactionRow(item, type)).join("")
-  : `<tr><td colspan="${colspan}">${emptyMessage("Nenhum lan?amento encontrado.")}</td></tr>`;
+  : `<tr><td colspan="${colspan}">${emptyMessage("Nenhum lançamento encontrado.")}</td></tr>`;
 
  tbody.querySelectorAll("button").forEach((button) => {
   button.addEventListener("click", () => handleTransactionAction(button.dataset.action, button.dataset.id));
@@ -4528,7 +4528,7 @@ function handleTransactionAction(action, id) {
   state.transactions = state.transactions.filter((transaction) => transaction.id !== id);
   persist("financeiro");
   renderAll();
-  toast("Lan?amento exclu?do.");
+  toast("Lançamento excluído.");
   return;
  }
 
@@ -4788,11 +4788,11 @@ function renderProjects() {
    projects.map((project) => `
    <article class="person-item">
     <strong><span>${escapeHtml(projectLabel(project))}</span><span>${projectStatusLabel(project.status)}</span></strong>
-    <span class="muted">${escapeHtml(personName(project.customerId))} ? Centro: ${escapeHtml(costCenterName(project.costCenterId))}</span>
+    <span class="muted">${escapeHtml(personName(project.customerId))} - Centro: ${escapeHtml(costCenterName(project.costCenterId))}</span>
     <div class="row-actions">
      <button type="button" data-project-action="edit" data-id="${project.id}">Editar</button>
      <button type="button" data-project-action="view" data-id="${project.id}">Ver resultado</button>
-    </div> ?
+    </div>
    </article>`).join("")
   : emptyMessage("Nenhum projeto cadastrado.");
 
@@ -5381,7 +5381,7 @@ function renderProjectDashboardTable(rows) {
    <td>${projectBadge(projectStatusLabel(row.project.status), statusTone(row.project.status))}</td>
    <td>${projectBadge(priorityLabel(row.priority), priorityTone(row.priority))}</td>
    <td><strong>${row.health}%</strong></td>
-   <td>${formatDate((row.project.updatedAt || row.project.createdAt || "").slice(0, 10))}</td> ?
+   <td>${formatDate((row.project.updatedAt || row.project.createdAt || "").slice(0, 10))}</td>
   </tr>`).join("")
   : `<tr><td colspan="17">${emptyMessage("Nenhum projeto encontrado com os filtros atuais.")}</td></tr>`;
  document.querySelectorAll(".project-dashboard-row").forEach((row) => {
@@ -5544,7 +5544,7 @@ function costCenterName(costCenterId) {
  return state.costCenters.find((item) => item.id === costCenterId)?.name || "Não criado";
 }
 
-// ===================== Central de Protocolos e Concession?rias =====================
+// ===================== Central de Protocolos e Concessionárias =====================
 
 function hydrateProtocolOptions() {
  const utilityOptions = state.utilityCompanies
@@ -5575,7 +5575,7 @@ function hydrateProtocolOptions() {
  if (els.protocolActivityType) setSelectOptions(els.protocolActivityType, activityTypeOptions);
  if (els.protocolProject) setSelectOptions(els.protocolProject, `<option value="">Nenhum (sem projeto)</option>${projectOptions}`);
  if (els.protocolCustomer) setSelectOptions(els.protocolCustomer, customerOptions || `<option value="">Cadastre um cliente primeiro</option>`);
- if (els.protocolResponsible) setSelectOptions(els.protocolResponsible, `<option value="">Sem respons?vel</option>${responsibleOptions}`);
+ if (els.protocolResponsible) setSelectOptions(els.protocolResponsible, `<option value="">Sem responsável</option>${responsibleOptions}`);
  if (els.protocolStatus) setSelectOptions(els.protocolStatus, statusOptions);
 
  if (els.protocolFilterUtility) setSelectOptions(els.protocolFilterUtility, `<option value="todos">Todas</option>${utilityOptions}`);
@@ -5606,7 +5606,7 @@ function activityTypeName(id) {
 
 function userName(id) {
  const user = state.users.find((item) => item.id === id);
- return user ? (user.name || user.username) : "Sem respons?vel";
+ return user ? (user.name || user.username) : "Sem responsável";
 }
 
 function nextProtocolInternalNumber() {
@@ -5629,7 +5629,7 @@ function protocolDaysRemaining(protocol) {
 function protocolDeadlineInfo(protocol) {
  const daysRemaining = protocolDaysRemaining(protocol);
  if (daysRemaining === null) return { tone: "neutral", label: "Sem prazo" };
- if (daysRemaining < 0) return { tone: "danger", label: `Vencido h? ${Math.abs(daysRemaining)} dia(s)` };
+ if (daysRemaining < 0) return { tone: "danger", label: `Vencido há ${Math.abs(daysRemaining)} dia(s)` };
  if (daysRemaining === 0) return { tone: "danger", label: "Vence hoje" };
  if (daysRemaining <= 7) return { tone: "warn", label: `Vence em ${daysRemaining} dia(s)` };
  return { tone: "ok", label: `Faltam ${daysRemaining} dia(s)` };
@@ -5768,14 +5768,14 @@ function renderProtocolKpis() {
  if (!container) return;
  const kpis = computeProtocolKpis();
  container.innerHTML = [
-  projectKpiCard("Protocolos no per?odo", kpis.totalInPeriod, "Todos os status, inclusive concluídos"),
+  projectKpiCard("Protocolos no período", kpis.totalInPeriod, "Todos os status, inclusive concluídos"),
   projectKpiCard("Tickets abertos", kpis.open, "Em andamento agora"),
-  projectKpiCard("Tickets em atraso", kpis.overdue, "Prazo da concession?ria vencido", kpis.overdue ? "danger" : "ok"),
-  projectKpiCard("Tickets desta semana", kpis.dueThisWeek, "Vencem nos pr?ximos 7 dias", kpis.dueThisWeek ? "warn" : "ok"),
+  projectKpiCard("Tickets em atraso", kpis.overdue, "Prazo da concessionária vencido", kpis.overdue ? "danger" : "ok"),
+  projectKpiCard("Tickets desta semana", kpis.dueThisWeek, "Vencem nos próximos 7 dias", kpis.dueThisWeek ? "warn" : "ok"),
   projectKpiCard("Homologaúes em andamento", kpis.homologacoes, "Tipo: Homologação"),
   projectKpiCard("Consultas de viabilidade", kpis.viabilidade, "Tipo: Consulta de viabilidade"),
   projectKpiCard("Aguardando cliente", kpis.aguardandoCliente, "Ticket parado por resposta do cliente", kpis.aguardandoCliente ? "warn" : "ok"),
-  projectKpiCard("Aguardando concession?ria", kpis.aguardandoConcessionaria, "Ticket parado na concession?ria", kpis.aguardandoConcessionaria ? "warn" : "ok"),
+  projectKpiCard("Aguardando concessionária", kpis.aguardandoConcessionaria, "Ticket parado na concessionária", kpis.aguardandoConcessionaria ? "warn" : "ok"),
   projectKpiCard("Projetos liberados", kpis.projetosLiberados, "Protocolos que liberaram instalação"),
   projectKpiCard("Projetos concluídos", kpis.projetosConcluidos, "Protocolos concluídos com projeto vinculado"),
   projectKpiCard("Tempo m?dio de aprovação", kpis.avgApprovalDays === null ? "-" : `${kpis.avgApprovalDays} dia(s)`, "Da abertura até aprovação/liberação"),
@@ -5846,7 +5846,7 @@ function protocolKanbanCard(protocol) {
  return `
   <article class="opportunity-card" draggable="true" data-protocol-id="${protocol.id}">
    <strong>${escapeHtml(personName(protocol.customerId))}</strong>
-   <span class="muted">${escapeHtml(utilityCompanyName(protocol.utilityCompanyId))} ? ${escapeHtml(activityTypeName(protocol.activityTypeId))}</span>
+   <span class="muted">${escapeHtml(utilityCompanyName(protocol.utilityCompanyId))} - ${escapeHtml(activityTypeName(protocol.activityTypeId))}</span>
    <span class="muted">${protocol.projectId ? escapeHtml(projectName(protocol.projectId)) : "Sem projeto"}</span>
    ${projectBadge(deadline.label, deadline.tone)}
   </article>`;
@@ -5964,7 +5964,7 @@ function saveProtocol() {
 
  const index = state.protocols.findIndex((item) => item.id === id);
  if (index >= 0) {
-  if (existing.status !== newStatus) addProtocolHistory(id, "Mudan?a de status", existing.status, newStatus);
+  if (existing.status !== newStatus) addProtocolHistory(id, "Mudança de status", existing.status, newStatus);
   state.protocols[index] = data;
  } else {
   if (!data.checklist.length && PROTOCOL_CHECKLIST_TEMPLATES[data.activityTypeId]) {
@@ -6009,10 +6009,10 @@ function protocolHistoryHtml(protocolId) {
    rows.map((row) => `
    <article class="report-item">
     <strong><span>${escapeHtml(row.action)}</span><span>${formatDate(row.createdAt.slice(0, 10))} ${escapeHtml(row.createdAt.slice(11, 16))}</span></strong>
-    <span class="muted">${row.fromStatus ? `${escapeHtml(protocolStatusLabel(row.fromStatus))} ? ` : ""}${row.toStatus ? escapeHtml(protocolStatusLabel(row.toStatus)) : ""} ? ${escapeHtml(row.user)}</span>
+    <span class="muted">${row.fromStatus ? `${escapeHtml(protocolStatusLabel(row.fromStatus))} - ` : ""}${row.toStatus ? escapeHtml(protocolStatusLabel(row.toStatus)) : ""} - ${escapeHtml(row.user)}</span>
     ${row.notes ? `<span class="muted">${escapeHtml(row.notes)}</span>` : ""}
    </article>`).join("")
-  : emptyMessage("Sem hist?rico registrado.");
+  : emptyMessage("Sem histórico registrado.");
 }
 
 function protocolChecklistHtml(protocol) {
@@ -6038,7 +6038,7 @@ function openProtocolDrawer(protocolId) {
  content.innerHTML = `
   <div class="drawer-header">
    <div>
-    <small>${escapeHtml(utilityCompanyName(protocol.utilityCompanyId))} ? ${escapeHtml(protocol.internalNumber)}</small>
+    <small>${escapeHtml(utilityCompanyName(protocol.utilityCompanyId))} - ${escapeHtml(protocol.internalNumber)}</small>
     <h3>${escapeHtml(personName(protocol.customerId))}</h3>
    </div>
    ${projectBadge(deadline.label, deadline.tone)}
@@ -6056,7 +6056,7 @@ function openProtocolDrawer(protocolId) {
    </select>
   </section>
   <section class="drawer-section">
-   <h4>Alterar respons?vel</h4>
+   <h4>Alterar responsável</h4>
    <select id="protocolDrawerResponsible" data-protocol-id="${protocol.id}">
     ${protocolResponsibleOptions(protocol.responsibleUserId)}
    </select>
@@ -6064,10 +6064,10 @@ function openProtocolDrawer(protocolId) {
   ${drawerSection("Dados do protocolo", [
    ["Tipo de atividade", activityTypeName(protocol.activityTypeId)],
    ["Cidade", protocol.city || "-"],
-   ["Respons?vel", userName(protocol.responsibleUserId)],
+   ["Responsável", userName(protocol.responsibleUserId)],
    ["Abertura", formatDate(protocol.openedAt)],
-   ["Prazo da concession?ria", formatDate(protocol.utilityDeadline)],
-   ["Previs?o", formatDate(protocol.expectedDate)],
+   ["Prazo da concessionária", formatDate(protocol.utilityDeadline)],
+   ["Previsão", formatDate(protocol.expectedDate)],
    ["Ãšltima movimentação", formatDate((protocol.lastMovementAt || "").slice(0, 10))],
    ["Projeto vinculado", project ? projectLabel(project) : "Sem projeto vinculado"],
   ])}
@@ -6081,7 +6081,7 @@ function openProtocolDrawer(protocolId) {
    </div>
   </section>
   <section class="drawer-section">
-   <h4>Hist?rico</h4>
+   <h4>Histórico</h4>
    <div class="protocol-history">${protocolHistoryHtml(protocol.id)}</div>
    <div class="inline-control">
     <input type="text" id="protocolNewNote" placeholder="Registrar observação/movimentação" maxlength="200" />
@@ -6151,7 +6151,7 @@ function changeProtocolStatus(protocolId, newStatus, { reopenDrawer = true } = {
  protocol.status = newStatus;
  protocol.lastMovementAt = new Date().toISOString();
  protocol.updatedAt = protocol.lastMovementAt;
- addProtocolHistory(protocolId, "Mudan?a de status", previousStatus, newStatus);
+ addProtocolHistory(protocolId, "Mudança de status", previousStatus, newStatus);
  if (newStatus === PROTOCOL_RELEASE_STATUS && protocol.projectId) {
   releaseProjectFromHomologation(protocol.projectId);
  }
@@ -6163,7 +6163,7 @@ function changeProtocolStatus(protocolId, newStatus, { reopenDrawer = true } = {
 
 function protocolResponsibleOptions(selectedId = "") {
  const users = state.users.filter((user) => user.active !== false);
- return `<option value="" ${selectedId ? "" : "selected"}>Sem respons?vel</option>${users.map((user) =>
+ return `<option value="" ${selectedId ? "" : "selected"}>Sem responsável</option>${users.map((user) =>
   `<option value="${user.id}" ${user.id === selectedId ? "selected" : ""}>${escapeHtml(user.name || user.username)}</option>`
  ).join("")}`;
 }
@@ -6175,11 +6175,11 @@ function changeProtocolResponsible(protocolId, responsibleUserId) {
  protocol.responsibleUserId = responsibleUserId;
  protocol.lastMovementAt = new Date().toISOString();
  protocol.updatedAt = protocol.lastMovementAt;
- addProtocolHistory(protocolId, "Respons?vel atualizado", "", "", `${previous} -> ${userName(responsibleUserId)}`);
+ addProtocolHistory(protocolId, "Responsável atualizado", "", "", `${previous} -> ${userName(responsibleUserId)}`);
  persist("protocolo");
  renderProtocols();
  openProtocolDrawer(protocolId);
- toast("Respons?vel do protocolo atualizado.");
+ toast("Responsável do protocolo atualizado.");
 }
 
 function setChecklistItemStatus(protocolId, itemId, status) {
@@ -6216,11 +6216,11 @@ function releaseProjectFromHomologation(projectId) {
 function protocolProjectSectionHtml(projectId) {
  const linked = state.protocols.filter((item) => item.projectId === projectId);
  if (!linked.length) return "";
- return `<section class="drawer-section"><h4>Protocolos na concession?ria</h4>${linked.map((protocol) => {
+ return `<section class="drawer-section"><h4>Protocolos na concessionária</h4>${linked.map((protocol) => {
   const deadline = protocolDeadlineInfo(protocol);
   const statusInfo = protocolStatusInfo(protocol.status);
   return `<button type="button" class="protocol-link-row" data-open-protocol="${protocol.id}">
-   <span>${escapeHtml(utilityCompanyName(protocol.utilityCompanyId))} ? ${escapeHtml(activityTypeName(protocol.activityTypeId))}</span>
+   <span>${escapeHtml(utilityCompanyName(protocol.utilityCompanyId))} - ${escapeHtml(activityTypeName(protocol.activityTypeId))}</span>
    ${projectBadge(statusInfo.label, statusInfo.tone)}
    ${projectBadge(deadline.label, deadline.tone)}
   </button>`;
@@ -6249,9 +6249,9 @@ function renderUtilityCompanyList() {
     <strong><span>${escapeHtml(item.name)}</span><span>${item.active ? "Ativa" : "Inativa"}</span></strong>
     <div class="row-actions">
      <button type="button" data-toggle-utility="${item.id}">${item.active ? "Inativar" : "Ativar"}</button>
-    </div> ?
+    </div>
    </article>`).join("")
-  : emptyMessage("Nenhuma concession?ria cadastrada.");
+  : emptyMessage("Nenhuma concessionária cadastrada.");
  document.querySelectorAll("[data-toggle-utility]").forEach((button) => {
   button.addEventListener("click", () => toggleUtilityCompanyActive(button.dataset.toggleUtility));
  });
@@ -6265,7 +6265,7 @@ function addUtilityCompany() {
  persist();
  renderUtilityCompanyList();
  hydrateProtocolOptions();
- toast("Concession?ria adicionada.");
+ toast("Concessionária adicionada.");
 }
 
 function toggleUtilityCompanyActive(id) {
@@ -6284,7 +6284,7 @@ function renderActivityTypeList() {
     <strong><span>${escapeHtml(item.name)}</span><span>${item.active ? "Ativo" : "Inativo"}</span></strong>
     <div class="row-actions">
      <button type="button" data-toggle-activity-type="${item.id}">${item.active ? "Inativar" : "Ativar"}</button>
-    </div> ?
+    </div>
    </article>`).join("")
   : emptyMessage("Nenhum tipo cadastrado.");
  document.querySelectorAll("[data-toggle-activity-type]").forEach((button) => {
@@ -6352,12 +6352,12 @@ function legacyRenderInstallations() {
    rows.map((item) => `
    <article class="person-item">
     <strong><span>${escapeHtml(projectName(item.projectId))}</span><span>${installationStatusLabel(item.status)}</span></strong>
-    <span class="muted">${escapeHtml(personName(item.customerId))} ? ${formatDate(item.scheduledDate)} ? ${escapeHtml(item.team || "Sem equipe")}</span>
+    <span class="muted">${escapeHtml(personName(item.customerId))} - ${formatDate(item.scheduledDate)} - ${escapeHtml(item.team || "Sem equipe")}</span>
     <span class="muted">${escapeHtml(item.materials || "Materiais não informados")}</span>
     <div class="row-actions">
      <button type="button" data-installation-action="edit" data-id="${item.id}">Editar</button>
      <button type="button" data-installation-action="complete" data-id="${item.id}">Concluir</button>
-    </div> ?
+    </div>
    </article>`).join("")
   : emptyMessage("Nenhuma instalação cadastrada.");
 
@@ -6685,7 +6685,7 @@ function technicalReportHtml(installation, report) {
     <img src="assets/logo-lumeris.png" alt="Lumeris Engenharia" />
     <div>
      <h1>Relatério de Entrega Técnica</h1>
-     <div class="muted">Lumeris Engenharia ? ${formatDate(todayIso)}</div>
+     <div class="muted">Lumeris Engenharia - ${formatDate(todayIso)}</div>
     </div>
    </header>
 
@@ -6696,12 +6696,12 @@ function technicalReportHtml(installation, report) {
     <div class="box"><strong>Status</strong>${escapeHtml(installationStatusLabel(installation.status))}</div>
     <div class="box"><strong>Conclusão</strong>${formatDate(installation.completedDate || todayIso)}</div>
     <div class="box"><strong>In?cio da garantia</strong>${formatDate(report.warrantyStartDate || installation.completedDate || todayIso)}</div>
-    <div class="box"><strong>Técnico respons?vel</strong>${escapeHtml(report.technician || installation.team || "-")}</div>
+    <div class="box"><strong>Técnico responsável</strong>${escapeHtml(report.technician || installation.team || "-")}</div>
     <div class="box"><strong>Contato do cliente</strong>${escapeHtml(report.whatsapp || client.contact || "-")} ${report.email ? "? " + escapeHtml(report.email) : ""}</div>
    </section>
 
    <h2>Resumo técnico</h2>
-   <div class="box">${escapeHtml(report.summary || installation.conclusion || "Serviço finalizado conforme padr?o técnico da Lumeris Engenharia.")}</div>
+   <div class="box">${escapeHtml(report.summary || installation.conclusion || "Serviço finalizado conforme padrão técnico da Lumeris Engenharia.")}</div>
 
    <h2>Eficiência da execução</h2>
    <section class="grid">
@@ -6883,7 +6883,7 @@ function renderInstallationWorkerList() {
      <strong>${escapeHtml(worker.name)}</strong>
      ${escapeHtml(worker.role)} · ${money(worker.dailyRate)}
      <button type="button" data-worker-action="remove" data-id="${worker.id}" title="Remover da lista">x</button>
-    </span> ?
+    </span>
    `).join("")
   : `<small class="muted">Cadastre os funcionários internos para puxar a diária automaticamente.</small>`;
  els.installationWorkerList.querySelectorAll("[data-worker-action='remove']").forEach((button) => {
@@ -7259,7 +7259,7 @@ function deleteCurrentInstallation() {
  renderAll();
  resetInstallationForm();
  setInstallationFormVisible(false);
- toast("Serviço exclu?do.");
+ toast("Serviço excluído.");
 }
 
 function handleInstallationAction(action, id) {
@@ -7424,9 +7424,9 @@ function renderSelectedProjectSummary(summary) {
 
  document.querySelector("#projectContracted").textContent = money(summary.contracted);
  document.querySelector("#projectInvoiced").textContent = money(summary.invoiced);
- document.querySelector("#projectReceivedSmall").textContent = `${money(summary.received)} recebido ? ${money(summary.receivable)} a receber`;
+ document.querySelector("#projectReceivedSmall").textContent = `${money(summary.received)} recebido - ${money(summary.receivable)} a receber`;
  document.querySelector("#projectCosts").textContent = money(summary.costs);
- document.querySelector("#projectPaidSmall").textContent = `${money(summary.paid)} pago ? ${money(summary.payable)} a pagar`;
+ document.querySelector("#projectPaidSmall").textContent = `${money(summary.paid)} pago - ${money(summary.payable)} a pagar`;
  document.querySelector("#projectGrossResult").textContent = money(summary.grossResult);
  document.querySelector("#projectMarginSmall").textContent = `${summary.marginPercent.toFixed(1)}% de margem`;
 
@@ -7474,19 +7474,19 @@ function renderProjectCategoryCosts(projectId) {
    sorted.map((row) => `
    <article class="report-item">
     <strong><span>${escapeHtml(row.category)}</span><span>${money(row.total)}</span></strong>
-    <span class="muted">${row.count} lan?amento(s)</span>
+    <span class="muted">${row.count} lançamento(s)</span>
     <div class="category-cost-entries">
      ${row.entries
       .map(
        (entry) => `
       <button type="button" class="category-cost-entry" data-view-${entry.kind === "bank" ? "bank" : "transaction"}="${entry.refId}">
-       <span>${escapeHtml(entry.transaction.description || "Sem descrição")}${entry.kind === "bank" ? " ? movimento banc?rio" : ""}</span>
+       <span>${escapeHtml(entry.transaction.description || "Sem descrição")}${entry.kind === "bank" ? " - movimento bancário" : ""}</span>
        <span class="muted">${formatDate(entry.transaction.dueDate)}</span>
        <span class="money">${money(entry.amount)}</span>
       </button>`
       )
       .join("")}
-    </div> ?
+    </div>
    </article>`).join("")
   : emptyMessage("Sem custos vinculados ao projeto.");
 
@@ -7507,7 +7507,7 @@ function renderProjectComparison(summaries) {
     <td class="money">${money(summary.costs)}</td>
     <td class="money">${money(summary.grossResult)}</td>
     <td>${summary.marginPercent.toFixed(1)}%</td>
-    <td>${projectStatusLabel(summary.project.status)}</td> ?
+    <td>${projectStatusLabel(summary.project.status)}</td>
    </tr>`).join("")
   : `<tr><td colspan="6">${emptyMessage("Nenhum projeto cadastrado.")}</td></tr>`;
 }
@@ -7518,7 +7518,7 @@ function renderProfitableProjects(summaries) {
    rows.map((summary) => `
    <article class="report-item">
     <strong><span>${escapeHtml(projectLabel(summary.project))}</span><span>${money(summary.grossResult)}</span></strong>
-    <span class="muted">${summary.marginPercent.toFixed(1)}% de margem</span> ?
+    <span class="muted">${summary.marginPercent.toFixed(1)}% de margem</span>
    </article>`).join("")
   : emptyMessage("Nenhum projeto para comparar.");
 }
@@ -7532,7 +7532,7 @@ function renderLowMarginProjects(summaries) {
    rows.map((summary) => `
    <article class="report-item">
     <strong><span>${escapeHtml(projectLabel(summary.project))}</span><span>${summary.marginPercent.toFixed(1)}%</span></strong>
-    <span class="muted">Meta: ${Number(summary.project.targetMargin || 0).toFixed(1)}% ? Resultado ${money(summary.grossResult)}</span> ?
+    <span class="muted">Meta: ${Number(summary.project.targetMargin || 0).toFixed(1)}% - Resultado ${money(summary.grossResult)}</span>
    </article>`).join("")
   : emptyMessage("Nenhum projeto abaixo da margem esperada.");
 }
@@ -7547,7 +7547,7 @@ function renderUnallocatedExpenses() {
    rows.map((item) => `
    <article class="report-item">
     <strong><span>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></strong>
-    <span class="muted">${formatDate(item.dueDate)} ? ${escapeHtml(item.category)} ? ${statusLabel(item.status)}</span> ?
+    <span class="muted">${formatDate(item.dueDate)} - ${escapeHtml(item.category)} - ${statusLabel(item.status)}</span>
    </article>`).join("")
   : emptyMessage("Nenhuma despesa sem projeto vinculada.");
 }
@@ -7611,7 +7611,7 @@ function parseOfx(content, filename) {
  const movements = blocks.map((block) => {
   const amount = Number((tagValue(block, "TRNAMT") || "0").replace(",", "."));
   const date = parseOfxDate(tagValue(block, "DTPOSTED"));
-  const memo = [tagValue(block, "NAME"), tagValue(block, "MEMO")].filter(Boolean).join(" - ") || "Movimento banc?rio";
+  const memo = [tagValue(block, "NAME"), tagValue(block, "MEMO")].filter(Boolean).join(" - ") || "Movimento bancário";
   const documentNumber = tagValue(block, "CHECKNUM") || tagValue(block, "REFNUM") || "";
   const fitid = tagValue(block, "FITID");
   const type = amount >= 0 ? "entrada" : "saida";
@@ -7739,7 +7739,7 @@ function normalizeProviderMovement(raw, account, accountKey) {
   date: raw.date,
   type: signedAmount >= 0 ? "entrada" : "saida",
   documentNumber: raw.documentNumber || raw.fitid || "",
-  description: cleanText(raw.description || "Movimento banc?rio"),
+  description: cleanText(raw.description || "Movimento bancário"),
   amount: Math.abs(signedAmount),
   signedAmount,
   category: "",
@@ -7938,7 +7938,7 @@ function saveBankApiConfig(event) {
  const existing = state.bankApiConfigs.find((config) => config.id === id);
  const duplicate = state.bankApiConfigs.some((config) => config.id !== id && config.provider === els.bankApiProvider.value && config.accountKey === accountKey);
  if (duplicate) {
-  toast("J? existe configuração dessa API para essa conta.");
+  toast("Já existe configuração dessa API para essa conta.");
   return;
  }
 
@@ -7993,7 +7993,7 @@ function renderBankApiConfigs() {
     const provider = BANK_PROVIDERS[config.provider] || { label: config.provider };
     return `
    <article class="report-item">
-    <strong><span>${escapeHtml(provider.label)} ? ${escapeHtml(bankAccountDisplayName(account))}</span><span>${config.active ? "Ativa" : "Inativa"}</span></strong>
+    <strong><span>${escapeHtml(provider.label)} - ${escapeHtml(bankAccountDisplayName(account))}</span><span>${config.active ? "Ativa" : "Inativa"}</span></strong>
     <span class="muted">${config.autoDaily ? `Automático diário - últimos ${config.lookbackDays} dia(s)` : "Automático desligado"} - ${config.lastSyncedAt ? `Última baixa: ${new Date(config.lastSyncedAt).toLocaleString("pt-BR")}` : "Nunca baixou extrato"}</span>
     <span class="muted">${escapeHtml(config.lastResult || config.notes || "Credenciais protegidas no backend seguro.")}</span>
     <div class="row-actions">
@@ -8071,7 +8071,7 @@ async function syncBankApiConfig(config, { manual = false, auto = false } = {}) 
  applyBankApiConfigToAccount(config);
  const provider = BANK_PROVIDERS[config.provider];
  if (!provider || !provider.fetchStatement) {
-  if (manual) toast("Provedor banc?rio ainda não implementado.");
+  if (manual) toast("Provedor bancário ainda não implementado.");
   return;
  }
  if (provider.requiresEndpoint && !config.endpoint) {
@@ -8135,8 +8135,8 @@ function openBankSyncDialog(accountKey) {
 function updateBankSyncHint() {
  const provider = BANK_PROVIDERS[els.bankSyncProvider.value] || BANK_PROVIDERS.mock;
  els.bankSyncEndpointWrap.classList.toggle("hidden", !provider.requiresEndpoint);
- els.bankSyncHint.textContent = provider.requiresEndpoint ? "Esse provedor chama um backend pr?prio (que voc? hospeda) respons?vel por conversar com o banco de verdade ? o site não guarda nem envia credenciais."
-  : "Gera movimentos de teste determin?sticos para o per?odo escolhido, ?til para validar deduplicação e conciliação antes de conectar a API real.";
+ els.bankSyncHint.textContent = provider.requiresEndpoint ? "Esse provedor chama um backend próprio (que você hospeda) responsável por conversar com o banco de verdade - o site não guarda nem envia credenciais."
+  : "Gera movimentos de teste determinísticos para o período escolhido, útil para validar deduplicação e conciliação antes de conectar a API real.";
 }
 
 async function handleBankSyncSubmit() {
@@ -8150,7 +8150,7 @@ async function handleBankSyncSubmit() {
  const start = els.bankSyncStart.value;
  const end = els.bankSyncEnd.value;
  if (!start || !end || start > end) {
-  toast("Informe um per?odo v?lido para sincronizar.");
+  toast("Informe um período válido para sincronizar.");
   return;
  }
 
@@ -8158,7 +8158,7 @@ async function handleBankSyncSubmit() {
  account.syncEndpoint = els.bankSyncEndpoint.value.trim();
 
  els.bankSyncSubmit.disabled = true;
- els.bankSyncSubmit.textContent = "Buscando?";
+ els.bankSyncSubmit.textContent = "Buscando...";
  try {
   const movements = await provider.fetchStatement(account, { start, end });
   const { added, duplicates } = mergeBankMovements(movements);
@@ -8195,7 +8195,7 @@ function renderBank() {
 
  document.querySelector("#bankTable").innerHTML = movements.length ?
    movements.map(bankRow).join("")
-  : `<tr><td colspan="8">${emptyMessage("Nenhum movimento banc?rio encontrado.")}</td></tr>`;
+  : `<tr><td colspan="8">${emptyMessage("Nenhum movimento bancário encontrado.")}</td></tr>`;
 
  document.querySelectorAll("[data-bank-action]").forEach((button) => {
   button.addEventListener("click", () => handleBankAction(button.dataset.bankAction, button.dataset.id));
@@ -8354,7 +8354,7 @@ function openBankDialog(movement) {
  els.bankNotes.value = movement.notes || "";
  els.bankMovementSummary.innerHTML = `
   <strong>${movement.type === "entrada" ? "Entrada" : "Saída"} de ${money(movement.amount)}</strong>
-  <span>${formatDate(movement.date)} ? ${escapeHtml(movement.description)}</span>`;
+  <span>${formatDate(movement.date)} - ${escapeHtml(movement.description)}</span>`;
  hydrateBankMatches(movement);
  els.bankMatchTransaction.value = movement.transactionId || "";
  els.bankMatchTransaction.onchange = () => {
@@ -8404,7 +8404,7 @@ function renderBankAllocationRows(allocations = []) {
 function addBankAllocationRow(allocation = {}) {
  if (!els.bankAllocationRows) return;
  if (els.bankAllocationRows.children.length >= 10) {
-  toast("O rateio permite no m?ximo 10 lan?amentos por movimento.");
+  toast("O rateio permite no máximo 10 lançamentos por movimento.");
   return;
  }
  const row = document.createElement("div");
@@ -8482,7 +8482,7 @@ function hydrateBankInvoiceMatches(movement) {
   `<option value="">Sem vínculo com NF</option>`,
   ...matches.map(
    ({ item, score }) =>
-    `<option value="${item.id}">NF ${escapeHtml(item.number)} ? ${escapeHtml(personName(item.personId))} ? valor cont?bil ${money(item.accountingValue)}${score >= 0 ? " ? valor compatével" : ""}</option>`
+    `<option value="${item.id}">NF ${escapeHtml(item.number)} - ${escapeHtml(personName(item.personId))} - valor contábil ${money(item.accountingValue)}${score >= 0 ? " - valor compatível" : ""}</option>`
   ),
  ].join("");
 }
@@ -8504,7 +8504,7 @@ function hydrateBankMatches(movement) {
 
  els.bankMatchTransaction.innerHTML = [
   `<option value="">Somente classificar, sem conciliar</option>`,
-  ...matches.map(({ item }) => `<option value="${item.id}">${formatDate(item.dueDate)} ? ${personName(item.personId)} ? ${escapeHtml(item.description)} ? ${escapeHtml(transactionProjectLabel(item))} ? ${money(item.amount)}</option>`),
+  ...matches.map(({ item }) => `<option value="${item.id}">${formatDate(item.dueDate)} - ${personName(item.personId)} - ${escapeHtml(item.description)} - ${escapeHtml(transactionProjectLabel(item))} - ${money(item.amount)}</option>`),
  ].join("");
 }
 
@@ -8531,7 +8531,7 @@ function saveBankClassification() {
  }
  const bankAllocations = getBankAllocations();
  if (bankAllocations.length && !validateAllocations(movement.amount, bankAllocations)) {
-  toast("A soma do rateio precisa ser igual ao valor total do movimento banc?rio.");
+  toast("A soma do rateio precisa ser igual ao valor total do movimento bancário.");
   return;
  }
  unlinkBankMovement(movement);
@@ -8576,7 +8576,7 @@ function saveBankClassification() {
  persist();
  renderAll();
  els.bankDialog.close();
- toast("Movimento banc?rio salvo.");
+ toast("Movimento bancário salvo.");
 }
 
 function validateBankReconciliation(movement, transaction) {
@@ -8759,7 +8759,7 @@ function importIluminarStock(options = {}) {
  if (silent && importedItemsCount >= expectedImportedItems) {
   return { changed: false, importedItems: 0, updatedItems: 0, importedMovements: 0 };
  }
- if (alreadyImported && !silent && !window.confirm("A base Iluminar j? parece ter sido importada. Deseja atualizar/mesclar novamente sem duplicar registros")) {
+ if (alreadyImported && !silent && !window.confirm("A base Iluminar já parece ter sido importada. Deseja atualizar/mesclar novamente sem duplicar registros")) {
   return { changed: false, importedItems: 0, updatedItems: 0, importedMovements: 0 };
  }
 
@@ -9133,7 +9133,7 @@ function hydrateStockCatalogOptions() {
  const openInvoices = state.invoices.filter((item) => item.kind === "despesa" && item.status !== "cancelada");
  els.stockEntryInvoice.innerHTML = [
   `<option value="">Sem NF vinculada</option>`,
-  ...openInvoices.map((item) => `<option value="${item.id}">NF ${escapeHtml(item.number)} ? ${escapeHtml(personName(item.personId))}</option>`),
+  ...openInvoices.map((item) => `<option value="${item.id}">NF ${escapeHtml(item.number)} - ${escapeHtml(personName(item.personId))}</option>`),
  ].join("");
 
  const payables = businessTransactions()
@@ -9142,7 +9142,7 @@ function hydrateStockCatalogOptions() {
   .slice(0, 40);
  els.stockEntryTransaction.innerHTML = [
   `<option value="">Sem conta a pagar vinculada</option>`,
-  ...payables.map((item) => `<option value="${item.id}">${formatDate(item.dueDate)} ? ${escapeHtml(item.description)} ? ${money(item.amount)}</option>`),
+  ...payables.map((item) => `<option value="${item.id}">${formatDate(item.dueDate)} - ${escapeHtml(item.description)} - ${money(item.amount)}</option>`),
  ].join("");
 }
 
@@ -9282,7 +9282,7 @@ function handleStockItemAction(action, id) {
   els.stockMaxQuantity.value = item.maxQuantity;
   els.stockActive.checked = item.active;
   els.stockNotes.value = item.notes;
-  els.stockItemFormTitle.textContent = `Editar item ? ${item.name}`;
+  els.stockItemFormTitle.textContent = `Editar item - ${item.name}`;
   els.saveStockItemBtn.textContent = "Salvar alteraúes";
   els.cancelStockItemEditBtn.classList.remove("hidden");
   els.stockItemForm.classList.add("editing");
@@ -9308,7 +9308,7 @@ function handleStockItemAction(action, id) {
   state.stockItems = state.stockItems.filter((entry) => entry.id !== id);
   persist();
   renderAll();
-  toast("Item exclu?do.");
+  toast("Item excluído.");
  }
 }
 
@@ -9388,7 +9388,7 @@ function renderStockEntryList() {
     return `
    <article class="report-item">
     <strong><span>${escapeHtml(item ? stockItemLabel(item) : "Item removido")}</span><span>${money(movement.totalCost)}</span></strong>
-    <span class="muted">${formatDate(movement.date)} ? ${formatQuantity(movement.quantity)} ${item ? STOCK_UNIT_LABELS[item.unit] || item.unit : ""} ? ${money(movement.unitCost)}/un ? ${movement.supplierId ? personName(movement.supplierId) : "sem fornecedor"} ? ${stockUserName(movement.responsibleUserId)}</span>
+    <span class="muted">${formatDate(movement.date)} - ${formatQuantity(movement.quantity)} ${item ? STOCK_UNIT_LABELS[item.unit] || item.unit : ""} - ${money(movement.unitCost)}/un - ${movement.supplierId ? personName(movement.supplierId) : "sem fornecedor"} - ${stockUserName(movement.responsibleUserId)}</span>
    </article>`;
    }).join("")
   : emptyMessage("Nenhuma entrada registrada.");
@@ -9457,7 +9457,7 @@ function saveStockExit(event) {
 
  let transactionId = "";
  if (exitType === "consumo_projeto" && projectId) {
-  // status "pago" sem paidDate de prop?sito: o caixa j? saiu na compra original do material
+  // status "pago" sem paidDate de prop?sito: o caixa já saiu na compra original do material
   // (entrada de estoque). Isso faz o custo entrar no resultado do projeto (que soma todo
   // "pagar" alocado, pago ou não) sem duplicar o KPI de "Resultado do mês" da empresa
   // (que s? conta transaúes com data de pagamento no mês).
@@ -9522,8 +9522,8 @@ function renderStockExitList() {
     return `
    <button class="report-item report-item-button" type="button" data-stock-movement-id="${movement.id}">
     <strong><span>${escapeHtml(item ? stockItemLabel(item) : "Item removido")}</span><span>${money(movement.totalCost)}</span></strong>
-    <span class="muted">${formatDate(movement.date)} ? ${formatQuantity(movement.quantity)} ${item ? STOCK_UNIT_LABELS[item.unit] || item.unit : ""} ? ${STOCK_EXIT_TYPE_LABELS[movement.exitType] || movement.exitType} ? ${movement.projectId ? projectName(movement.projectId) : "Sem projeto"} ? ${stockUserName(movement.responsibleUserId)}</span>
-    <small class="muted">Ver lan?amento completo</small>
+    <span class="muted">${formatDate(movement.date)} - ${formatQuantity(movement.quantity)} ${item ? STOCK_UNIT_LABELS[item.unit] || item.unit : ""} - ${STOCK_EXIT_TYPE_LABELS[movement.exitType] || movement.exitType} - ${movement.projectId ? projectName(movement.projectId) : "Sem projeto"} - ${stockUserName(movement.responsibleUserId)}</span>
+    <small class="muted">Ver lançamento completo</small>
    </button>`;
    }).join("")
   : emptyMessage("Nenhuma saída registrada.");
@@ -9553,8 +9553,8 @@ function openStockMovementDialog(id) {
   detailItem("Funcion?rio/equipe", movement.recipientName || "Não informado"),
  detailItem("Usuário responsável", stockUserName(movement.responsibleUserId)),
   detailItem("Motivo", movement.reason || "Não informado"),
-  detailItem("Conta vinculada", transaction ? `${transaction.description} ? ${money(transaction.amount)} ? ${statusLabel(transaction.status)}` : "Sem conta vinculada"),
-  detailItem("Observaúes", movement.notes || "Sem observaúes", true),
+  detailItem("Conta vinculada", transaction ? `${transaction.description} - ${money(transaction.amount)} - ${statusLabel(transaction.status)}` : "Sem conta vinculada"),
+  detailItem("Observações", movement.notes || "Sem observações", true),
  ].join("");
  els.stockMovementDialog.showModal();
 }
@@ -9634,9 +9634,9 @@ function renderStockPurchaseNeed() {
     <td class="money">${formatQuantity(item.quantity)}</td>
     <td class="money">${formatQuantity(item.minQuantity)}</td>
     <td class="money">${formatQuantity(item.maxQuantity)}</td>
-    <td class="money">${formatQuantity(suggestion)}</td> ?
+    <td class="money">${formatQuantity(suggestion)}</td>
    </tr>`).join("")
-  : `<tr><td colspan="5">${emptyMessage("Nenhum item abaixo do estoque m?nimo.")}</td></tr>`;
+  : `<tr><td colspan="5">${emptyMessage("Nenhum item abaixo do estoque mínimo.")}</td></tr>`;
 }
 
 function renderStock() {
@@ -9670,7 +9670,7 @@ function sellerName(id) {
 }
 
 function opportunityLabel(opportunity) {
- return `${opportunity.title} ? ${personName(opportunity.personId)}`;
+ return `${opportunity.title} - ${personName(opportunity.personId)}`;
 }
 
 function daysSince(isoDateOrDateTime) {
@@ -9719,7 +9719,7 @@ function renderSellerList() {
     <strong><span>${escapeHtml(seller.name)}</span><span>${seller.active ? "Ativo" : "Inativo"}</span></strong>
     <div class="row-actions">
      <button type="button" data-seller-action="toggle" data-id="${seller.id}">${seller.active ? "Inativar" : "Ativar"}</button>
-    </div> ?
+    </div>
    </article>`).join("")
   : emptyMessage("Nenhum vendedor cadastrado.");
 
@@ -9886,7 +9886,7 @@ function renderPipelineBoard() {
     <button class="pipeline-column-toggle" type="button" data-toggle-lost-column>
      <strong>Venda perdida</strong>
      <span>${lostItems.length} lead${lostItems.length === 1 ? "" : "s"} - ${money(totalLost)}</span>
-     <em>? Abrir perdidos</em>
+     <em>Abrir perdidos</em>
     </button>
    </section>`;
   }
@@ -9900,7 +9900,7 @@ function renderPipelineBoard() {
     <div class="pipeline-column-head">
      <strong>${stageInfo.label}</strong>
      <span>${items.length} lead${items.length === 1 ? "" : "s"} - ${money(total)}</span>
-     ${stageInfo.key === "perdido" ? `<button class="pipeline-head-toggle" type="button" data-toggle-lost-column>?</button>` : ""}
+     ${stageInfo.key === "perdido" ? `<button class="pipeline-head-toggle" type="button" data-toggle-lost-column>Abrir</button>` : ""}
     </div>
     ${overdue ? `<div class="pipeline-column-alert">${overdue} tarefa${overdue === 1 ? "" : "s"} vencida${overdue === 1 ? "" : "s"}</div>` : ""}
     <div class="pipeline-card-list">
@@ -10181,7 +10181,7 @@ function createInstallationFromWonOpportunity(opportunity, settings = {}) {
 
 function openOpportunityWonDialog(opportunity) {
  pendingWonOpportunity = opportunity;
- els.opportunityWonSummary.textContent = `${opportunity.title} ? ${personName(opportunity.personId)} ? ${money(opportunity.value)}`;
+ els.opportunityWonSummary.textContent = `${opportunity.title} - ${personName(opportunity.personId)} - ${money(opportunity.value)}`;
  if (els.opportunityWonClosedDate) els.opportunityWonClosedDate.value = opportunity.closedDate || (opportunity.wonAt || "").slice(0, 10) || todayIso;
  if (els.opportunityWonServiceType) els.opportunityWonServiceType.value = opportunity.serviceType || "instalacao_projeto";
  syncOpportunityWonProjectChoice();
@@ -10208,12 +10208,12 @@ function convertOpportunityToProject(opportunity) {
  refreshSearchableSelect(els.projectCustomer);
  els.projectContractValue.value = opportunity.value;
  els.projectStatus.value = "orcamento";
- toast("Revise os dados do projeto e clique em Salvar projeto para concluir a convers?o.");
+ toast("Revise os dados do projeto e clique em Salvar projeto para concluir a conversão.");
 }
 
 function generateContractFromOpportunity(opportunity, settings = {}) {
  if (opportunity.contractId) {
-  toast("Essa oportunidade j? possui contrato gerado.");
+  toast("Essa oportunidade já possui contrato gerado.");
   setView("homologacao");
   return;
  }
@@ -10353,8 +10353,8 @@ function renderFollowUpList() {
     const lastContactText = lastInteraction ? ` ? Ãšltimo contato: ${INTERACTION_TYPE_LABELS[lastInteraction.type] || lastInteraction.type} em ${formatDate(lastInteraction.date)}` : "";
     return `
    <article class="report-item ${overdue ? "follow-up-overdue" : ""}">
-    <strong><span>${escapeHtml(opportunity.title)} ? ${escapeHtml(personName(opportunity.personId))}</span><span>${money(opportunity.value)}</span></strong>
-    <span class="muted">${nextFollowUp ? `Pr?ximo follow-up: ${formatDate(nextFollowUp)}` : "Sem follow-up agendado"} ? ${escapeHtml(sellerName(opportunity.sellerId))}${lastContactText}</span>
+    <strong><span>${escapeHtml(opportunity.title)} - ${escapeHtml(personName(opportunity.personId))}</span><span>${money(opportunity.value)}</span></strong>
+    <span class="muted">${nextFollowUp ? `Próximo follow-up: ${formatDate(nextFollowUp)}` : "Sem follow-up agendado"} - ${escapeHtml(sellerName(opportunity.sellerId))}${lastContactText}</span>
     <div class="row-actions">
      <button type="button" data-register-contact="${opportunity.id}">Registrar contato</button>
     </div>
@@ -10372,7 +10372,7 @@ function openInteractionDialog(opportunityId) {
  els.interactionForm.reset();
  els.interactionOpportunityId.value = opportunityId;
  els.interactionDate.value = todayIso;
- document.querySelector("#interactionDialogTitle").textContent = opportunity ? `Registrar contato ? ${opportunity.title}` : "Registrar contato";
+ document.querySelector("#interactionDialogTitle").textContent = opportunity ? `Registrar contato - ${opportunity.title}` : "Registrar contato";
  els.interactionDialog.showModal();
 }
 
@@ -10500,7 +10500,7 @@ function renderTasks() {
 
  renderTaskGroup(els.tasksOverdueList, overdue, "Nenhuma tarefa atrasada.");
  renderTaskGroup(els.tasksTodayList, dueToday, "Nenhuma tarefa para hoje.");
- renderTaskGroup(els.tasksWeekList, dueWeek, "Nenhuma tarefa nos pr?ximos 7 dias.");
+ renderTaskGroup(els.tasksWeekList, dueWeek, "Nenhuma tarefa nos próximos 7 dias.");
  renderTaskGroup(els.tasksLaterList, dueLater, "Nenhuma tarefa futura.");
 }
 
@@ -10511,7 +10511,7 @@ function renderTaskGroup(container, tasks, emptyText) {
     .map((task) => `
    <article class="report-item">
     <strong><span>${escapeHtml(task.title)}</span><span>${taskStatusLabel(taskComputedStatus(task))}</span></strong>
-    <span class="muted">${formatDate(task.dueDate)} ? ${escapeHtml(sellerName(task.sellerId))}${task.description ? ` ? ${escapeHtml(task.description)}` : ""}</span>
+    <span class="muted">${formatDate(task.dueDate)} - ${escapeHtml(sellerName(task.sellerId))}${task.description ? ` - ${escapeHtml(task.description)}` : ""}</span>
     ${task.status !== "concluida" ? `<div class="row-actions"><button type="button" data-complete-task="${task.id}">Concluir</button></div>` : ""}
    </article>`).join("")
   : emptyMessage(emptyText);
@@ -10573,7 +10573,7 @@ function opportunitySellerKey(item) {
 function opportunitySellerLabel(key) {
  if (key.startsWith("user:")) return userName(key.replace("user:", ""));
  if (key.startsWith("seller:")) return sellerName(key.replace("seller:", ""));
- return key.replace("owner:", "") || "Sem respons?vel";
+ return key.replace("owner:", "") || "Sem responsável";
 }
 
 function getSalesRankingPeriod(mode = "month") {
@@ -10617,7 +10617,7 @@ function renderStageConversionReport(opportunities = opportunitiesVisibleToCurre
  els.crmStageConversionReport.innerHTML = rows.map((row) => `
   <article class="report-item">
    <strong><span>${row.stageInfo.label}</span><span>${row.rate.toFixed(1)}%</span></strong>
-   <span class="muted">${row.advancedCount} de ${row.reachedCount} avan?aram para o pr?ximo est?gio</span>
+   <span class="muted">${row.advancedCount} de ${row.reachedCount} avançaram para o próximo estágio</span>
   </article>`).join("");
 }
 
@@ -10630,9 +10630,9 @@ function renderSellerRanking(won, lost) {
     <td>${index < 3 ? `${index + 1} ` : ""}${escapeHtml(row.name)}</td>
     <td class="money">${money(row.total)}</td>
     <td>${row.count}</td>
-    <td>${row.conversion.toFixed(1)}%</td> ?
+    <td>${row.conversion.toFixed(1)}%</td>
    </tr>`).join("")
-  : `<tr><td colspan="4">${emptyMessage("Sem negcios fechados no perodo.")}</td></tr>`;
+  : `<tr><td colspan="4">${emptyMessage("Sem negócios fechados no período.")}</td></tr>`;
 }
 
 function buildSalesRankingRows(won, lost) {
@@ -10952,7 +10952,7 @@ function saveInvoice() {
 
  const duplicate = state.invoices.some((item) => item.id !== id && item.kind === kind && item.personId === personId && item.number.trim().toLowerCase() === number.toLowerCase());
  if (duplicate) {
-  toast("J? existe uma NF com esse n?mero para esse cliente/fornecedor.");
+  toast("Já existe uma NF com esse n?mero para esse cliente/fornecedor.");
   return;
  }
 
@@ -11011,7 +11011,7 @@ function invoiceRow(invoice) {
  const projectText = invoice.projectId ? `Projeto: ${projectName(invoice.projectId)}` : "Projeto pendente";
  return `
   <article class="person-item">
-   <strong><span>NF ${escapeHtml(invoice.number)}${invoice.series ? "/" + escapeHtml(invoice.series) : ""} ? ${escapeHtml(personName(invoice.personId))}</span><span>${money(invoice.accountingValue)}</span></strong>
+   <strong><span>NF ${escapeHtml(invoice.number)}${invoice.series ? "/" + escapeHtml(invoice.series) : ""} - ${escapeHtml(personName(invoice.personId))}</span><span>${money(invoice.accountingValue)}</span></strong>
    <span class="muted">${formatDate(invoice.issueDate)} - ${invoiceStatusLabel(invoice)} - ${linkText} - ${escapeHtml(projectText)}</span>
    <div class="row-actions">
     <button type="button" data-invoice-action="edit" data-id="${invoice.id}">Editar</button>
@@ -11054,7 +11054,7 @@ function handleInvoiceAction(action, id) {
 
  if (action === "delete") {
   if (linkedTransactionsForInvoice(invoice.id).length) {
-   toast("Desvincule os lan?amentos financeiros antes de excluir esta NF.");
+   toast("Desvincule os lançamentos financeiros antes de excluir esta NF.");
    return;
   }
   state.bankMovements.filter((item) => item.invoiceId === invoice.id).forEach((item) => {
@@ -11063,7 +11063,7 @@ function handleInvoiceAction(action, id) {
   state.invoices = state.invoices.filter((item) => item.id !== invoice.id);
   persist();
   renderAll();
-  toast("Nota fiscal exclu?da.");
+  toast("Nota fiscal excluída.");
  }
 }
 
@@ -11072,8 +11072,8 @@ function openInvoiceLinkDialog(invoice) {
  const wantType = meta.direction === "emitida" ? "receber" : "pagar";
 
  els.invoiceLinkId.value = invoice.id;
- els.invoiceLinkTitle.textContent = `Vincular NF ${invoice.number} a lan?amentos`;
- els.invoiceLinkSummary.textContent = `Valor cont?bil da NF: ${money(invoice.accountingValue)}`;
+ els.invoiceLinkTitle.textContent = `Vincular NF ${invoice.number} a lançamentos`;
+ els.invoiceLinkSummary.textContent = `Valor contábil da NF: ${money(invoice.accountingValue)}`;
  hydrateProjectOptions();
  els.invoiceLinkProject.value = invoice.projectId || "";
 
@@ -11087,9 +11087,9 @@ function openInvoiceLinkDialog(invoice) {
    candidates.map((item) => `
    <label class="checkbox-line invoice-link-row">
     <input type="checkbox" data-link-transaction="${item.id}" ${item.invoiceId === invoice.id ? "checked" : ""} />
-    ${formatDate(item.dueDate)} ? ${escapeHtml(item.description)} ? ${money(item.amount)} ? ${statusLabel(item.status)} ?
+    ${formatDate(item.dueDate)} - ${escapeHtml(item.description)} - ${money(item.amount)} - ${statusLabel(item.status)}
    </label>`).join("")
-  : emptyMessage("Nenhum lan?amento compatével (mesmo cliente/fornecedor, sem NF vinculada).");
+  : emptyMessage("Nenhum lançamento compatível (mesmo cliente/fornecedor, sem NF vinculada).");
 
  els.invoiceLinkDialog.showModal();
 }
@@ -11127,11 +11127,11 @@ function renderPeople() {
    people.map((person) => `
    <article class="person-item">
     <strong><span>${escapeHtml(person.name)}</span><span>${personTypeLabel(person.type)}</span></strong>
-    <span class="muted">${escapeHtml(person.document || "Sem documento")} ? ${escapeHtml(person.contact || "Sem contato")}</span>
+    <span class="muted">${escapeHtml(person.document || "Sem documento")} - ${escapeHtml(person.contact || "Sem contato")}</span>
     <div class="row-actions">
      <button type="button" data-person-action="edit" data-id="${person.id}">Editar</button>
      <button type="button" data-person-action="delete" data-id="${person.id}">Excluir</button>
-    </div> ?
+    </div>
    </article>`).join("")
   : emptyMessage("Nenhum cadastro encontrado.");
 
@@ -11175,14 +11175,14 @@ function handlePersonAction(action, id) {
 
  const inUse = state.transactions.some((item) => item.personId === id) || state.sales.some((sale) => sale.personId === id) || state.invoices.some((item) => item.personId === id);
  if (inUse) {
-  toast("Não ? possível excluir: h? lan?amentos vinculados.");
+  toast("Não é possível excluir: há lançamentos vinculados.");
   return;
  }
 
  state.people = state.people.filter((item) => item.id !== id);
  persist();
  renderAll();
- toast("Cadastro exclu?do.");
+ toast("Cadastro excluído.");
 }
 
 function openTransactionDialog(item = null) {
@@ -11213,7 +11213,7 @@ function openTransactionDialog(item = null) {
  renderAllocationRows(allocations);
  updateTransactionInstallmentUi();
  els.transactionNotes.value = item.notes || "";
- els.transactionTitle.textContent = item ? "Editar lan?amento" : "Novo lan?amento";
+ els.transactionTitle.textContent = item ? "Editar lançamento" : "Novo lançamento";
  els.transactionDialog.showModal();
 }
 
@@ -11224,7 +11224,7 @@ function saveTransaction() {
  const existing = state.transactions.find((item) => item.id === els.transactionId.value);
  const allocations = getTransactionAllocations();
  if (!validateAllocations(Number(els.transactionAmount.value), allocations)) {
-  toast("A soma do rateio precisa ser igual ao valor total do lan?amento.");
+  toast("A soma do rateio precisa ser igual ao valor total do lançamento.");
   return;
  }
 
@@ -11268,7 +11268,7 @@ function saveTransaction() {
  persist();
  renderAll();
  els.transactionDialog.close();
- toast("Lan?amento salvo.");
+ toast("Lançamento salvo.");
 }
 
 function saveTransactionInstallments(type, status, allocations) {
@@ -11441,7 +11441,7 @@ function createProjectFromTransactionDialog() {
  els.quickProjectContractValue.value = els.transactionType.value === "receber" ? amount : 0;
  els.quickProjectExpectedCosts.value = els.transactionType.value === "pagar" ? amount : 0;
  els.quickProjectTargetMargin.value = 20;
- els.quickProjectNotes.value = "Criado a partir do lan?amento financeiro.";
+ els.quickProjectNotes.value = "Criado a partir do lançamento financeiro.";
  els.quickProjectDialog.showModal();
  els.quickProjectName.focus();
 }
@@ -11486,7 +11486,7 @@ function saveQuickProjectFromTransaction() {
  toast(
   quickProjectTarget === "stockExit" ? "Projeto cadastrado e selecionado na saída de estoque."
    : quickProjectTarget === "bank" ? "Projeto cadastrado e selecionado na conciliação bancária."
-    : "Projeto cadastrado e selecionado no lan?amento."
+    : "Projeto cadastrado e selecionado no lançamento."
  );
  quickProjectTarget = "transaction";
 }
@@ -11523,7 +11523,7 @@ function renderTransactionInstallmentPreview() {
  const installments = buildTransactionInstallmentPlan(total, count, firstDue, entryAmount);
  const rowsTotal = roundCurrency(sum(installments.map((item) => item.amount)));
  els.transactionInstallmentPreview.innerHTML = `
-  <strong>Previs?o das parcelas</strong>
+  <strong>Previsão das parcelas</strong>
   <div class="editable-installments">
    ${installments.map((item, index) => `
     <div class="editable-installment-row">
@@ -11717,11 +11717,11 @@ function renderInvoiceBillingReport(servico, material) {
  document.querySelector("#invoiceBillingReport").innerHTML = `
   <article class="report-item">
    <strong><span>NF de Serviço</span><span>${money(servicoTotal)}</span></strong>
-   <span class="muted">${servico.length} nota(s) emitida(s) no per?odo</span>
+   <span class="muted">${servico.length} nota(s) emitida(s) no período</span>
   </article>
   <article class="report-item">
    <strong><span>NF de Material/Produto</span><span>${money(materialTotal)}</span></strong>
-   <span class="muted">${material.length} nota(s) emitida(s) no per?odo</span>
+   <span class="muted">${material.length} nota(s) emitida(s) no período</span>
   </article>
   <article class="report-item">
    <strong><span>Total geral faturado</span><span>${money(servicoTotal + materialTotal)}</span></strong>
@@ -11733,9 +11733,9 @@ function renderInvoiceExpenseReport(despesa) {
  const total = sum(despesa.map(accountingValueOf));
  document.querySelector("#invoiceExpenseReport").innerHTML = despesa.length ? `<article class="report-item">
     <strong><span>NF de despesa recebidas</span><span>${money(total)}</span></strong>
-    <span class="muted">${despesa.length} nota(s) no per?odo</span>
+    <span class="muted">${despesa.length} nota(s) no período</span>
    </article>`
-  : emptyMessage("Nenhuma NF de despesa recebida no per?odo.");
+  : emptyMessage("Nenhuma NF de despesa recebida no período.");
 }
 
 function renderExpenseNoInvoiceReport(period) {
@@ -11746,9 +11746,9 @@ function renderExpenseNoInvoiceReport(period) {
    rows.map((item) => `
    <article class="report-item">
     <strong><span>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></strong>
-    <span class="muted">${formatDate(item.dueDate)} ? ${personName(item.personId)} ? ${statusLabel(item.status)}</span>
+    <span class="muted">${formatDate(item.dueDate)} - ${personName(item.personId)} - ${statusLabel(item.status)}</span>
    </article>`).join("")
-  : emptyMessage("Todas as despesas do per?odo t?m NF vinculada.");
+  : emptyMessage("Todas as despesas do período têm NF vinculada.");
 }
 
 function renderPaidNoInvoiceReport(period) {
@@ -11759,9 +11759,9 @@ function renderPaidNoInvoiceReport(period) {
    rows.map((item) => `
    <article class="report-item">
     <strong><span>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></strong>
-    <span class="muted">${formatDate(item.paidDate)} ? ${personName(item.personId)}</span>
+    <span class="muted">${formatDate(item.paidDate)} - ${personName(item.personId)}</span>
    </article>`).join("")
-  : emptyMessage("Nenhuma conta paga sem NF no per?odo.");
+  : emptyMessage("Nenhuma conta paga sem NF no período.");
 }
 
 function renderReceivableNoInvoiceReport(period) {
@@ -11772,9 +11772,9 @@ function renderReceivableNoInvoiceReport(period) {
    rows.map((item) => `
    <article class="report-item">
     <strong><span>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></strong>
-    <span class="muted">${formatDate(item.dueDate)} ? ${personName(item.personId)} ? ${statusLabel(item.status)}</span>
+    <span class="muted">${formatDate(item.dueDate)} - ${personName(item.personId)} - ${statusLabel(item.status)}</span>
    </article>`).join("")
-  : emptyMessage("Todas as contas a receber do per?odo t?m NF vinculada.");
+  : emptyMessage("Todas as contas a receber do período têm NF vinculada.");
 }
 
 function groupInvoicesBy(invoices, keyField, nameFn) {
@@ -11795,9 +11795,9 @@ function renderInvoiceByProjectReport(invoices) {
    rows.map((row) => `
    <article class="report-item">
     <strong><span>${escapeHtml(row.name)}</span><span>${money(row.total)}</span></strong>
-    <span class="muted">${row.count} NF</span> ?
+    <span class="muted">${row.count} NF</span>
    </article>`).join("")
-  : emptyMessage("Sem dados para este relatério.");
+  : emptyMessage("Sem dados para este relatório.");
 }
 
 function renderInvoiceByClientReport(invoices) {
@@ -11806,9 +11806,9 @@ function renderInvoiceByClientReport(invoices) {
    rows.map((row) => `
    <article class="report-item">
     <strong><span>${escapeHtml(row.name)}</span><span>${money(row.total)}</span></strong>
-    <span class="muted">${row.count} NF</span> ?
+    <span class="muted">${row.count} NF</span>
    </article>`).join("")
-  : emptyMessage("Sem dados para este relatério.");
+  : emptyMessage("Sem dados para este relatório.");
 }
 
 function renderInvoiceBySupplierReport(despesa) {
@@ -11817,9 +11817,9 @@ function renderInvoiceBySupplierReport(despesa) {
    rows.map((row) => `
    <article class="report-item">
     <strong><span>${escapeHtml(row.name)}</span><span>${money(row.total)}</span></strong>
-    <span class="muted">${row.count} NF</span> ?
+    <span class="muted">${row.count} NF</span>
    </article>`).join("")
-  : emptyMessage("Sem dados para este relatério.");
+  : emptyMessage("Sem dados para este relatório.");
 }
 
 function renderInvoiceDivergenceReport() {
@@ -11835,13 +11835,13 @@ function renderInvoiceDivergenceReport() {
  document.querySelector("#invoiceDivergenceReport").innerHTML = rows.length ?
    rows.map((row) => `
    <tr class="invoice-divergence-row ${Math.abs(row.diff) > 0.01 ? "mismatch" : ""}">
-    <td>NF ${escapeHtml(row.invoice.number)} ? ${escapeHtml(personName(row.invoice.personId))}</td>
+    <td>NF ${escapeHtml(row.invoice.number)} - ${escapeHtml(personName(row.invoice.personId))}</td>
     <td>${row.linkedCount} parcela(s)</td>
     <td class="money">${money(row.invoice.accountingValue)}</td>
     <td class="money">${money(row.financialTotal)}</td>
-    <td class="money">${money(row.diff)}</td> ?
+    <td class="money">${money(row.diff)}</td>
    </tr>`).join("")
-  : `<tr><td colspan="5">${emptyMessage("Nenhuma NF vinculada a lan?amentos para comparar.")}</td></tr>`;
+  : `<tr><td colspan="5">${emptyMessage("Nenhuma NF vinculada a lançamentos para comparar.")}</td></tr>`;
 }
 
 function renderDreReport(dre) {
@@ -11863,9 +11863,9 @@ function renderPeriodReport(targetId, rows) {
    rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map((item) => `
    <article class="report-item">
     <strong><span>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></strong>
-    <span class="muted">${formatDate(item.dueDate)} ? ${personName(item.personId)} ? ${statusLabel(item.status)}</span> ?
+    <span class="muted">${formatDate(item.dueDate)} - ${personName(item.personId)} - ${statusLabel(item.status)}</span>
    </article>`).join("")
-  : emptyMessage("Nenhum lan?amento no per?odo.");
+  : emptyMessage("Nenhum lançamento no período.");
 }
 
 function renderCategoryReport(periodTransactions) {
@@ -11875,9 +11875,9 @@ function renderCategoryReport(periodTransactions) {
    byCategory.map((row) => `
    <article class="report-item">
     <strong><span>${escapeHtml(row.category)}</span><span>${money(row.total)}</span></strong>
-    <span class="muted">${row.count} lan?amento(s)</span> ?
+    <span class="muted">${row.count} lançamento(s)</span>
    </article>`).join("")
-  : emptyMessage("Sem dados para este relatério.");
+  : emptyMessage("Sem dados para este relatório.");
 }
 
 function renderOverdueReport() {
@@ -11886,9 +11886,9 @@ function renderOverdueReport() {
    overdue.map((item) => `
    <article class="report-item">
     <strong><span>${escapeHtml(item.description)}</span><span>${money(item.amount)}</span></strong>
-    <span class="muted">${formatDate(item.dueDate)} ? ${personName(item.personId)} ? ${item.type === "receber" ? "A receber" : "A pagar"}</span>
+    <span class="muted">${formatDate(item.dueDate)} - ${personName(item.personId)} - ${item.type === "receber" ? "A receber" : "A pagar"}</span>
    </article>`).join("")
-  : emptyMessage("Nenhum lan?amento vencido em aberto.");
+  : emptyMessage("Nenhum lançamento vencido em aberto.");
 }
 
 function calculateDre() {
@@ -12132,6 +12132,22 @@ function emptyMessage(text) {
 
 function displayText(value) {
  return String(value ?? "")
+  .replace(/Ã¡/g, "á")
+  .replace(/Ã /g, "à")
+  .replace(/Ã¢/g, "â")
+  .replace(/Ã£/g, "ã")
+  .replace(/Ã©/g, "é")
+  .replace(/Ãª/g, "ê")
+  .replace(/Ã­/g, "í")
+  .replace(/Ã³/g, "ó")
+  .replace(/Ã´/g, "ô")
+  .replace(/Ãµ/g, "õ")
+  .replace(/Ãº/g, "ú")
+  .replace(/Ã§/g, "ç")
+  .replace(/Ã�/g, "Á")
+  .replace(/Ã‰/g, "É")
+  .replace(/Ã“/g, "Ó")
+  .replace(/Ã‡/g, "Ç")
   .replace(/\s\?\s/g, " - ")
   .replace(/Ãš/g, "Ú")
   .replace(/banc\?ria/gi, (match) => match[0] === "B" ? "Bancária" : "bancária")
@@ -12174,7 +12190,7 @@ function displayText(value) {
   .replace(/l\?quido/gi, (match) => match[0] === "L" ? "Líquido" : "líquido")
   .replace(/prop\?sito/gi, "propósito")
   .replace(/dispon\?vel/gi, "disponível")
-  .replace(/funúo/gi, "função")
+  .replace(/função/gi, "função")
   .replace(/Deduúes/g, "Deduções")
   .replace(/manutenúo/gi, "manutenção");
 }
