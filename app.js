@@ -884,6 +884,8 @@ function bindEvents() {
  enhanceSearchableSelect(els.protocolCustomer, { placeholder: "Buscar cliente?" });
  enhanceSearchableSelect(els.protocolProject, { placeholder: "Buscar projeto?" });
  enhanceSearchableSelect(els.protocolResponsible, { placeholder: "Buscar responsável?" });
+ enhanceSearchableSelect(els.installationProject, { placeholder: "Buscar projeto?" });
+ enhanceSearchableSelect(els.installationCustomer, { placeholder: "Buscar cliente?" });
 
  document.querySelectorAll("[data-invoice-kind]").forEach((button) => {
   button.addEventListener("click", () => setInvoiceKind(button.dataset.invoiceKind));
@@ -4896,8 +4898,12 @@ function handleProjectAction(action, id) {
 
 function hydrateProjectOptions() {
  const currentStockFilterProject = els.stockFilterProject.value || "";
- const projectOptions = state.projects.length ?
-   state.projects.map((project) => `<option value="${project.id}">${escapeHtml(projectLabel(project))}</option>`).join("")
+ const sortedProjects = [...state.projects].sort((a, b) => projectLabel(a).localeCompare(projectLabel(b), "pt-BR", { sensitivity: "base" }));
+ const sortedCustomers = state.people
+  .filter((person) => person.type === "cliente" || person.type === "ambos")
+  .sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR", { sensitivity: "base" }));
+ const projectOptions = sortedProjects.length ?
+   sortedProjects.map((project) => `<option value="${project.id}">${escapeHtml(projectLabel(project))}</option>`).join("")
   : `<option value="">Cadastre um projeto primeiro</option>`;
  const optionalProjectOptions = `<option value="">Sem projeto</option>${projectOptions}`;
 
@@ -4916,12 +4922,12 @@ function hydrateProjectOptions() {
  refreshSearchableSelect(els.stockExitProject);
  refreshSearchableSelect(els.stockFilterProject);
  els.installationProject.innerHTML = optionalProjectOptions;
- els.installationCustomer.innerHTML = `<option value="">Sem cliente vinculado</option>${state.people
-  .filter((person) => person.type === "cliente" || person.type === "ambos")
+ refreshSearchableSelect(els.installationProject);
+ els.installationCustomer.innerHTML = `<option value="">Sem cliente vinculado</option>${sortedCustomers
   .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
   .join("")}`;
- const customerOptions = `<option value="">Sem cliente vinculado</option>${state.people
-  .filter((person) => person.type === "cliente" || person.type === "ambos")
+ refreshSearchableSelect(els.installationCustomer);
+ const customerOptions = `<option value="">Sem cliente vinculado</option>${sortedCustomers
   .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
   .join("")}`;
  els.projectCustomer.innerHTML = customerOptions;
@@ -6308,6 +6314,8 @@ function legacyOpenInstallationForProject(project) {
  resetInstallationForm();
  els.installationProject.value = project.id;
  els.installationCustomer.value = project.customerId;
+ refreshSearchableSelect(els.installationProject);
+ refreshSearchableSelect(els.installationCustomer);
  els.installationScheduledDate.value = project.endDate || "";
  toast("Revise os dados e salve a instalação.");
 }
@@ -6392,6 +6400,8 @@ function legacyHandleInstallationAction(action, id) {
   els.installationId.value = installation.id;
   els.installationProject.value = installation.projectId;
   els.installationCustomer.value = installation.customerId;
+  refreshSearchableSelect(els.installationProject);
+  refreshSearchableSelect(els.installationCustomer);
   els.installationStatus.value = installation.status;
   els.installationScheduledDate.value = installation.scheduledDate;
   els.installationTeam.value = installation.team;
@@ -6415,6 +6425,8 @@ function openInstallationForProject(project) {
  setInstallationFormVisible(true);
  els.installationProject.value = project.id;
  els.installationCustomer.value = project.customerId;
+ refreshSearchableSelect(els.installationProject);
+ refreshSearchableSelect(els.installationCustomer);
  els.installationServiceType.value = "instalacao_projeto";
  els.installationClosedDate.value = todayIso;
  els.installationPostSaleDueDate.value = addBusinessDaysIso(todayIso, 2);
@@ -7254,6 +7266,8 @@ function handleInstallationAction(action, id) {
   els.deleteInstallationBtn.classList.remove("hidden");
   els.installationProject.value = installation.projectId;
   els.installationCustomer.value = installation.customerId;
+  refreshSearchableSelect(els.installationProject);
+  refreshSearchableSelect(els.installationCustomer);
   els.installationServiceType.value = installation.serviceType || "instalacao_projeto";
   els.installationStatus.value = normalizeInstallationStatus(installation.status);
   els.installationClosedDate.value = installation.closedDate || (installation.createdAt || "").slice(0, 10) || todayIso;
