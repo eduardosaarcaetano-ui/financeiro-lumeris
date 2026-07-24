@@ -1127,6 +1127,9 @@
             <label class="secondary-btn file-btn light-file" for="ofxFile">Importar OFX</label>
             <input id="ofxFile" type="file" accept=".ofx,application/x-ofx,text/plain" />
             <input id="bankSearch" type="search" placeholder="Buscar historico, banco, documento" />
+            <select id="bankCategoryFilter">
+              <option value="todas">Todas as categorias</option>
+            </select>
             <select id="bankStatus">
               <option value="todos">Todos</option>
               <option value="pendente">Pendentes</option>
@@ -1135,9 +1138,6 @@
             </select>
             <select id="bankAccountFilter">
               <option value="todas">Todas as contas</option>
-            </select>
-            <select id="bankCategoryFilter">
-              <option value="todas">Todas as categorias</option>
             </select>
             <label>De
               <input id="bankDateStart" type="date" />

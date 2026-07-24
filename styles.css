@@ -1970,6 +1970,11 @@ textarea {
   max-width: 190px;
 }
 
+#bankCategoryFilter {
+  min-width: 220px;
+  max-width: 260px;
+}
+
 .bank-toolbar label {
   display: grid;
   gap: 4px;
