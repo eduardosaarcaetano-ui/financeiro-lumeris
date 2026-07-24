@@ -6884,12 +6884,12 @@ function addInstallationWorker() {
  }
  const existing = state.installationWorkers.find((worker) => normalizeText(worker.name) === normalizeText(name));
  const data = {
-  id: existing.id || crypto.randomUUID(),
+  id: existing?.id || crypto.randomUUID(),
   name,
   role,
   dailyRate,
   active: true,
-  createdAt: existing.createdAt || new Date().toISOString(),
+  createdAt: existing?.createdAt || new Date().toISOString(),
   updatedAt: new Date().toISOString(),
  };
  if (existing) Object.assign(existing, data);
