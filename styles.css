@@ -2254,6 +2254,33 @@ tr:last-child td {
   margin-bottom: 16px;
 }
 
+.installation-filters .panel-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.installation-filters .row-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.installation-filters .row-actions button {
+  width: auto;
+  min-width: 128px;
+  white-space: nowrap;
+}
+
+.installation-filters .row-actions .primary-btn {
+  min-width: 190px;
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.installation-filters .row-actions .primary-btn:hover {
+  background: var(--primary-strong);
+}
+
 .installation-layout {
   display: grid;
   grid-template-columns: 1fr;
