@@ -63,7 +63,7 @@ const MANUAL_BANK_BALANCE_OVERRIDES = [
 const MOCK_DESCRIPTIONS = {
  "077": {
   entrada: ["Pix recebido - Cliente Simulado", "Transferência recebida", "Rendimento de aplicação"],
-  saida: ["Pix enviado - Fornecedor Simulado", "Pagamento de boleto", "Tarifa de manutenúo"],
+  saida: ["Pix enviado - Fornecedor Simulado", "Pagamento de boleto", "Tarifa de manutenção"],
  },
  "033": {
   entrada: ["TED recebida", "Depósito identificado", "Rendimento CDB"],
@@ -220,7 +220,7 @@ let showLostOpportunities = false;
 // taxa de conversão por estágio nos relatórios. "ganho"/"perdido" são estágios
 // terminais (não têm "próximo estágio" para fins de conversão sequencial).
 const OPPORTUNITY_STAGES = [
- { key: "prospeccao", label: "Prospecúo" },
+ { key: "prospeccao", label: "Prospecção" },
  { key: "contato", label: "Contato" },
  { key: "proposta", label: "Proposta" },
  { key: "negociacao", label: "Negociação" },
@@ -808,7 +808,7 @@ function getDefaultCrmStages() {
 
 const dreGroups = [
  { key: "receita_bruta", label: "Receita bruta", sign: 1 },
- { key: "deducoes", label: "Deduúes", sign: -1 },
+ { key: "deducoes", label: "Deduções", sign: -1 },
  { key: "custos", label: "Custo direto", sign: -1 },
  { key: "despesas_operacionais", label: "Despesas operacionais", sign: -1 },
  { key: "despesas_financeiras", label: "Despesas financeiras", sign: -1 },
@@ -882,13 +882,13 @@ function bindEvents() {
  els.maintenanceLogoutBtn.addEventListener("click", handleLogout);
  els.userForm.addEventListener("submit", saveUser);
  els.userRole.addEventListener("change", updateUserSectorUi);
- enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente?" });
- enhanceSearchableSelect(els.bankProject, { placeholder: "Buscar projeto?" });
- enhanceSearchableSelect(els.protocolCustomer, { placeholder: "Buscar cliente?" });
- enhanceSearchableSelect(els.protocolProject, { placeholder: "Buscar projeto?" });
- enhanceSearchableSelect(els.protocolResponsible, { placeholder: "Buscar responsável?" });
- enhanceSearchableSelect(els.installationProject, { placeholder: "Buscar projeto?" });
- enhanceSearchableSelect(els.installationCustomer, { placeholder: "Buscar cliente?" });
+ enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente" });
+ enhanceSearchableSelect(els.bankProject, { placeholder: "Buscar projeto" });
+ enhanceSearchableSelect(els.protocolCustomer, { placeholder: "Buscar cliente" });
+ enhanceSearchableSelect(els.protocolProject, { placeholder: "Buscar projeto" });
+ enhanceSearchableSelect(els.protocolResponsible, { placeholder: "Buscar responsável" });
+ enhanceSearchableSelect(els.installationProject, { placeholder: "Buscar projeto" });
+ enhanceSearchableSelect(els.installationCustomer, { placeholder: "Buscar cliente" });
 
  document.querySelectorAll("[data-invoice-kind]").forEach((button) => {
   button.addEventListener("click", () => setInvoiceKind(button.dataset.invoiceKind));
@@ -950,10 +950,10 @@ function bindEvents() {
  els.stockExitForm.addEventListener("submit", saveStockExit);
  els.stockExitType.addEventListener("change", updateStockExitTypeUi);
  els.newStockExitProjectBtn.addEventListener("click", createProjectFromStockExitDialog);
- enhanceSearchableSelect(els.stockEntryItem, { placeholder: "Buscar item?" });
- enhanceSearchableSelect(els.stockExitItem, { placeholder: "Buscar item?" });
- enhanceSearchableSelect(els.stockEntryProject, { placeholder: "Buscar projeto?" });
- enhanceSearchableSelect(els.stockExitProject, { placeholder: "Buscar projeto?" });
+ enhanceSearchableSelect(els.stockEntryItem, { placeholder: "Buscar item" });
+ enhanceSearchableSelect(els.stockExitItem, { placeholder: "Buscar item" });
+ enhanceSearchableSelect(els.stockEntryProject, { placeholder: "Buscar projeto" });
+ enhanceSearchableSelect(els.stockExitProject, { placeholder: "Buscar projeto" });
  enhanceSearchableSelect(els.stockFilterProject, { placeholder: "Todos os projetos" });
  enhanceSearchableSelect(els.stockFilterItem, { placeholder: "Todos os itens" });
  els.stockEntryDate.value = todayIso;
@@ -1681,14 +1681,14 @@ function normalizeState(data) {
  if (!normalized.crmUnits.length) {
   normalized.crmUnits = [
    { id: "sorocaba-sp", name: "Sorocaba - SP" },
-   { id: "maringa-pr", name: "Maring? - PR" },
+   { id: "maringa-pr", name: "Maringá - PR" },
   ];
  }
 
  if (!normalized.crmPipelines.length) {
   normalized.crmPipelines = [
    { id: "vendas", name: "Vendas" },
-   { id: "manutencao", name: "Manutenúo preventiva" },
+   { id: "manutencao", name: "Manutenção preventiva" },
    { id: "pos-venda", name: "Pós-venda" },
    { id: "projetos", name: "Projetos" },
   ];
@@ -2140,8 +2140,8 @@ function seedInstallationBacklog(normalized) {
 
 function persist(scopes) {
  if (isMaintenanceActive()) {
-  setSyncStatus("Sistema em manutenúo - salvamento bloqueado", "error");
-  toast("Sistema em manutenúo. Alteraúes não foram salvas.");
+  setSyncStatus("Sistema em manutenção - salvamento bloqueado", "error");
+  toast("Sistema em manutenção. Alterações não foram salvas.");
   return false;
  }
  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -2155,7 +2155,7 @@ async function initRemoteSync() {
   return;
  }
 
- setSyncStatus("Carregando dados compartilhados?", "syncing");
+setSyncStatus("Carregando dados compartilhados...", "syncing");
  try {
   const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, SYNC_TIMEOUT_MS);
   const result = await response.json();
@@ -2509,7 +2509,7 @@ function showMaintenance() {
  els.appShell.classList.add("hidden");
  els.maintenanceScreen.classList.remove("hidden");
  if (els.maintenanceMessage) els.maintenanceMessage.textContent = maintenanceMessage();
- setSyncStatus("Sistema em manutenúo", "error");
+ setSyncStatus("Sistema em manutenção", "error");
 }
 
 function hideMaintenance() {
@@ -2879,7 +2879,7 @@ function handleUserAction(action, id) {
 toast("Usuário excluído.");
 }
 
-function enhanceSearchableSelect(selectEl, { placeholder = "Buscar?" } = {}) {
+function enhanceSearchableSelect(selectEl, { placeholder = "Buscar" } = {}) {
  if (!selectEl || selectEl.dataset.searchEnhanced) return;
  selectEl.dataset.searchEnhanced = "1";
  selectEl.classList.add("hidden");
@@ -3526,7 +3526,7 @@ function renderOpportunityAttachmentRows() {
     <label class="attachment-url">Link do Drive
      <input data-attachment-url type="url" maxlength="300" value="${escapeHtml(item.url)}" placeholder="https://drive.google.com/..." />
     </label>
-    <label class="attachment-notes">Observaúes
+    <label class="attachment-notes">Observações
      <input data-attachment-notes maxlength="180" value="${escapeHtml(item.notes)}" />
     </label>
     <button class="secondary-btn" data-remove-opportunity-attachment="${item.id}" type="button">Remover</button>
@@ -4608,7 +4608,7 @@ function renderManualSalesRanking() {
  });
  const ranking = [...grouped.values()].sort((a, b) => b.total - a.total || b.count - a.count || a.seller.localeCompare(b.seller));
  const total = sum(entries.map((item) => Number(item.amount || 0)));
- els.salesRankSummary.textContent = `${entries.length} venda${entries.length === 1 ? "" : "s"} · ${money(total)}`;
+ els.salesRankSummary.textContent = `${entries.length} venda${entries.length === 1 ? "" : "s"} - ${money(total)}`;
  els.salesRankList.innerHTML = ranking.length ? ranking.map((row, index) => `
   <article class="sales-rank-card ${index < 3 ? `place-${index + 1}` : ""}">
    <span class="sales-rank-position">${index + 1}º</span>
@@ -4622,7 +4622,7 @@ function renderManualSalesRanking() {
   </article>`).join("") : emptyMessage("Nenhuma venda lançada neste período.");
  els.salesRankEntries.innerHTML = entries.length ? entries.map((item) => `
   <article class="sales-rank-entry">
-   <div><strong>${escapeHtml(item.client)}</strong><span>${escapeHtml(item.seller)}${item.city ? ` · ${escapeHtml(item.city)}` : ""}</span></div>
+   <div><strong>${escapeHtml(item.client)}</strong><span>${escapeHtml(item.seller)}${item.city ? ` - ${escapeHtml(item.city)}` : ""}</span></div>
    <strong>${money(item.amount)}</strong>
    <button type="button" data-action="delete-rank-entry" data-id="${item.id}" aria-label="Excluir lançamento">Excluir</button>
   </article>`).join("") : emptyMessage("Nenhum lançamento manual neste período.");
@@ -5772,13 +5772,13 @@ function renderProtocolKpis() {
   projectKpiCard("Tickets abertos", kpis.open, "Em andamento agora"),
   projectKpiCard("Tickets em atraso", kpis.overdue, "Prazo da concessionária vencido", kpis.overdue ? "danger" : "ok"),
   projectKpiCard("Tickets desta semana", kpis.dueThisWeek, "Vencem nos próximos 7 dias", kpis.dueThisWeek ? "warn" : "ok"),
-  projectKpiCard("Homologaúes em andamento", kpis.homologacoes, "Tipo: Homologação"),
+  projectKpiCard("Homologações em andamento", kpis.homologacoes, "Tipo: Homologação"),
   projectKpiCard("Consultas de viabilidade", kpis.viabilidade, "Tipo: Consulta de viabilidade"),
   projectKpiCard("Aguardando cliente", kpis.aguardandoCliente, "Ticket parado por resposta do cliente", kpis.aguardandoCliente ? "warn" : "ok"),
   projectKpiCard("Aguardando concessionária", kpis.aguardandoConcessionaria, "Ticket parado na concessionária", kpis.aguardandoConcessionaria ? "warn" : "ok"),
   projectKpiCard("Projetos liberados", kpis.projetosLiberados, "Protocolos que liberaram instalação"),
   projectKpiCard("Projetos concluídos", kpis.projetosConcluidos, "Protocolos concluídos com projeto vinculado"),
-  projectKpiCard("Tempo m?dio de aprovação", kpis.avgApprovalDays === null ? "-" : `${kpis.avgApprovalDays} dia(s)`, "Da abertura até aprovação/liberação"),
+  projectKpiCard("Tempo médio de aprovação", kpis.avgApprovalDays === null ? "-" : `${kpis.avgApprovalDays} dia(s)`, "Da abertura até aprovação/liberação"),
  ].join("");
 }
 
@@ -6068,10 +6068,10 @@ function openProtocolDrawer(protocolId) {
    ["Abertura", formatDate(protocol.openedAt)],
    ["Prazo da concessionária", formatDate(protocol.utilityDeadline)],
    ["Previsão", formatDate(protocol.expectedDate)],
-   ["Ãšltima movimentação", formatDate((protocol.lastMovementAt || "").slice(0, 10))],
+   ["Última movimentação", formatDate((protocol.lastMovementAt || "").slice(0, 10))],
    ["Projeto vinculado", project ? projectLabel(project) : "Sem projeto vinculado"],
   ])}
-  ${protocol.notes ? `<section class="drawer-section"><h4>Observaúes</h4><p>${escapeHtml(protocol.notes)}</p></section>` : ""}
+  ${protocol.notes ? `<section class="drawer-section"><h4>Observações</h4><p>${escapeHtml(protocol.notes)}</p></section>` : ""}
   <section class="drawer-section">
    <h4>Checklist / documentos</h4>
    <div class="protocol-checklist">${protocolChecklistHtml(protocol)}</div>
@@ -6695,9 +6695,9 @@ function technicalReportHtml(installation, report) {
     <div class="box"><strong>Tipo de serviço</strong>${escapeHtml(installationTypeLabel(installation.serviceType))}</div>
     <div class="box"><strong>Status</strong>${escapeHtml(installationStatusLabel(installation.status))}</div>
     <div class="box"><strong>Conclusão</strong>${formatDate(installation.completedDate || todayIso)}</div>
-    <div class="box"><strong>In?cio da garantia</strong>${formatDate(report.warrantyStartDate || installation.completedDate || todayIso)}</div>
+    <div class="box"><strong>Início da garantia</strong>${formatDate(report.warrantyStartDate || installation.completedDate || todayIso)}</div>
     <div class="box"><strong>Técnico responsável</strong>${escapeHtml(report.technician || installation.team || "-")}</div>
-    <div class="box"><strong>Contato do cliente</strong>${escapeHtml(report.whatsapp || client.contact || "-")} ${report.email ? "? " + escapeHtml(report.email) : ""}</div>
+    <div class="box"><strong>Contato do cliente</strong>${escapeHtml(report.whatsapp || client.contact || "-")} ${report.email ? " - " + escapeHtml(report.email) : ""}</div>
    </section>
 
    <h2>Resumo técnico</h2>
@@ -6868,7 +6868,7 @@ function installationWorkerOptions(selectedId = "") {
  const options = state.installationWorkers
   .filter((worker) => worker.active !== false)
   .sort((a, b) => a.name.localeCompare(b.name))
-  .map((worker) => `<option value="${worker.id}" ${worker.id === selectedId ? "selected" : ""}>${escapeHtml(worker.name)} · ${escapeHtml(worker.role)} · ${money(worker.dailyRate)}</option>`);
+  .map((worker) => `<option value="${worker.id}" ${worker.id === selectedId ? "selected" : ""}>${escapeHtml(worker.name)} - ${escapeHtml(worker.role)} - ${money(worker.dailyRate)}</option>`);
  return `<option value="">Selecionar funcionário interno</option>${options.join("")}`;
 }
 
@@ -6881,7 +6881,7 @@ function renderInstallationWorkerList() {
    .map((worker) => `
     <span class="installation-worker-chip">
      <strong>${escapeHtml(worker.name)}</strong>
-     ${escapeHtml(worker.role)} · ${money(worker.dailyRate)}
+     ${escapeHtml(worker.role)} - ${money(worker.dailyRate)}
      <button type="button" data-worker-action="remove" data-id="${worker.id}" title="Remover da lista">x</button>
     </span>
    `).join("")
@@ -7137,8 +7137,8 @@ function renderInstallations() {
      <td><strong>${escapeHtml(personName(item.customerId))}</strong><small>${escapeHtml(projectName(item.projectId))}</small></td>
      <td><span class="status ${item.status === "concluida" ? "baixado" : late || isPostSaleContactLate(item) ? "vencido" : "aberto"}">${escapeHtml(installationStatusLabel(item.status))}</span><small>${escapeHtml(postSaleText)}</small></td>
      <td>${escapeHtml(item.team || "Sem equipe")}<small>${(item.labor || []).length} pessoa(s) com custo</small></td>
-     <td><strong class="${efficiency.saving >= 0 ? "ok-text" : "danger-text"}">${money(efficiency.saving)}</strong><small>${item.panels || 0} placa(s) ? equipe ${money(efficiency.own)}</small></td>
-     <td>${summary ? `<strong>${money(summary.grossResult)}</strong><small>Receita ${money(summary.contracted)} ? custos ${money(summary.costs)}</small>` : "<strong>-</strong><small>Sem projeto</small>"}</td>
+     <td><strong class="${efficiency.saving >= 0 ? "ok-text" : "danger-text"}">${money(efficiency.saving)}</strong><small>${item.panels || 0} placa(s) - equipe ${money(efficiency.own)}</small></td>
+     <td>${summary ? `<strong>${money(summary.grossResult)}</strong><small>Receita ${money(summary.contracted)} - custos ${money(summary.costs)}</small>` : "<strong>-</strong><small>Sem projeto</small>"}</td>
      <td class="row-actions">
       <button type="button" data-installation-action="edit" data-id="${item.id}">Editar</button>
       <button type="button" data-installation-action="complete" data-id="${item.id}">Concluir</button>
@@ -8446,7 +8446,7 @@ function renderBankAllocationTotal() {
  const total = allocationTotal(getBankAllocations());
  const movementAmount = currentBankMovementAmount();
  const diff = roundCurrency(movementAmount - total);
- els.bankAllocationTotal.textContent = `Total rateado: ${money(total)} ? Diferen?a: ${money(diff)}`;
+ els.bankAllocationTotal.textContent = `Total rateado: ${money(total)} - Diferença: ${money(diff)}`;
  els.bankAllocationTotal.classList.toggle("invalid", total > 0 && Math.abs(diff) >= 0.01);
 }
 
@@ -8685,7 +8685,7 @@ function stockItemMatchesStatus(item, status) {
 
 function stockUserName(id) {
  const user = state.users.find((entry) => entry.id === id);
- return user ? user.name || user.username : "?";
+ return user ? user.name || user.username : "Usuário";
 }
 
 function appendStockMovement(entry) {
@@ -8928,7 +8928,7 @@ function ensureProjectByName(name) {
   expectedCosts: 0,
   targetMargin: 20,
   costCenterId: crypto.randomUUID(),
-  notes: "Criado automaticamente pela importação de requisiúes de estoque.",
+  notes: "Criado automaticamente pela importação de requisições de estoque.",
  };
  state.projects.push(project);
  upsertCostCenter(project);
@@ -9238,10 +9238,10 @@ function stockItemRow(item) {
  const categoryDetails = [item.category || "Sem categoria", item.subcategory].filter(Boolean);
  return `
   <tr class="${alertLevel ? `stock-alert-${alertLevel}` : ""}">
-   <td class="stock-item-code">${escapeHtml(item.internalCode || "Sem c?digo")}</td>
+   <td class="stock-item-code">${escapeHtml(item.internalCode || "Sem código")}</td>
    <td class="stock-item-description">
     <strong>${escapeHtml(item.name)}</strong>
-    <span class="muted block">${escapeHtml(details.join(" ? ") || "Sem descrição complementar")}</span>
+    <span class="muted block">${escapeHtml(details.join(" - ") || "Sem descrição complementar")}</span>
    </td>
    <td class="stock-category-cell">${escapeHtml(categoryDetails[0])}${categoryDetails[1] ? `<span class="muted">${escapeHtml(categoryDetails[1])}</span>` : ""}</td>
    <td>${escapeHtml(STOCK_UNIT_LABELS[item.unit] || item.unit)}</td>
@@ -9283,7 +9283,7 @@ function handleStockItemAction(action, id) {
   els.stockActive.checked = item.active;
   els.stockNotes.value = item.notes;
   els.stockItemFormTitle.textContent = `Editar item - ${item.name}`;
-  els.saveStockItemBtn.textContent = "Salvar alteraúes";
+  els.saveStockItemBtn.textContent = "Salvar alterações";
   els.cancelStockItemEditBtn.classList.remove("hidden");
   els.stockItemForm.classList.add("editing");
   els.stockItemForm.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -9302,7 +9302,7 @@ function handleStockItemAction(action, id) {
  if (action === "delete") {
   const hasMovements = state.stockMovements.some((movement) => movement.itemId === id);
   if (hasMovements || item.quantity) {
-   toast("Não ? possível excluir: item tem movimentaúes ou saldo em estoque. Inative-o em vez disso.");
+   toast("Não é possível excluir: item tem movimentações ou saldo em estoque. Inative-o em vez disso.");
    return;
   }
   state.stockItems = state.stockItems.filter((entry) => entry.id !== id);
@@ -9373,7 +9373,7 @@ function saveStockEntry(event) {
  refreshSearchableSelect(els.stockFilterItem);
  renderStock();
  resetStockEntryForm();
- toast("Entrada de material registrada. Custo m?dio recalculado.");
+ toast("Entrada de material registrada. Custo médio recalculado.");
 }
 
 function renderStockEntryList() {
@@ -9874,8 +9874,8 @@ function renderPipelineBoard() {
  const visibleOpportunities = filteredOpportunities();
  const lostItems = visibleOpportunities.filter((item) => item.stage === "perdido");
  if (els.toggleLostOpportunitiesBtn) {
-  els.toggleLostOpportunitiesBtn.textContent = showLostOpportunities ? `? Ocultar perdidos (${lostItems.length})`
-   : `? Ver perdidos (${lostItems.length})`;
+  els.toggleLostOpportunitiesBtn.textContent = showLostOpportunities ? `Ocultar perdidos (${lostItems.length})`
+   : `Ver perdidos (${lostItems.length})`;
  }
  const visibleStages = OPPORTUNITY_STAGES;
  els.pipelineBoard.innerHTML = visibleStages.map((stageInfo) => {
@@ -10350,7 +10350,7 @@ function renderFollowUpList() {
  els.followUpList.innerHTML = rows.length ?
    rows.map(({ opportunity, lastInteraction, nextFollowUp }) => {
     const overdue = nextFollowUp && nextFollowUp < todayIso;
-    const lastContactText = lastInteraction ? ` ? Ãšltimo contato: ${INTERACTION_TYPE_LABELS[lastInteraction.type] || lastInteraction.type} em ${formatDate(lastInteraction.date)}` : "";
+    const lastContactText = lastInteraction ? ` - Último contato: ${INTERACTION_TYPE_LABELS[lastInteraction.type] || lastInteraction.type} em ${formatDate(lastInteraction.date)}` : "";
     return `
    <article class="report-item ${overdue ? "follow-up-overdue" : ""}">
     <strong><span>${escapeHtml(opportunity.title)} - ${escapeHtml(personName(opportunity.personId))}</span><span>${money(opportunity.value)}</span></strong>
@@ -11009,9 +11009,10 @@ function invoiceRow(invoice) {
  const linked = linkedTransactionsForInvoice(invoice.id);
  const linkText = linked.length ? `${linked.length} parcela(s) vinculada(s) (${money(sum(linked))})` : "sem vínculo financeiro";
  const projectText = invoice.projectId ? `Projeto: ${projectName(invoice.projectId)}` : "Projeto pendente";
+ const seriesText = cleanInvoiceSeries(invoice.series, personName(invoice.personId));
  return `
   <article class="person-item">
-   <strong><span>NF ${escapeHtml(invoice.number)}${invoice.series ? "/" + escapeHtml(invoice.series) : ""} - ${escapeHtml(personName(invoice.personId))}</span><span>${money(invoice.accountingValue)}</span></strong>
+   <strong><span>NF ${escapeHtml(invoice.number)}${seriesText ? " / " + escapeHtml(seriesText) : ""} - ${escapeHtml(personName(invoice.personId))}</span><span>${money(invoice.accountingValue)}</span></strong>
    <span class="muted">${formatDate(invoice.issueDate)} - ${invoiceStatusLabel(invoice)} - ${linkText} - ${escapeHtml(projectText)}</span>
    <div class="row-actions">
     <button type="button" data-invoice-action="edit" data-id="${invoice.id}">Editar</button>
@@ -11019,6 +11020,14 @@ function invoiceRow(invoice) {
     <button type="button" data-invoice-action="delete" data-id="${invoice.id}">Excluir</button>
    </div>
   </article>`;
+}
+
+function cleanInvoiceSeries(series, person) {
+ const text = displayText(series).replace(/^[\s?\/-]+/, "").replace(/[\s?\/-]+$/, "").trim();
+ if (!text) return "";
+ const personText = displayText(person).trim().toLowerCase();
+ if (personText && text.length > 12 && text.toLowerCase().includes(personText.slice(0, 12))) return "";
+ return text;
 }
 
 function handleInvoiceAction(action, id) {
@@ -11532,7 +11541,7 @@ function renderTransactionInstallmentPreview() {
      <input data-installment-amount type="number" min="0.01" step="0.01" value="${item.amount.toFixed(2)}" />
     </div>`).join("")}
   </div>
-  <small class="allocation-total ${Math.abs(total - rowsTotal) >= 0.01 ? "invalid" : ""}">Total das parcelas: ${money(rowsTotal)} ? Diferen?a: ${money(roundCurrency(total - rowsTotal))}</small>`;
+  <small class="allocation-total ${Math.abs(total - rowsTotal) >= 0.01 ? "invalid" : ""}">Total das parcelas: ${money(rowsTotal)} - Diferença: ${money(roundCurrency(total - rowsTotal))}</small>`;
  els.transactionInstallmentPreview.querySelectorAll("[data-installment-amount]").forEach((input) => {
   input.addEventListener("input", updateEditedInstallmentTotal);
  });
@@ -11544,7 +11553,7 @@ function updateEditedInstallmentTotal() {
  const diff = roundCurrency(total - rowsTotal);
  const totalEl = els.transactionInstallmentPreview.querySelector(".allocation-total");
  if (!totalEl) return;
- totalEl.textContent = `Total das parcelas: ${money(rowsTotal)} ? Diferen?a: ${money(diff)}`;
+ totalEl.textContent = `Total das parcelas: ${money(rowsTotal)} - Diferença: ${money(diff)}`;
  totalEl.classList.toggle("invalid", Math.abs(diff) >= 0.01);
 }
 
@@ -11665,7 +11674,7 @@ function renderAllocationTotal() {
  const total = allocationTotal(allocations);
  const amount = roundCurrency(Number(els.transactionAmount.value || 0));
  const diff = roundCurrency(amount - total);
- els.allocationTotal.textContent = `Total rateado: ${money(total)} ? Diferen?a: ${money(diff)}`;
+ els.allocationTotal.textContent = `Total rateado: ${money(total)} - Diferença: ${money(diff)}`;
  els.allocationTotal.classList.toggle("invalid", allocations.length > 0 && Math.abs(diff) >= 0.01);
 }
 
@@ -12188,6 +12197,9 @@ function displayText(value) {
   .replace(/cont\?bil/gi, (match) => match[0] === "C" ? "Contábil" : "contábil")
   .replace(/compat\?vel/gi, (match) => match[0] === "C" ? "Compatível" : "compatível")
   .replace(/l\?quido/gi, (match) => match[0] === "L" ? "Líquido" : "líquido")
+  .replace(/\s+\?\s+/g, " - ")
+  .replace(/\s+\?(?=[,.;:)]|$)/g, "")
+  .replace(/(^|[(])\?\s+/g, "$1")
   .replace(/prop\?sito/gi, "propósito")
   .replace(/dispon\?vel/gi, "disponível")
   .replace(/função/gi, "função")
