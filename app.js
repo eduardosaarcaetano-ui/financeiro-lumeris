@@ -877,6 +877,9 @@ function bindEvents() {
  els.userRole.addEventListener("change", updateUserSectorUi);
  enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente?" });
  enhanceSearchableSelect(els.bankProject, { placeholder: "Buscar projeto?" });
+ enhanceSearchableSelect(els.protocolCustomer, { placeholder: "Buscar cliente?" });
+ enhanceSearchableSelect(els.protocolProject, { placeholder: "Buscar projeto?" });
+ enhanceSearchableSelect(els.protocolResponsible, { placeholder: "Buscar responsável?" });
 
  document.querySelectorAll("[data-invoice-kind]").forEach((button) => {
   button.addEventListener("click", () => setInvoiceKind(button.dataset.invoiceKind));
@@ -5519,13 +5522,18 @@ function hydrateProtocolOptions() {
   .filter((item) => item.active !== false)
   .map((item) => `<option value="${item.id}">${escapeHtml(item.name)}</option>`)
   .join("");
- const projectOptions = state.projects.map((project) => `<option value="${project.id}">${escapeHtml(projectLabel(project))}</option>`).join("");
+ const projectOptions = [...state.projects]
+  .sort((a, b) => projectLabel(a).localeCompare(projectLabel(b), "pt-BR", { sensitivity: "base" }))
+  .map((project) => `<option value="${project.id}">${escapeHtml(projectLabel(project))}</option>`)
+  .join("");
  const customerOptions = state.people
   .filter((person) => person.type === "cliente" || person.type === "ambos")
+  .sort((a, b) => (a.name || "").localeCompare(b.name || "", "pt-BR", { sensitivity: "base" }))
   .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
   .join("");
  const responsibleOptions = state.users
   .filter((user) => user.active)
+  .sort((a, b) => (a.name || a.username || "").localeCompare(b.name || b.username || "", "pt-BR", { sensitivity: "base" }))
   .map((user) => `<option value="${user.id}">${escapeHtml(user.name || user.username)}</option>`)
   .join("");
  const statusOptions = PROTOCOL_STATUSES.map((status) => `<option value="${status.id}">${escapeHtml(status.label)}</option>`).join("");
@@ -5542,6 +5550,9 @@ function hydrateProtocolOptions() {
  if (els.protocolFilterStatus) setSelectOptions(els.protocolFilterStatus, `<option value="todos">Todos</option>${statusOptions}`);
  if (els.protocolFilterResponsible) setSelectOptions(els.protocolFilterResponsible, `<option value="todos">Todos</option>${responsibleOptions}`);
  if (els.protocolFilterProject) setSelectOptions(els.protocolFilterProject, `<option value="todos">Todos</option><option value="com">Com projeto</option><option value="sem">Sem projeto</option>${projectOptions}`);
+ refreshSearchableSelect(els.protocolCustomer);
+ refreshSearchableSelect(els.protocolProject);
+ refreshSearchableSelect(els.protocolResponsible);
 }
 
 function protocolStatusInfo(statusId) {
@@ -5883,6 +5894,9 @@ function openProtocolDialog(protocol = null) {
  els.protocolExpectedDate.value = protocol?.expectedDate || "";
  els.protocolPriority.value = protocol?.priority || "media";
  els.protocolNotes.value = protocol?.notes || "";
+ refreshSearchableSelect(els.protocolCustomer);
+ refreshSearchableSelect(els.protocolProject);
+ refreshSearchableSelect(els.protocolResponsible);
  els.protocolDialogTitle.textContent = protocol ? "Editar protocolo" : "Novo protocolo";
  els.protocolDialog.showModal();
 }
@@ -11272,6 +11286,7 @@ function saveQuickPersonFromTransaction() {
  } else if (quickPersonTarget === "protocol") {
   hydrateProtocolOptions();
   els.protocolCustomer.value = person.id;
+  refreshSearchableSelect(els.protocolCustomer);
  } else {
   els.transactionPerson.value = person.id;
  }
