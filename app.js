@@ -606,6 +606,7 @@ const els = {
  bankSearch: document.querySelector("#bankSearch"),
  bankStatus: document.querySelector("#bankStatus"),
  bankAccountFilter: document.querySelector("#bankAccountFilter"),
+ bankCategoryFilter: document.querySelector("#bankCategoryFilter"),
  bankDateStart: document.querySelector("#bankDateStart"),
  bankDateEnd: document.querySelector("#bankDateEnd"),
  bankMonthFilter: document.querySelector("#bankMonthFilter"),
@@ -1132,6 +1133,7 @@ function bindEvents() {
   "#bankSearch",
   "#bankStatus",
   "#bankAccountFilter",
+  "#bankCategoryFilter",
   "#bankDateStart",
   "#bankDateEnd",
   "#bankMonthFilter",
@@ -8178,6 +8180,7 @@ async function handleBankSyncSubmit() {
 function renderBank() {
  renderBankSyncList();
  hydrateBankAccountFilter();
+ hydrateBankCategoryFilter();
  const movements = filteredBankMovements();
  const totalIn = sum(movements.filter((item) => item.type === "entrada"));
  const totalOut = sum(movements.filter((item) => item.type === "saida"));
@@ -8231,10 +8234,32 @@ function hydrateBankAccountFilter() {
  els.bankAccountFilter.value = accounts.has(current) ? current : "todas";
 }
 
+function bankMovementCategories(item) {
+ const categories = [cleanText(item.category || "")];
+ normalizeAllocations(item).forEach((allocation) => categories.push(cleanText(allocation.category || "")));
+ return [...new Set(categories.filter(Boolean))];
+}
+
+function hydrateBankCategoryFilter() {
+ if (!els.bankCategoryFilter) return;
+ const current = els.bankCategoryFilter.value;
+ const categories = [...new Set(
+  state.bankMovements
+   .filter((item) => !isSimulatedBankMovement(item))
+   .flatMap(bankMovementCategories)
+ )].sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+
+ els.bankCategoryFilter.innerHTML =
+  `<option value="todas">Todas as categorias</option>` +
+  categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("");
+ els.bankCategoryFilter.value = categories.includes(current) ? current : "todas";
+}
+
 function filteredBankMovements() {
  const search = els.bankSearch.value.toLowerCase().trim();
  const status = els.bankStatus.value;
  const accountFilter = els.bankAccountFilter.value;
+ const categoryFilter = els.bankCategoryFilter?.value || "todas";
  const start = els.bankDateStart.value;
  const end = els.bankDateEnd.value;
  const month = els.bankMonthFilter.value;
@@ -8247,6 +8272,7 @@ function filteredBankMovements() {
     (!search || haystack.includes(search)) &&
     (status === "todos" || bankStatus(item) === status) &&
     (accountFilter === "todas" || bankAccountKey(item) === accountFilter) &&
+    (categoryFilter === "todas" || bankMovementCategories(item).includes(categoryFilter)) &&
     matchesBankDateFilters(item, { start, end, month, year })
    );
   })
