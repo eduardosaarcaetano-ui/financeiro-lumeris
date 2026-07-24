@@ -1564,6 +1564,7 @@ function normalizeState(data) {
   createdAt: "",
   ...item,
  }));
+ reconcileStockBalancesFromMovements(normalized);
 
  normalized.installations = normalized.installations.map((item) => ({
   id: crypto.randomUUID(),
@@ -8673,6 +8674,33 @@ function appendStockMovement(entry) {
  });
 }
 
+function stockMovementStamp(movement) {
+ return movement.timestamp || movement.createdAt || movement.date || "";
+}
+
+function reconcileStockBalancesFromMovements(targetState = state) {
+ const movementsByItem = new Map();
+ targetState.stockMovements.forEach((movement) => {
+  if (!movement.itemId) return;
+  if (!movementsByItem.has(movement.itemId)) movementsByItem.set(movement.itemId, []);
+  movementsByItem.get(movement.itemId).push(movement);
+ });
+
+ targetState.stockItems.forEach((item) => {
+  const movements = movementsByItem.get(item.id);
+  if (!movements?.length) return;
+  const latest = movements
+   .filter((movement) => Number.isFinite(Number(movement.balanceAfter)))
+   .sort((a, b) => stockMovementStamp(a).localeCompare(stockMovementStamp(b)))
+   .at(-1);
+  if (!latest) return;
+  item.quantity = roundCurrency(Number(latest.balanceAfter || 0));
+  if (latest.type === "entrada" && Number(latest.unitCost || 0) > 0) {
+   item.lastPurchaseCost = Number(latest.unitCost || 0);
+  }
+ });
+}
+
 function importIluminarStock(options = {}) {
  const silent = options.silent === true;
  const includeMovements = options.includeMovements !== false;
@@ -9250,6 +9278,8 @@ function resetStockEntryForm() {
  els.stockEntryForm.reset();
  els.stockEntryDate.value = todayIso;
  els.stockEntryTotalCost.value = "";
+ refreshSearchableSelect(els.stockEntryItem);
+ refreshSearchableSelect(els.stockEntryProject);
 }
 
 function saveStockEntry(event) {
@@ -9295,6 +9325,9 @@ function saveStockEntry(event) {
 
  persist();
  renderAll();
+ els.stockFilterItem.value = item.id;
+ refreshSearchableSelect(els.stockFilterItem);
+ renderStock();
  resetStockEntryForm();
  toast("Entrada de material registrada. Custo m?dio recalculado.");
 }
@@ -9564,6 +9597,7 @@ function renderStockPurchaseNeed() {
 
 function renderStock() {
  ensureIluminarStockLoaded();
+ reconcileStockBalancesFromMovements();
  hydrateStockCatalogOptions();
  renderStockItems();
  renderStockEntryList();
