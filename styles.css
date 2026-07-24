@@ -2594,7 +2594,7 @@ dialog::backdrop {
 
 .allocation-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 140px auto;
+  grid-template-columns: minmax(180px, 1.2fr) minmax(160px, 1fr) 140px auto;
   gap: 8px;
 }
 

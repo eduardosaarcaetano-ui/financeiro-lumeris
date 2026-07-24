@@ -2982,12 +2982,13 @@ function normalizeAllocations(transaction, projects = state.projects) {
   .map((allocation) => ({
    projectId: allocation.projectId,
    amount: roundCurrency(Number(allocation.amount || 0)),
+   category: cleanText(allocation.category || transaction.category || ""),
   }))
   .filter((allocation) => allocation.amount > 0);
 
  if (valid.length) return valid;
  if (transaction.projectId && projectIds.has(transaction.projectId)) {
-  return [{ projectId: transaction.projectId, amount: roundCurrency(Number(transaction.amount || 0)) }];
+  return [{ projectId: transaction.projectId, amount: roundCurrency(Number(transaction.amount || 0)), category: cleanText(transaction.category || "") }];
  }
  return [];
 }
@@ -8319,6 +8320,21 @@ function bankAllocationProjectOptions(selectedId = "") {
   : `<option value="">Cadastre um projeto primeiro</option>`;
 }
 
+function bankAllocationCategoryOptions(selectedCategory = "") {
+ const selected = cleanText(selectedCategory);
+ const categories = [...new Set([
+  selected,
+  cleanText(els.bankCategory?.value || ""),
+  ...state.bankMovements.map((movement) => cleanText(movement.category || "")),
+  ...state.transactions.map((transaction) => cleanText(transaction.category || "")),
+  ...state.bankMovements.flatMap((movement) => normalizeAllocations(movement).map((allocation) => cleanText(allocation.category || ""))),
+  ...state.transactions.flatMap((transaction) => normalizeAllocations(transaction).map((allocation) => cleanText(allocation.category || ""))),
+ ].filter(Boolean))]
+  .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+
+ return `<option value="">Sem categoria</option>${categories.map((category) => `<option value="${escapeHtml(category)}" ${category === selected ? "selected" : ""}>${escapeHtml(category)}</option>`).join("")}`;
+}
+
 function renderBankAllocationRows(allocations = []) {
  if (!els.bankAllocationRows) return;
  els.bankAllocationRows.innerHTML = "";
@@ -8336,6 +8352,7 @@ function addBankAllocationRow(allocation = {}) {
  row.className = "allocation-row";
  row.innerHTML = `
   <select data-bank-allocation-project>${bankAllocationProjectOptions(allocation.projectId)}</select>
+  <select data-bank-allocation-category>${bankAllocationCategoryOptions(allocation.category)}</select>
   <input data-bank-allocation-amount type="number" min="0.01" step="0.01" placeholder="Valor" />
   <button class="secondary-btn" data-remove-bank-allocation type="button">Remover</button>`;
  els.bankAllocationRows.appendChild(row);
@@ -8354,6 +8371,7 @@ function getBankAllocations() {
  return [...els.bankAllocationRows.querySelectorAll(".allocation-row")]
   .map((row) => ({
    projectId: row.querySelector("[data-bank-allocation-project]").value,
+   category: cleanText(row.querySelector("[data-bank-allocation-category]").value || els.bankCategory.value),
    amount: roundCurrency(Number(row.querySelector("[data-bank-allocation-amount]").value || 0)),
   }))
   .filter((allocation) => allocation.projectId && allocation.amount > 0);
@@ -8462,7 +8480,7 @@ function saveBankClassification() {
  movement.allocations = bankAllocations.length ?
    bankAllocations
   : els.bankProject.value ?
-    [{ projectId: els.bankProject.value, amount: roundCurrency(Number(movement.amount || 0)) }]
+    [{ projectId: els.bankProject.value, amount: roundCurrency(Number(movement.amount || 0)), category: movement.category }]
    : matchedAllocations;
  movement.projectId = movement.allocations.length === 1 ? movement.allocations[0].projectId : "";
  movement.notes = els.bankNotes.value.trim();
@@ -11212,6 +11230,7 @@ function scaleAllocations(allocations, installmentAmount, totalAmount) {
  if (!allocations.length || !totalAmount) return [];
  const scaled = allocations.map((allocation) => ({
   projectId: allocation.projectId,
+  category: cleanText(allocation.category || ""),
   amount: roundCurrency((allocation.amount / totalAmount) * installmentAmount),
  }));
  const diff = roundCurrency(installmentAmount - allocationTotal(scaled));
