@@ -56,6 +56,10 @@ const BANK_PROVIDERS = {
  santander: { label: "Santander (API real via backend)", requiresEndpoint: true, fetchStatement: (account, range) => fetchStatementViaBackend("santander", account, range) },
 };
 
+const MANUAL_BANK_BALANCE_OVERRIDES = [
+ { bankId: "077", accountId: "200652028", balance: 88136.42, balanceDate: "2026-07-23", source: "manual" },
+];
+
 const MOCK_DESCRIPTIONS = {
  "077": {
   entrada: ["Pix recebido - Cliente Simulado", "Transfer?ncia recebida", "Rendimento de aplicação"],
@@ -1864,6 +1868,7 @@ function normalizeState(data) {
   lastSyncedAt: item.lastSyncedAt || "",
   ...item,
  }));
+ applyManualBankBalanceOverrides(normalized.bankAccounts);
 
  normalized.bankApiConfigs = normalized.bankApiConfigs.map((item) => ({
   id: crypto.randomUUID(),
@@ -4262,8 +4267,24 @@ function bankBalanceSourceLabel(account) {
  const source = account.source || "";
  if (source === "ofx") return "saldo do OFX";
  if (source === "inter_api") return "saldo da API Inter";
+ if (source === "manual") return "saldo manual informado";
  if (source.endsWith("_api")) return "saldo da API banc?ria";
  return "saldo dos movimentos";
+}
+
+function applyManualBankBalanceOverrides(accounts) {
+ MANUAL_BANK_BALANCE_OVERRIDES.forEach((override) => {
+  const account = accounts.find((item) =>
+   String(item.bankId || "") === override.bankId &&
+   String(item.accountId || "") === override.accountId
+  );
+  if (!account) return;
+  if ((account.balanceDate || "") > override.balanceDate) return;
+  account.balance = override.balance;
+  account.balanceDate = override.balanceDate;
+  account.source = override.source;
+  account.updatedAt = new Date().toISOString();
+ });
 }
 
 function accountTotalBalance(account) {
