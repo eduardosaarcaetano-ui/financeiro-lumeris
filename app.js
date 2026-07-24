@@ -7382,6 +7382,7 @@ function projectAllocations(projectId) {
  });
 
  const bankEntries = state.bankMovements
+  .filter((movement) => !isSimulatedBankMovement(movement))
   .filter((movement) => !movement.transactionId)
   .flatMap((movement) => {
    const allocations = normalizeAllocations(movement);
@@ -8202,10 +8203,24 @@ function bankAccountKey(item) {
  return `${item.bankId || ""}|${item.accountId || ""}`;
 }
 
+function isSimulatedBankMovement(item) {
+ const values = [
+  item?.filename,
+  item?.fitid,
+  item?.importKey,
+  item?.naturalKey,
+  item?.documentNumber,
+  item?.accountId,
+  item?.description,
+ ];
+ return values.some((value) => String(value || "").toUpperCase().includes("MOCK")) ||
+  String(item?.filename || "").toLowerCase().includes("sincronizacao-simulada");
+}
+
 function hydrateBankAccountFilter() {
  const current = els.bankAccountFilter.value;
  const accounts = new Map();
- state.bankMovements.forEach((item) => {
+ state.bankMovements.filter((item) => !isSimulatedBankMovement(item)).forEach((item) => {
   const key = bankAccountKey(item);
   if (!accounts.has(key)) accounts.set(key, { bankId: item.bankId || "Banco não identificado", accountId: item.accountId });
  });
@@ -8225,6 +8240,7 @@ function filteredBankMovements() {
  const month = els.bankMonthFilter.value;
  const year = String(els.bankYearFilter.value || "").trim();
  return state.bankMovements
+  .filter((item) => !isSimulatedBankMovement(item))
   .filter((item) => {
    const haystack = `${item.description} ${item.bankId} ${item.accountId} ${item.documentNumber} ${item.category} ${bankMovementProjectLabel(item)}`.toLowerCase();
    return (
