@@ -7584,8 +7584,9 @@ function importOfx(event) {
    persist();
    renderAll();
    setView("banco");
-   toast(`${added} movimento(s) importado(s). ${duplicates} duplicado(s) ignorado(s).`);
-  } catch {
+   toast(`${added} movimento(s) importado(s). ${duplicates} duplicado(s) ignorado(s). ${parsed.skipped} sem data/valor.`);
+  } catch (error) {
+   console.error(error);
    toast("Não foi possível ler o arquivo OFX.");
   }
  };
@@ -7601,7 +7602,7 @@ function parseOfx(content, filename) {
  const hasBalanceAmount = Boolean(tagValue(normalized, "BALAMT"));
  const balanceAmount = Number((tagValue(normalized, "BALAMT") || "0").replace(",", "."));
  const balanceDate = parseOfxDate(tagValue(normalized, "DTASOF")) || latestOfxTransactionDate(normalized);
- const blocks = [...normalized.matchAll(/<STMTTRN>([\s\S]*)(=<STMTTRN>|<\/BANKTRANLIST>|<\/CREDITCARDMSGSRSV1>|$)/gi)].map((match) => match[1]);
+ const blocks = extractOfxTransactionBlocks(normalized);
 
  if (!blocks.length) {
   throw new Error("OFX sem movimentos");
@@ -7647,6 +7648,7 @@ function parseOfx(content, filename) {
    importedAt: new Date().toISOString(),
   };
  }).filter((item) => item.date && item.amount > 0);
+ const skipped = blocks.length - movements.length;
 
  const movementBalance = movements.reduce((total, item) => total + item.signedAmount, 0);
 
@@ -7663,7 +7665,23 @@ function parseOfx(content, filename) {
    updatedAt: new Date().toISOString(),
   },
   movements,
+  skipped,
  };
+}
+
+function extractOfxTransactionBlocks(content) {
+ const explicitBlocks = [...content.matchAll(/<STMTTRN>\s*([\s\S]*?)<\/STMTTRN>/gi)].map((match) => match[1]);
+ if (explicitBlocks.length) return explicitBlocks;
+
+ const starts = [...content.matchAll(/<STMTTRN>/gi)].map((match) => match.index + match[0].length);
+ return starts.map((start, index) => {
+  const nextStart = index + 1 < starts.length ? starts[index + 1] - "<STMTTRN>".length : content.length;
+  const closingTags = ["</BANKTRANLIST>", "</CREDITCARDMSGSRSV1>", "</CCSTMTTRNRS>", "</OFX>"]
+   .map((tag) => content.toUpperCase().indexOf(tag, start))
+   .filter((position) => position >= 0);
+  const closing = closingTags.length ? Math.min(...closingTags) : content.length;
+  return content.slice(start, Math.min(nextStart, closing));
+ });
 }
 
 function upsertBankAccount(account) {
