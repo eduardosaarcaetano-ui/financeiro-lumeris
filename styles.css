@@ -1780,13 +1780,25 @@ button.project-chip {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
   animation: podiumRise 0.9s ease both;
+  overflow: hidden;
 }
 
 .podium-card.first {
   min-height: 390px;
   border-color: rgba(245, 196, 81, 0.8);
   background: linear-gradient(180deg, rgba(245, 196, 81, 0.28), rgba(255, 255, 255, 0.06));
-  animation-delay: 0.15s;
+  animation: podiumRise 0.9s ease both, winnerGlow 3.2s ease-in-out infinite;
+  animation-delay: 0.15s, 1.1s;
+}
+
+.podium-card.first::after {
+  content: "";
+  position: absolute;
+  inset: -40% auto -40% -30%;
+  width: 34%;
+  transform: rotate(18deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  animation: winnerShine 4.8s ease-in-out infinite;
 }
 
 .podium-card.second {
@@ -1803,18 +1815,104 @@ button.project-chip {
 
 .medal {
   position: absolute;
-  top: 22px;
-  right: 22px;
+  top: 16px;
+  right: 18px;
+  width: 116px;
+  height: 112px;
+  color: #10231d;
+  animation: trophyFloat 2.4s ease-in-out infinite;
+  z-index: 1;
+}
+
+.medal::before,
+.medal::after {
+  content: "";
+  position: absolute;
+  top: 28px;
+  width: 32px;
+  height: 34px;
+  border: 8px solid var(--medal-main);
+  border-bottom-color: transparent;
+  border-radius: 28px 28px 10px 10px;
+  opacity: 0.9;
+}
+
+.medal::before {
+  left: 0;
+  border-right: 0;
+}
+
+.medal::after {
+  right: 0;
+  border-left: 0;
+}
+
+.medal-cup {
+  position: absolute;
+  left: 27px;
+  top: 14px;
+  width: 62px;
+  height: 58px;
+  border-radius: 12px 12px 28px 28px;
+  background: linear-gradient(135deg, var(--medal-light), var(--medal-main) 48%, var(--medal-dark));
+  box-shadow: inset 10px 0 16px rgba(255, 255, 255, 0.28), 0 16px 28px rgba(0, 0, 0, 0.34);
+}
+
+.medal-cup::before {
+  content: "";
+  position: absolute;
+  left: 21px;
+  bottom: -24px;
+  width: 20px;
+  height: 26px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--medal-main), var(--medal-dark));
+}
+
+.medal-cup::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  bottom: -36px;
+  width: 52px;
+  height: 14px;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(135deg, var(--medal-light), var(--medal-main), var(--medal-dark));
+}
+
+.medal-number {
+  position: absolute;
+  left: 50%;
+  top: 27px;
+  transform: translateX(-50%);
   display: grid;
   place-items: center;
-  width: 76px;
-  height: 76px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: #f5c451;
-  color: #10231d;
-  font-size: 28px;
+  background: rgba(2, 4, 3, 0.9);
+  color: var(--medal-light);
+  font-size: 20px;
   font-weight: 1000;
-  animation: medalPulse 1.8s ease-in-out infinite;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.22);
+}
+
+.medal-1 {
+  --medal-light: #ffe68a;
+  --medal-main: #f5c451;
+  --medal-dark: #b9780b;
+}
+
+.medal-2 {
+  --medal-light: #f4f7f5;
+  --medal-main: #c8d0cf;
+  --medal-dark: #7d8888;
+}
+
+.medal-3 {
+  --medal-light: #ffc091;
+  --medal-main: #c9793b;
+  --medal-dark: #7a3f1f;
 }
 
 .podium-card h2 {
@@ -1882,12 +1980,35 @@ button.project-chip {
   }
 }
 
-@keyframes medalPulse {
+@keyframes trophyFloat {
   0%, 100% {
-    transform: scale(1);
+    transform: translateY(0) rotate(-1deg) scale(1);
   }
   50% {
-    transform: scale(1.08);
+    transform: translateY(-8px) rotate(1deg) scale(1.04);
+  }
+}
+
+@keyframes winnerGlow {
+  0%, 100% {
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28), 0 0 0 rgba(245, 196, 81, 0);
+  }
+  50% {
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28), 0 0 36px rgba(245, 196, 81, 0.34);
+  }
+}
+
+@keyframes winnerShine {
+  0%, 42% {
+    transform: translateX(0) rotate(18deg);
+    opacity: 0;
+  }
+  55% {
+    opacity: 1;
+  }
+  76%, 100% {
+    transform: translateX(460%) rotate(18deg);
+    opacity: 0;
   }
 }
 

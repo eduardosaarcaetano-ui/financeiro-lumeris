@@ -10769,13 +10769,19 @@ function renderSalesRankingTvMode() {
     const heightClass = place === 1 ? "first" : place === 2 ? "second" : "third";
     return row ? `
      <article class="podium-card ${heightClass}">
-      <div class="medal">${place}</div>
+      <div class="medal medal-${place}" aria-label="${place}º lugar">
+       <span class="medal-cup" aria-hidden="true"></span>
+       <span class="medal-number">${place}</span>
+      </div>
       <h2>${escapeHtml(row.name)}</h2>
       <strong>${money(row.total)}</strong>
       <span>${row.count} venda${row.count === 1 ? "" : "s"} registrada${row.count === 1 ? "" : "s"}</span>
      </article>` : `
      <article class="podium-card empty ${heightClass}">
-      <div class="medal">${place}</div>
+      <div class="medal medal-${place}" aria-label="${place}º lugar">
+       <span class="medal-cup" aria-hidden="true"></span>
+       <span class="medal-number">${place}</span>
+      </div>
       <h2>Sem vendedor</h2>
       <strong>${money(0)}</strong>
       <span>Aguardando venda fechada</span>
