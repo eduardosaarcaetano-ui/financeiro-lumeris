@@ -971,7 +971,7 @@ function bindEvents() {
  document.querySelectorAll("[data-crm-tab]").forEach((button) => {
   button.addEventListener("click", () => setCrmTab(button.dataset.crmTab));
  });
- document.querySelector("#newOpportunityBtn").addEventListener("click", () => openOpportunityDialog(null));
+ bindClickOnce("#newOpportunityBtn", "Opportunity", () => openOpportunityDialog(null));
  document.querySelector("#manageSellersBtn").addEventListener("click", openSellerDialog);
  document.querySelector("#newTaskBtn").addEventListener("click", openTaskDialog);
 
@@ -1071,7 +1071,7 @@ function bindEvents() {
  document.querySelector("#newTransactionBtn").addEventListener("click", () => openTransactionDialog());
  document.querySelector("#newSaleBtn").addEventListener("click", openSaleDialog);
  document.querySelector("#newSaleInlineBtn").addEventListener("click", openSaleDialog);
- document.querySelector("#newOpportunityBtn").addEventListener("click", () => openOpportunityDialog());
+ bindClickOnce("#newOpportunityBtn", "Opportunity", () => openOpportunityDialog());
  document.querySelector("#clearCrmFilters").addEventListener("click", clearCrmFilters);
  els.addOpportunityAttachmentBtn.addEventListener("click", () => addOpportunityAttachmentRow());
  els.opportunityAttachmentRows.addEventListener("click", handleOpportunityAttachmentAction);
@@ -2434,6 +2434,15 @@ function setSyncStatus(text, kind) {
  if (!els.syncStatus) return;
  els.syncStatus.textContent = displayText(text);
  els.syncStatus.dataset.state = kind;
+}
+
+function bindClickOnce(selector, key, handler) {
+ document.querySelectorAll(selector).forEach((element) => {
+  const boundKey = `bound${key}`;
+  if (element.dataset[boundKey]) return;
+  element.dataset[boundKey] = "1";
+  element.addEventListener("click", handler);
+ });
 }
 
 function randomSalt() {
