@@ -1672,6 +1672,7 @@ function normalizeState(data) {
   sectors: null,
   active: true,
   createdAt: "",
+  updatedAt: "",
   ...item,
  })).map((user) => {
   const sectors = normalizeUserSectors(user);
@@ -2813,8 +2814,8 @@ async function saveUser(event) {
   return;
  }
 
- let passwordHash = existing.passwordHash || "";
- let salt = existing.salt || "";
+ let passwordHash = existing?.passwordHash || "";
+ let salt = existing?.salt || "";
  if (password) {
   salt = randomSalt();
   passwordHash = await hashPassword(password, salt);
@@ -2829,7 +2830,8 @@ async function saveUser(event) {
   role: els.userRole.value,
   sectors,
   active: els.userActive.checked,
-  createdAt: existing.createdAt || new Date().toISOString(),
+  createdAt: existing?.createdAt || new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
  };
 
  const index = state.users.findIndex((item) => item.id === id);
