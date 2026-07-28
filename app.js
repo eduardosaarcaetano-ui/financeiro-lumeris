@@ -610,6 +610,13 @@ const els = {
  saleNotes: document.querySelector("#saleNotes"),
  installmentPreview: document.querySelector("#installmentPreview"),
  ofxFile: document.querySelector("#ofxFile"),
+ openBankBulkImportBtn: document.querySelector("#openBankBulkImportBtn"),
+ bankBulkImportDialog: document.querySelector("#bankBulkImportDialog"),
+ bankBulkImportForm: document.querySelector("#bankBulkImportForm"),
+ bankBulkImportAccount: document.querySelector("#bankBulkImportAccount"),
+ bankBulkImportFile: document.querySelector("#bankBulkImportFile"),
+ bankBulkImportPreview: document.querySelector("#bankBulkImportPreview"),
+ bankBulkImportSubmit: document.querySelector("#bankBulkImportSubmit"),
  bankSearch: document.querySelector("#bankSearch"),
  bankStatus: document.querySelector("#bankStatus"),
  bankAccountFilter: document.querySelector("#bankAccountFilter"),
@@ -828,6 +835,7 @@ const dreGroups = [
 let quickPersonTarget = "transaction";
 let quickProjectTarget = "transaction";
 let stockAutoImportRunning = false;
+let bankBulkImportData = null;
 
 boot().catch((error) => {
  console.error("Falha ao iniciar o sistema:", error);
@@ -1112,6 +1120,9 @@ function bindEvents() {
  document.querySelector("#exportJson").addEventListener("click", exportBackup);
  document.querySelector("#importJson").addEventListener("change", importBackup);
  els.ofxFile.addEventListener("change", importOfx);
+ els.openBankBulkImportBtn.addEventListener("click", openBankBulkImportDialog);
+ els.bankBulkImportFile.addEventListener("change", previewBankBulkImportFile);
+ els.bankBulkImportAccount.addEventListener("change", previewBankBulkImportFile);
  document.querySelector("#exportBankCsv").addEventListener("click", exportBankCsv);
  document.querySelector("#applyCurrentMonth").addEventListener("click", () => {
   setDefaultReportPeriod();
@@ -1238,6 +1249,14 @@ function bindEvents() {
  });
  els.newBankProjectBtn.addEventListener("click", createProjectFromBankDialog);
  els.addBankAllocationBtn.addEventListener("click", () => addBankAllocationRow());
+ els.bankBulkImportForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (event.submitter.value === "cancel") {
+   els.bankBulkImportDialog.close();
+   return;
+  }
+  applyBankBulkImport();
+ });
 
  els.bankSyncProvider.addEventListener("change", updateBankSyncHint);
  els.bankSyncForm.addEventListener("submit", (event) => {
@@ -8266,6 +8285,7 @@ function renderBank() {
  renderBankSyncList();
  hydrateBankAccountFilter();
  hydrateBankCategoryFilter();
+ hydrateBankBulkImportAccountOptions();
  const movements = filteredBankMovements();
  const totalIn = sum(movements.filter((item) => item.type === "entrada"));
  const totalOut = sum(movements.filter((item) => item.type === "saida"));
@@ -8724,6 +8744,7 @@ return movement.type === "entrada" ? "Receitas financeiras" : "Despesas bancári
 
 function exportBankCsv() {
  const rows = filteredBankMovements().map((item) => [
+  item.id,
   item.date,
   item.type,
   item.description,
@@ -8738,7 +8759,305 @@ function exportBankCsv() {
   item.transactionId ? "sim" : "nao",
   item.notes,
  ]);
- downloadCsv(`movimentos-bancarios-${todayIso}.csv`, [["data", "tipo", "historico", "banco", "conta", "documento", "categoria", "projeto", "grupo_dre", "status", "valor", "conciliado", "observacoes"], ...rows]);
+ downloadCsv(`movimentos-bancarios-${todayIso}.csv`, [["ID_MOVIMENTO", "data", "tipo", "historico", "banco", "conta", "documento", "categoria", "projeto", "grupo_dre", "status", "valor", "conciliado", "observacoes"], ...rows]);
+}
+
+function openBankBulkImportDialog() {
+ if (!guardViewAccess("banco")) return;
+ bankBulkImportData = null;
+ hydrateBankBulkImportAccountOptions();
+ els.bankBulkImportForm.reset();
+ els.bankBulkImportPreview.innerHTML = emptyMessage("Selecione a conta e a planilha para validar antes de importar.");
+ els.bankBulkImportSubmit.disabled = true;
+ els.bankBulkImportDialog.showModal();
+}
+
+function hydrateBankBulkImportAccountOptions() {
+ if (!els.bankBulkImportAccount) return;
+ const current = els.bankBulkImportAccount.value;
+ const accounts = new Map();
+ latestBankAccounts().forEach((account) => {
+  const key = account.accountKey || `${account.bankId}-${account.accountId}`;
+  if (!accounts.has(key)) accounts.set(key, { bankId: account.bankId || "Banco", accountId: account.accountId || "" });
+ });
+ state.bankMovements.filter((item) => !isSimulatedBankMovement(item)).forEach((movement) => {
+  const key = bankAccountKey(movement);
+  if (!accounts.has(key)) accounts.set(key, { bankId: movement.bankId || "Banco", accountId: movement.accountId || "" });
+ });
+ const options = [...accounts.entries()]
+  .sort((a, b) => `${a[1].bankId} ${a[1].accountId}`.localeCompare(`${b[1].bankId} ${b[1].accountId}`, "pt-BR"))
+  .map(([key, account]) => `<option value="${escapeHtml(key)}">${escapeHtml(account.bankId)} - Conta ${escapeHtml(account.accountId || "não identificada")}</option>`);
+ els.bankBulkImportAccount.innerHTML = options.length ? options.join("") : `<option value="">Importe um OFX antes</option>`;
+ if (accounts.has(current)) els.bankBulkImportAccount.value = current;
+}
+
+async function previewBankBulkImportFile() {
+ const file = els.bankBulkImportFile.files?.[0];
+ const accountKey = els.bankBulkImportAccount.value;
+ bankBulkImportData = null;
+ els.bankBulkImportSubmit.disabled = true;
+ if (!file || !accountKey) {
+  els.bankBulkImportPreview.innerHTML = emptyMessage("Selecione a conta e a planilha para validar antes de importar.");
+  return;
+ }
+
+ try {
+  const workbookRows = await readBankBulkWorkbook(file);
+  const plan = buildBankBulkImportPlan(workbookRows, accountKey);
+  bankBulkImportData = plan;
+  els.bankBulkImportSubmit.disabled = plan.applyRows.length === 0;
+  els.bankBulkImportPreview.innerHTML = bankBulkImportPreviewHtml(plan);
+ } catch (error) {
+  console.error(error);
+  els.bankBulkImportPreview.innerHTML = emptyMessage(error.message || "Não foi possível validar a planilha.");
+ }
+}
+
+async function readBankBulkWorkbook(file) {
+ const extension = file.name.split(".").pop().toLowerCase();
+ if (extension === "csv") {
+  return { classificacoes: parseCsvObjects(await file.text()), rateios: [] };
+ }
+ if (!window.XLSX) {
+  throw new Error("Leitor XLSX não carregado. Abra online ou salve a planilha como CSV.");
+ }
+ const buffer = await file.arrayBuffer();
+ const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+ const classSheet = workbook.Sheets.Classificacoes || workbook.Sheets["Classificações"] || workbook.Sheets[workbook.SheetNames[0]];
+ const splitSheet = workbook.Sheets.Rateios || workbook.Sheets[workbook.SheetNames.find((name) => normalizeText(name) === "rateios")];
+ return {
+  classificacoes: XLSX.utils.sheet_to_json(classSheet, { defval: "" }),
+  rateios: splitSheet ? XLSX.utils.sheet_to_json(splitSheet, { defval: "" }) : [],
+ };
+}
+
+function parseCsvObjects(text) {
+ const rows = parseDelimitedRows(text);
+ if (!rows.length) return [];
+ const headers = rows[0].map((header) => cleanText(String(header || "")));
+ return rows.slice(1).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index] ?? ""])));
+}
+
+function parseDelimitedRows(text) {
+ const delimiter = (text.split("\n")[0].match(/;/g) || []).length >= (text.split("\n")[0].match(/,/g) || []).length ? ";" : ",";
+ const rows = [];
+ let row = [];
+ let cell = "";
+ let quoted = false;
+ for (let i = 0; i < text.length; i += 1) {
+  const char = text[i];
+  const next = text[i + 1];
+  if (char === '"' && quoted && next === '"') {
+   cell += '"';
+   i += 1;
+  } else if (char === '"') {
+   quoted = !quoted;
+  } else if (char === delimiter && !quoted) {
+   row.push(cell);
+   cell = "";
+  } else if ((char === "\n" || char === "\r") && !quoted) {
+   if (char === "\r" && next === "\n") i += 1;
+   row.push(cell);
+   if (row.some((value) => cleanText(value))) rows.push(row);
+   row = [];
+   cell = "";
+  } else {
+   cell += char;
+  }
+ }
+ row.push(cell);
+ if (row.some((value) => cleanText(value))) rows.push(row);
+ return rows;
+}
+
+function buildBankBulkImportPlan(workbookRows, accountKey) {
+ const rateiosByMovement = groupBankBulkAllocations(workbookRows.rateios || []);
+ const applyRows = [];
+ const errors = [];
+ const skipped = [];
+ const sourceRows = (workbookRows.classificacoes || []).filter((row) => bankBulkRowHasData(row));
+
+ sourceRows.forEach((row, index) => {
+  const status = normalizeText(bankBulkValue(row, ["Status"]));
+  if (status === "ignorar") {
+   skipped.push({ row: index + 2, reason: "Status Ignorar" });
+   return;
+  }
+  const movement = findBankMovementForBulkRow(row, accountKey);
+  if (!movement) {
+   errors.push(`Linha ${index + 2}: movimento não encontrado na conta selecionada.`);
+   return;
+  }
+  if (movement.transactionId || movement.invoiceId) {
+   skipped.push({ row: index + 2, reason: "Já conciliado com conta ou NF" });
+   return;
+  }
+  const category = cleanText(String(bankBulkValue(row, ["Categoria"]) || ""));
+  const dreGroup = bankBulkDreGroup(bankBulkValue(row, ["Grupo DRE"]));
+  const notes = cleanText(String(bankBulkValue(row, ["Observacoes", "Observações"]) || ""));
+  const projectText = cleanText(String(bankBulkValue(row, ["Projeto / centro de custo", "Projeto", "Centro de custo"]) || ""));
+  const rowAllocations = rateiosByMovement.get(bankBulkMovementId(row, movement)) || [];
+  const allocations = rowAllocations.length ? rowAllocations : buildBankBulkSingleAllocation(projectText, movement.amount, category);
+  const allocationError = validateBankBulkAllocations(movement, allocations);
+  if (allocationError) {
+   errors.push(`Linha ${index + 2}: ${allocationError}`);
+   return;
+  }
+  applyRows.push({ row: index + 2, movement, category, dreGroup, notes, allocations });
+ });
+
+ return { sourceRows, applyRows, errors, skipped };
+}
+
+function bankBulkRowHasData(row) {
+ return ["ID_MOVIMENTO", "Data", "Historico", "Histórico", "Valor", "Categoria", "Projeto / centro de custo"].some((key) => cleanText(String(bankBulkValue(row, [key]) || "")));
+}
+
+function bankBulkValue(row, aliases) {
+ const wanted = aliases.map(normalizeHeaderKey);
+ const entry = Object.entries(row).find(([key]) => wanted.includes(normalizeHeaderKey(key)));
+ return entry ? entry[1] : "";
+}
+
+function normalizeHeaderKey(value) {
+ return normalizeText(value).replace(/[^a-z0-9]+/g, "");
+}
+
+function bankBulkMovementId(row, movement = null) {
+ return cleanText(String(bankBulkValue(row, ["ID_MOVIMENTO", "ID MOVIMENTO", "ID", "Movimento"]) || "")) || movement?.id || "";
+}
+
+function groupBankBulkAllocations(rows) {
+ const grouped = new Map();
+ rows.filter(bankBulkRowHasData).forEach((row, index) => {
+  const id = bankBulkMovementId(row);
+  if (!id) return;
+  const project = findProjectByBulkText(bankBulkValue(row, ["Projeto / centro de custo", "Projeto", "Centro de custo"]));
+  if (!project) {
+   const list = grouped.get(id) || [];
+   list.push({ error: `Rateio linha ${index + 2}: projeto não encontrado.` });
+   grouped.set(id, list);
+   return;
+  }
+  const amount = Math.abs(parseLocalizedNumber(bankBulkValue(row, ["Valor rateado", "Valor", "Valor do rateio"])));
+  const category = cleanText(String(bankBulkValue(row, ["Categoria do rateio", "Categoria"]) || ""));
+  const dreGroup = bankBulkDreGroup(bankBulkValue(row, ["Grupo DRE do rateio", "Grupo DRE"]));
+  const list = grouped.get(id) || [];
+  list.push({ projectId: project.id, category, dreGroup, amount });
+  grouped.set(id, list);
+ });
+ return grouped;
+}
+
+function findBankMovementForBulkRow(row, accountKey) {
+ const id = bankBulkMovementId(row);
+ const accountMovements = state.bankMovements.filter((movement) => !isSimulatedBankMovement(movement) && bankAccountKey(movement) === accountKey);
+ if (id) {
+  const byId = accountMovements.find((movement) => [movement.id, movement.importKey, movement.naturalKey, movement.fitid].filter(Boolean).includes(id));
+  if (byId) return byId;
+ }
+ const date = parseBulkDate(bankBulkValue(row, ["Data"]));
+ const amount = Math.abs(parseLocalizedNumber(bankBulkValue(row, ["Valor"])));
+ const history = normalizeText(bankBulkValue(row, ["Historico", "Histórico"]));
+ if (!date || !amount || !history) return null;
+ return accountMovements.find((movement) =>
+  movement.date === date &&
+  Math.abs(Number(movement.amount || 0) - amount) < 0.01 &&
+  (normalizeText(movement.description).includes(history) || history.includes(normalizeText(movement.description).slice(0, 35)))
+ ) || null;
+}
+
+function buildBankBulkSingleAllocation(projectText, amount, category) {
+ const project = findProjectByBulkText(projectText);
+ return project ? [{ projectId: project.id, amount: roundCurrency(Number(amount || 0)), category }] : [];
+}
+
+function findProjectByBulkText(value) {
+ const text = cleanText(String(value || ""));
+ if (!text || normalizeText(text) === "sem projeto") return null;
+ const normalized = normalizeText(text);
+ return state.projects.find((project) => normalizeText(projectLabel(project)) === normalized) ||
+  state.projects.find((project) => normalized.includes(normalizeText(projectLabel(project))) || normalizeText(projectLabel(project)).includes(normalized));
+}
+
+function validateBankBulkAllocations(movement, allocations) {
+ const errored = allocations.find((allocation) => allocation.error);
+ if (errored) return errored.error;
+ if (allocations.length > 10) return "o rateio permite no máximo 10 lançamentos por movimento.";
+ if (allocations.length && !validateAllocations(movement.amount, allocations)) {
+  return `a soma do rateio (${money(allocationTotal(allocations))}) não bate com o movimento (${money(movement.amount)}).`;
+ }
+ return "";
+}
+
+function bankBulkDreGroup(value) {
+ const normalized = normalizeText(value);
+ const group = dreGroups.find((item) => normalizeText(item.label) === normalized || normalizeText(item.key) === normalized);
+ return group?.key || "";
+}
+
+function parseLocalizedNumber(value) {
+ if (typeof value === "number") return value;
+ const text = String(value || "").replace(/[^\d,.-]/g, "").trim();
+ if (!text) return 0;
+ const normalized = text.includes(",") ? text.replace(/\./g, "").replace(",", ".") : text;
+ return Number(normalized) || 0;
+}
+
+function parseBulkDate(value) {
+ if (value instanceof Date && !Number.isNaN(value.getTime())) return toIso(value);
+ if (typeof value === "number" && value > 20000) {
+  const date = new Date(Math.round((value - 25569) * 86400 * 1000));
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+ }
+ const text = cleanText(String(value || ""));
+ if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+ const br = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+ if (br) return `${br[3]}-${br[2].padStart(2, "0")}-${br[1].padStart(2, "0")}`;
+ return "";
+}
+
+function bankBulkImportPreviewHtml(plan) {
+ const rows = [
+  `Linhas lidas: ${plan.sourceRows.length}`,
+  `Movimentos prontos para aplicar: ${plan.applyRows.length}`,
+  `Ignorados: ${plan.skipped.length}`,
+  `Pendências: ${plan.errors.length}`,
+ ];
+ const details = [
+  ...plan.errors.slice(0, 6).map((error) => `<span class="status aberto">${escapeHtml(error)}</span>`),
+  ...plan.skipped.slice(0, 4).map((item) => `<span class="muted block">Linha ${item.row}: ${escapeHtml(item.reason)}</span>`),
+ ].join("");
+ return `
+  <article class="report-item">
+   <strong>${rows.map(escapeHtml).join(" · ")}</strong>
+   ${details || `<span class="muted">Validação concluída. Clique em Aplicar importação para salvar.</span>`}
+  </article>`;
+}
+
+function applyBankBulkImport() {
+ if (!guardViewAccess("banco")) return;
+ if (!bankBulkImportData || !bankBulkImportData.applyRows.length) {
+  toast("Nenhuma classificação válida para importar.");
+  return;
+ }
+ const timestamp = new Date().toISOString();
+ bankBulkImportData.applyRows.forEach(({ movement, category, dreGroup, notes, allocations }) => {
+  movement.category = category || movement.category || suggestCategory(movement);
+  movement.dreGroup = dreGroup || movement.dreGroup || (movement.type === "entrada" ? "receita_bruta" : "despesas_operacionais");
+  movement.allocations = allocations.map((allocation) => ({
+   projectId: allocation.projectId,
+   category: allocation.category || category || movement.category,
+   amount: allocation.amount,
+  }));
+  movement.projectId = movement.allocations.length === 1 ? movement.allocations[0].projectId : "";
+  movement.notes = [movement.notes, notes, "Classificado por importação em massa."].filter(Boolean).join("\n");
+  movement.updatedAt = timestamp;
+ });
+ if (!persist("financeiro")) return;
+ renderAll();
+ els.bankBulkImportDialog.close();
+ toast(`${bankBulkImportData.applyRows.length} movimento(s) classificados em massa.`);
 }
 
 // ---- Estoque ----

@@ -1130,6 +1130,7 @@
           <div class="toolbar bank-toolbar">
             <label class="secondary-btn file-btn light-file" for="ofxFile">Importar OFX</label>
             <input id="ofxFile" type="file" accept=".ofx,application/x-ofx,text/plain" />
+            <button class="secondary-btn" id="openBankBulkImportBtn" type="button">Importar classificações</button>
             <input id="bankSearch" type="search" placeholder="Buscar historico, banco, documento" />
             <select id="bankCategoryFilter">
               <option value="todas">Todas as categorias</option>
@@ -2687,6 +2688,32 @@
       </form>
     </dialog>
 
+    <dialog id="bankBulkImportDialog">
+      <form method="dialog" class="modal" id="bankBulkImportForm">
+        <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
+        <div class="modal-head">
+          <h2>Importar classificações em massa</h2>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
+        </div>
+        <div class="form-grid">
+          <label class="full">Banco / conta
+            <select id="bankBulkImportAccount" required></select>
+          </label>
+          <label class="full">Planilha de classificações
+            <input id="bankBulkImportFile" type="file" accept=".xlsx,.xls,.csv,text/csv" required />
+          </label>
+          <p class="muted full">
+            Use o modelo com as abas Classificacoes e Rateios. O sistema localiza os movimentos pelo ID_MOVIMENTO ou por data, valor, conta e histórico.
+          </p>
+          <div class="full report-list" id="bankBulkImportPreview"></div>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
+          <button class="primary-btn" id="bankBulkImportSubmit" value="default" type="submit">Aplicar importação</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="invoiceLinkDialog">
       <form method="dialog" class="modal" id="invoiceLinkForm">
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
@@ -3028,6 +3055,7 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/estoque-iluminar-data.js?v=20260728-stock-baseline-reset1"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
-    <script src="app.js?v=20260728-stock-baseline-reset1"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <script src="app.js?v=20260728-bank-bulk-import1"></script>
   </body>
 </html>
