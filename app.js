@@ -4314,7 +4314,7 @@ function renderSectorOverview(receberAberto, pagarAberto) {
  const monthSalesTotal = sum(monthSales.map((sale) => sale.total || 0));
  const activeProjects = businessProjects().filter((project) => !["concluido", "cancelado"].includes(project.status));
  const scheduledInstallations = businessInstallations().filter((item) => !["concluida", "cancelada"].includes(item.status));
- const stockTotal = sum(state.stockItems.map((item) => (item.quantity || 0) * (item.averageCost || 0)));
+ const stockTotal = sum(state.stockItems.filter(isStockItemActive).map((item) => (item.quantity || 0) * (item.averageCost || 0)));
  const monthInvoices = state.invoices.filter((invoice) => invoice.kind !== "despesa" && invoice.status !== "cancelada" && isInPeriod(invoice.issueDate, currentMonthStart, currentMonthEnd));
  const monthInvoicesTotal = sum(monthInvoices.map(accountingValueOf));
 
@@ -4327,7 +4327,7 @@ function renderSectorOverview(receberAberto, pagarAberto) {
  document.querySelector("#dashboardInstallationsCount").textContent = String(scheduledInstallations.length);
  document.querySelector("#dashboardInstallationsSmall").textContent = `${businessInstallations().filter((item) => item.status === "concluida").length} concluída(s)`;
  document.querySelector("#dashboardStockValue").textContent = money(stockTotal);
- document.querySelector("#dashboardStockSmall").textContent = `${state.stockItems.length} item(ns) cadastrados`;
+ document.querySelector("#dashboardStockSmall").textContent = `${state.stockItems.filter(isStockItemActive).length} item(ns) ativo(s)`;
  document.querySelector("#dashboardInvoicesTotal").textContent = money(monthInvoicesTotal);
  document.querySelector("#dashboardInvoicesSmall").textContent = `${monthInvoices.length} NF emitida(s) no mês`;
 }
@@ -8746,6 +8746,10 @@ function stockItemLabel(item) {
  return item.internalCode ? `${item.internalCode} - ${item.name}` : item.name;
 }
 
+function isStockItemActive(item) {
+ return item && item.active !== false;
+}
+
 function stockAlertLevel(item) {
  if (item.quantity <= 0) return "zero";
  if (item.quantity < item.minQuantity) return "below-min";
@@ -8754,12 +8758,13 @@ function stockAlertLevel(item) {
 }
 
 function stockItemMatchesStatus(item, status) {
+ const active = isStockItemActive(item);
  if (!status) return true;
- if (status === "comprar") return item.active && item.quantity < item.minQuantity;
- if (status === "abaixo_minimo") return item.active && item.quantity > 0 && item.quantity < item.minQuantity;
- if (status === "zerado") return item.active && item.quantity <= 0;
- if (status === "inativo") return !item.active;
- if (status === "acima_maximo") return item.active && item.maxQuantity > 0 && item.quantity > item.maxQuantity;
+ if (status === "comprar") return active && item.quantity < item.minQuantity;
+ if (status === "abaixo_minimo") return active && item.quantity > 0 && item.quantity < item.minQuantity;
+ if (status === "zerado") return active && item.quantity <= 0;
+ if (status === "inativo") return !active;
+ if (status === "acima_maximo") return active && item.maxQuantity > 0 && item.quantity > item.maxQuantity;
  return true;
 }
 
@@ -8918,6 +8923,7 @@ function stockImportPayload() {
 
 function buildStockItemFromImport(sourceItem, mainLocationId, existing = {}, sourceFile = "Controle Estoque Iluminar.xlsx") {
  const now = new Date().toISOString();
+ const hasExistingActiveStatus = Object.prototype.hasOwnProperty.call(existing, "active");
  return {
   id: existing.id || sourceItem.id || crypto.randomUUID(),
   internalCode: sourceItem.internalCode || "",
@@ -8936,7 +8942,7 @@ function buildStockItemFromImport(sourceItem, mainLocationId, existing = {}, sou
   maxQuantity: Number(sourceItem.maxQuantity || 0),
   averageCost: Number(sourceItem.averageCost || 0),
   lastPurchaseCost: Number(sourceItem.lastPurchaseCost || sourceItem.averageCost || 0),
-  active: sourceItem.active !== false,
+  active: hasExistingActiveStatus ? existing.active !== false : sourceItem.active !== false,
   notes: sourceItem.notes || "Importado da planilha Controle Estoque Iluminar.",
   source: sourceItem.source || sourceFile,
   sourceRow: sourceItem.sourceRow || "",
@@ -8951,9 +8957,10 @@ function applyIluminarStockBaseline() {
  const baselineVersion = payload.baselineVersion || payload.generatedAt || "";
  if (!baselineVersion || state.stockBaselineVersion === baselineVersion) return false;
  const mainLocationId = ensureStockLocation("Estoque principal");
- state.stockItems = [...payload.items, ...payload.uncatalogedItems].map((sourceItem) =>
-  buildStockItemFromImport(sourceItem, mainLocationId, {}, payload.sourceFile)
- );
+ state.stockItems = [...payload.items, ...payload.uncatalogedItems].map((sourceItem) => {
+  const existing = findImportedStockItem(sourceItem) || {};
+  return buildStockItemFromImport(sourceItem, mainLocationId, existing, payload.sourceFile);
+ });
  state.stockMovements = [];
  state.stockBaselineVersion = baselineVersion;
  return true;
@@ -9225,7 +9232,7 @@ function hydrateStockCatalogOptions() {
   .map((location) => `<option value="${location.id}">${escapeHtml(location.name)}</option>`)
   .join("");
 
- const activeItems = state.stockItems.filter((item) => item.active);
+ const activeItems = state.stockItems.filter(isStockItemActive);
  const itemOptions = activeItems.length ?
    activeItems.map((item) => `<option value="${item.id}">${escapeHtml(stockItemLabel(item))}</option>`).join("")
   : `<option value="">Cadastre um item primeiro</option>`;
@@ -9360,11 +9367,11 @@ function stockItemRow(item) {
    <td class="money">${formatQuantity(item.maxQuantity)}</td>
    <td class="money">${money(item.averageCost)}</td>
    <td class="money">${money(totalValue)}</td>
-   <td>${item.active ? `<span class="status baixado">Ativo</span>` : `<span class="status vencido">Inativo</span>`}</td>
+   <td>${isStockItemActive(item) ? `<span class="status baixado">Ativo</span>` : `<span class="status vencido">Inativo</span>`}</td>
    <td>
     <div class="row-actions">
      <button type="button" data-stock-item-action="edit" data-id="${item.id}">Editar</button>
-     <button type="button" data-stock-item-action="toggle-active" data-id="${item.id}">${item.active ? "Inativar" : "Ativar"}</button>
+     <button type="button" data-stock-item-action="toggle-active" data-id="${item.id}">${isStockItemActive(item) ? "Inativar" : "Ativar"}</button>
      <button type="button" data-stock-item-action="delete" data-id="${item.id}">Excluir</button>
     </div>
    </td>
@@ -9390,7 +9397,7 @@ function handleStockItemAction(action, id) {
   els.stockLocation.value = item.locationId;
   els.stockMinQuantity.value = item.minQuantity;
   els.stockMaxQuantity.value = item.maxQuantity;
-  els.stockActive.checked = item.active;
+  els.stockActive.checked = isStockItemActive(item);
   els.stockNotes.value = item.notes;
   els.stockItemFormTitle.textContent = `Editar item - ${item.name}`;
   els.saveStockItemBtn.textContent = "Salvar alterações";
@@ -9402,8 +9409,9 @@ function handleStockItemAction(action, id) {
  }
 
  if (action === "toggle-active") {
-  item.active = !item.active;
-  persist();
+  item.active = !isStockItemActive(item);
+  item.updatedAt = new Date().toISOString();
+  persist("estoque");
   renderAll();
   toast(item.active ? "Item ativado." : "Item inativado.");
   return;
@@ -9678,7 +9686,7 @@ function detailItem(label, value, full = false) {
 }
 
 function renderStockAlerts() {
- const items = state.stockItems.filter((item) => item.active);
+ const items = state.stockItems.filter(isStockItemActive);
  const totalValue = sum(items.map((item) => Number(item.quantity || 0) * Number(item.averageCost || 0)));
  const monthMovements = state.stockMovements.filter((movement) => !isOperationalTestStockMovement(movement) && isInPeriod(movement.date, currentMonthStart, currentMonthEnd));
  const monthEntries = sum(monthMovements.filter((movement) => movement.type === "entrada").map((movement) => Number(movement.totalCost || 0)));
@@ -9733,7 +9741,7 @@ function applyStockStatusFilter(status) {
 
 function renderStockPurchaseNeed() {
  const rows = state.stockItems
-  .filter((item) => item.active && item.quantity < item.minQuantity)
+  .filter((item) => isStockItemActive(item) && item.quantity < item.minQuantity)
   .map((item) => ({ item, suggestion: Math.max(0, (item.maxQuantity || item.minQuantity) - item.quantity) }))
   .sort((a, b) => b.suggestion - a.suggestion);
 
