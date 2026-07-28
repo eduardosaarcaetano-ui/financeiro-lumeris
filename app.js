@@ -2184,7 +2184,8 @@ setSyncStatus("Carregando dados compartilhados...", "syncing");
      { ...mergeStateForScopes(remoteState, localState, pendingScopesDuringLoad), users: mergedUsers }
     : { ...remoteState, users: mergedUsers };
    Object.assign(state, syncedState);
-   const shouldResyncStockBaseline = applyIluminarStockBaseline();
+   const shouldResyncStockBaseline = applyIluminarStockBaseline() || stockCatalogNeedsLatestBaseline();
+   if (shouldResyncStockBaseline && state.stockBaselineVersion) applyLatestStockCatalog();
    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
    renderAll();
    if (shouldResyncUsers) {
@@ -8869,6 +8870,21 @@ function importIluminarStock(options = {}) {
   if (!silent) toast("Base da planilha Iluminar não encontrada no sistema.");
   return { changed: false, importedItems: 0, updatedItems: 0, importedMovements: 0 };
  }
+ if (!includeMovements) {
+  const changed = applyLatestStockCatalog(payload);
+  if (!silent) {
+   persist("estoque");
+   renderAll();
+   setStockTab("itens");
+   toast(`Estoque atualizado pela última planilha Iluminar: ${stockCatalogSourceItems(payload).length} item(ns) mantido(s).`);
+  }
+  return {
+   changed,
+   importedItems: changed ? stockCatalogSourceItems(payload).length : 0,
+   updatedItems: 0,
+   importedMovements: 0,
+  };
+ }
  const expectedImportedItems = payload.items.length + (payload.uncatalogedItems || []).length;
  const importedItemsCount = state.stockItems.filter((item) => item.source === payload.sourceFile || item.notes.includes("Controle Estoque Iluminar")).length;
  const alreadyImported = importedItemsCount > 0;
@@ -8987,13 +9003,52 @@ function applyIluminarStockBaseline() {
  if (!payload.items.length) return false;
  const baselineVersion = payload.baselineVersion || payload.generatedAt || "";
  if (!baselineVersion || state.stockBaselineVersion === baselineVersion) return false;
- const mainLocationId = ensureStockLocation("Estoque principal");
- state.stockItems = [...payload.items, ...payload.uncatalogedItems].map((sourceItem) => {
-  const existing = findImportedStockItem(sourceItem) || {};
-  return buildStockItemFromImport(sourceItem, mainLocationId, existing, payload.sourceFile);
- });
+ applyLatestStockCatalog(payload);
  state.stockMovements = [];
  state.stockBaselineVersion = baselineVersion;
+ return true;
+}
+
+function stockCatalogSourceItems(payload = stockImportPayload()) {
+ return [...(payload.items || []), ...(payload.uncatalogedItems || [])];
+}
+
+function stockCatalogKey(item) {
+ return [
+  String(item.internalCode || "").trim().toUpperCase(),
+  String(item.name || "").trim().toUpperCase(),
+  String(item.sourceRow || "").trim(),
+ ].join("::");
+}
+
+function stockCatalogNeedsLatestBaseline(payload = stockImportPayload()) {
+ const sourceItems = stockCatalogSourceItems(payload);
+ if (!sourceItems.length) return false;
+ if (state.stockItems.length !== sourceItems.length) return true;
+ const expectedKeys = new Set(sourceItems.map(stockCatalogKey));
+ const seenKeys = new Set();
+ return state.stockItems.some((item) => {
+  const key = stockCatalogKey(item);
+  if (!expectedKeys.has(key) || seenKeys.has(key)) return true;
+  seenKeys.add(key);
+  return false;
+ }) || seenKeys.size !== expectedKeys.size;
+}
+
+function applyLatestStockCatalog(payload = stockImportPayload()) {
+ const sourceItems = stockCatalogSourceItems(payload);
+ if (!sourceItems.length) return false;
+ const existingItems = state.stockItems || [];
+ const inactiveKeys = new Set(existingItems.filter((item) => !isStockItemActive(item)).map(stockCatalogKey));
+ const mainLocationId = ensureStockLocation("Estoque principal");
+ state.stockItems = sourceItems.map((sourceItem) => {
+  const existing = findImportedStockItem(sourceItem) || {};
+  const item = buildStockItemFromImport(sourceItem, mainLocationId, existing, payload.sourceFile);
+  if (inactiveKeys.has(stockCatalogKey(sourceItem))) item.active = false;
+  return item;
+ });
+ const baselineVersion = payload.baselineVersion || payload.generatedAt || "";
+ if (baselineVersion) state.stockBaselineVersion = baselineVersion;
  return true;
 }
 
@@ -9836,15 +9891,17 @@ function ensureIluminarStockLoaded() {
  if (!payload.items.length) return;
  if (applyIluminarStockBaseline()) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleRemoteSync("estoque");
   return;
  }
- const expectedImportedItems = payload.items.length + (payload.uncatalogedItems || []).length;
- const importedItemsCount = state.stockItems.filter((item) => item.source === payload.sourceFile || item.notes.includes("Controle Estoque Iluminar")).length;
- if (importedItemsCount >= expectedImportedItems) return;
+ if (!stockCatalogNeedsLatestBaseline(payload)) return;
  stockAutoImportRunning = true;
  const stockImport = importIluminarStock({ silent: true, includeMovements: false });
  stockAutoImportRunning = false;
- if (stockImport.changed) localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+ if (stockImport.changed) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleRemoteSync("estoque");
+ }
 }
 
 // ---- CRM ----
