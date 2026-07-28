@@ -2171,9 +2171,12 @@ setSyncStatus("Carregando dados compartilhados...", "syncing");
   if (result.data) {
    const remoteState = normalizeState(result.data);
    const localState = loadState();
+   const pendingScopesDuringLoad = pendingSyncScopes.size ? Array.from(pendingSyncScopes) : [];
    const mergedUsers = mergeArrayById(remoteState.users || [], localState.users || []);
    const shouldResyncUsers = JSON.stringify(mergedUsers) !== JSON.stringify(remoteState.users || []);
-   const syncedState = { ...remoteState, users: mergedUsers };
+   const syncedState = pendingScopesDuringLoad.length ?
+     { ...mergeStateForScopes(remoteState, localState, pendingScopesDuringLoad), users: mergedUsers }
+    : { ...remoteState, users: mergedUsers };
    Object.assign(state, syncedState);
    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
    renderAll();
@@ -2692,7 +2695,7 @@ function readOpportunityOwnerFromForm() {
  if (!selected) return { owner: "", ownerUserId: "" };
  if (selected.startsWith("legacy:")) return { owner: selected.replace("legacy:", ""), ownerUserId: "" };
  const user = state.users.find((item) => item.id === selected);
- return { owner: user ? (user.name || user.username) : "", ownerUserId: user.id || "" };
+ return { owner: user ? (user.name || user.username) : "", ownerUserId: user ? user.id : "" };
 }
 function restoreSessionOrShowLogin() {
  if (currentSessionUser()) {
@@ -9878,7 +9881,11 @@ function saveOpportunity() {
  const id = els.opportunityId.value || crypto.randomUUID();
  const existing = state.opportunities.find((item) => item.id === id);
  const previous = existing || {};
- const ownerData = readOpportunityOwnerFromForm();
+ let ownerData = readOpportunityOwnerFromForm();
+ const sessionUser = currentSessionUser();
+ if (!ownerData.ownerUserId && !ownerData.owner && sessionUser && !isAdmin()) {
+  ownerData = { owner: sessionUser.name || sessionUser.username || "", ownerUserId: sessionUser.id || "" };
+ }
  const stageId = els.opportunityStage.value;
  const pipelineStage = stageId === "ganho" ? "ganho"
   : stageId === "perdido" ? "perdido"
