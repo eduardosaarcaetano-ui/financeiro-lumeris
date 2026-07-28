@@ -97,6 +97,10 @@ const SAVE_SCOPE_FIELDS = {
 };
 
 const SHARED_MERGE_FIELDS = ["people", "projects", "costCenters", "installations", "installationWorkers", "users"];
+const ZERO_PROTECTED_REMOTE_FIELDS = {
+ projetos: ["projects", "costCenters", "installations", "installationWorkers"],
+ protocolo: ["protocols", "protocolHistory", "utilityCompanies", "protocolActivityTypes"],
+};
 
 const ROLE_LABELS = {
  administrador: "Administrador",
@@ -2199,9 +2203,10 @@ setSyncStatus("Carregando dados compartilhados...", "syncing");
    const pendingScopesDuringLoad = pendingSyncScopes.size ? Array.from(pendingSyncScopes) : [];
    const mergedUsers = mergeArrayById(remoteState.users || [], localState.users || []);
    const shouldResyncUsers = JSON.stringify(mergedUsers) !== JSON.stringify(remoteState.users || []);
+   const protectedRemote = recoverZeroedRemoteCollections(remoteState, localState);
    const syncedState = pendingScopesDuringLoad.length ?
-     { ...mergeStateForScopes(remoteState, localState, pendingScopesDuringLoad), users: mergedUsers }
-    : { ...remoteState, users: mergedUsers };
+     { ...mergeStateForScopes(protectedRemote.state, localState, pendingScopesDuringLoad), users: mergedUsers }
+    : { ...protectedRemote.state, users: mergedUsers };
    Object.assign(state, syncedState);
    const shouldResyncStockBaseline = applyIluminarStockBaseline() || stockCatalogNeedsLatestBaseline();
    if (shouldResyncStockBaseline && state.stockBaselineVersion) applyLatestStockCatalog();
@@ -2209,6 +2214,9 @@ setSyncStatus("Carregando dados compartilhados...", "syncing");
    renderAll();
    if (shouldResyncUsers) {
     scheduleRemoteSync("config");
+   }
+   if (protectedRemote.scopes.length) {
+    scheduleRemoteSync(protectedRemote.scopes);
    }
    if (shouldResyncStockBaseline) {
     scheduleRemoteSync("estoque");
@@ -2273,6 +2281,24 @@ function mergeArrayById(remoteItems = [], localItems = []) {
   }
  });
  return Array.from(merged.values());
+}
+
+function recoverZeroedRemoteCollections(remoteState, localState) {
+ const merged = normalizeState(cloneStateValue(remoteState));
+ const scopesToResync = new Set();
+
+ Object.entries(ZERO_PROTECTED_REMOTE_FIELDS).forEach(([scope, fields]) => {
+  fields.forEach((field) => {
+   const remoteValue = Array.isArray(remoteState[field]) ? remoteState[field] : [];
+   const localValue = Array.isArray(localState[field]) ? localState[field] : [];
+   if (!remoteValue.length && localValue.length) {
+    merged[field] = mergeArrayById(remoteValue, localValue);
+    scopesToResync.add(scope);
+   }
+  });
+ });
+
+ return { state: normalizeState(merged), scopes: Array.from(scopesToResync) };
 }
 
 function mergeStateForScopes(remoteState, localState, scopes) {
