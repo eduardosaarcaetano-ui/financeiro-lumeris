@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260724-installation-button-fix1" />
+    <link rel="stylesheet" href="styles.css?v=20260728-ranking-tv1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -463,6 +463,10 @@
                   <div>
                     <h2>Ranking de vendas</h2>
                     <small id="salesRankSummary">0 vendas no período</small>
+                  </div>
+                  <div class="row-actions sales-rank-tv-actions">
+                    <button class="secondary-btn" id="openManualSalesRankMonthTvBtn" type="button">TV mês</button>
+                    <button class="secondary-btn" id="openManualSalesRankYearTvBtn" type="button">TV ano</button>
                   </div>
                   <label>Período
                     <input id="salesRankFilterPeriod" type="month" />
@@ -3018,6 +3022,6 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/estoque-iluminar-data.js?v=20260718-layout-fix1"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
-    <script src="app.js?v=20260727-ofx-inter-fix1"></script>
+    <script src="app.js?v=20260728-ranking-tv1"></script>
   </body>
 </html>

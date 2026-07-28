@@ -468,6 +468,8 @@ const els = {
  salesRankEntries: document.querySelector("#salesRankEntries"),
  salesRankList: document.querySelector("#salesRankList"),
  salesRankSummary: document.querySelector("#salesRankSummary"),
+ openManualSalesRankMonthTvBtn: document.querySelector("#openManualSalesRankMonthTvBtn"),
+ openManualSalesRankYearTvBtn: document.querySelector("#openManualSalesRankYearTvBtn"),
  openSalesRankMonthTvBtn: document.querySelector("#openSalesRankMonthTvBtn"),
  openSalesRankYearTvBtn: document.querySelector("#openSalesRankYearTvBtn"),
  toggleLostOpportunitiesBtn: document.querySelector("#toggleLostOpportunitiesBtn"),
@@ -920,6 +922,8 @@ function bindEvents() {
  els.salesRankEntries.addEventListener("click", handleManualSalesRankAction);
  els.salesRankPeriod.value = todayIso.slice(0, 7);
  els.salesRankFilterPeriod.value = todayIso.slice(0, 7);
+ els.openManualSalesRankMonthTvBtn?.addEventListener("click", () => openSalesRankingTv("month", "manual"));
+ els.openManualSalesRankYearTvBtn?.addEventListener("click", () => openSalesRankingTv("year", "manual"));
 
  document.querySelectorAll("[data-stock-tab]").forEach((button) => {
   button.addEventListener("click", () => setStockTab(button.dataset.stockTab));
@@ -1050,8 +1054,8 @@ function bindEvents() {
  });
  els.crmReportStart.addEventListener("input", renderCrmReports);
  els.crmReportEnd.addEventListener("input", renderCrmReports);
- els.openSalesRankMonthTvBtn.addEventListener("click", () => openSalesRankingTv("month"));
- els.openSalesRankYearTvBtn.addEventListener("click", () => openSalesRankingTv("year"));
+ els.openSalesRankMonthTvBtn?.addEventListener("click", () => openSalesRankingTv("month"));
+ els.openSalesRankYearTvBtn?.addEventListener("click", () => openSalesRankingTv("year"));
  els.toggleLostOpportunitiesBtn.addEventListener("click", () => {
   showLostOpportunities = !showLostOpportunities;
   renderPipelineBoard();
@@ -10674,16 +10678,55 @@ function salesRankingRowsForPeriod(mode) {
  return { period, rows: buildSalesRankingRows(won, lost), won, lost };
 }
 
-function salesRankingTvUrl(mode) {
+function monthLabel(monthValue) {
+ const [year, month] = String(monthValue || todayIso.slice(0, 7)).split("-");
+ const date = new Date(Number(year), Number(month || 1) - 1, 1);
+ return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}
+
+function manualSalesRankingRowsForPeriod(mode) {
+ const params = new URLSearchParams(window.location.search);
+ const selectedMonth = params.get("month") || els.salesRankFilterPeriod?.value || todayIso.slice(0, 7);
+ const selectedYear = params.get("year") || selectedMonth.slice(0, 4) || String(today.getFullYear());
+ const period = mode === "year" || mode === "ano"
+  ? { label: `Ano ${selectedYear}`, start: `${selectedYear}-01`, end: `${selectedYear}-12` }
+  : { label: monthLabel(selectedMonth), start: selectedMonth, end: selectedMonth };
+ const entries = state.salesRankingEntries.filter((item) => {
+  const entryPeriod = String(item.period || "").slice(0, 7);
+  if (mode === "year" || mode === "ano") return entryPeriod.slice(0, 4) === selectedYear;
+  return entryPeriod === selectedMonth;
+ });
+ const grouped = new Map();
+ entries.forEach((item) => {
+  const seller = cleanText(item.seller || "Sem vendedor");
+  const key = seller.toLocaleLowerCase("pt-BR");
+  const current = grouped.get(key) || { key, name: seller, total: 0, count: 0 };
+  current.total += Number(item.amount || 0);
+  current.count += 1;
+  grouped.set(key, current);
+ });
+ const rows = [...grouped.values()]
+  .map((row) => ({ ...row, total: roundCurrency(row.total), conversion: 0 }))
+  .sort((a, b) => b.total - a.total || b.count - a.count || a.name.localeCompare(b.name));
+ return { period, rows, won: entries, lost: [], source: "manual" };
+}
+
+function salesRankingTvUrl(mode, source = "crm") {
  const url = new URL(window.location.href);
  url.search = "";
  url.searchParams.set("tv", "ranking");
  url.searchParams.set("period", mode);
+ url.searchParams.set("source", source);
+ if (source === "manual") {
+  const selectedMonth = els.salesRankFilterPeriod?.value || todayIso.slice(0, 7);
+  url.searchParams.set("month", selectedMonth);
+  url.searchParams.set("year", selectedMonth.slice(0, 4));
+ }
  return url.toString();
 }
 
-function openSalesRankingTv(mode) {
- window.open(salesRankingTvUrl(mode), "_blank");
+function openSalesRankingTv(mode, source = "crm") {
+ window.open(salesRankingTvUrl(mode, source), "_blank");
 }
 
 function isSalesRankingTvMode() {
@@ -10694,7 +10737,8 @@ function isSalesRankingTvMode() {
 function renderSalesRankingTvMode() {
  const params = new URLSearchParams(window.location.search);
  const mode = params.get("period") === "year" ? "year" : "month";
- const { period, rows, won } = salesRankingRowsForPeriod(mode);
+ const source = params.get("source") === "manual" ? "manual" : "crm";
+ const { period, rows, won } = source === "manual" ? manualSalesRankingRowsForPeriod(mode) : salesRankingRowsForPeriod(mode);
  document.title = `Ranking de vendas - ${period.label}`;
  els.loginScreen.classList.add("hidden");
  els.appShell.classList.add("hidden");
@@ -10709,12 +10753,13 @@ function renderSalesRankingTvMode() {
  }
 
  const podium = [rows[1], rows[0], rows[2]];
+ const topFive = rows.slice(3, 5);
  screen.innerHTML = `
   <section class="ranking-tv-hero">
    <div>
     <span>Lumeris Engenharia</span>
     <h1>Ranking de vendas</h1>
-    <p>${escapeHtml(period.label)} - ${won.length} negócio${won.length === 1 ? "" : "s"} fechado${won.length === 1 ? "" : "s"}</p>
+    <p>${escapeHtml(period.label)} - ${won.length} venda${won.length === 1 ? "" : "s"} registrada${won.length === 1 ? "" : "s"}</p>
    </div>
    <div class="ranking-tv-clock">${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
   </section>
@@ -10727,7 +10772,7 @@ function renderSalesRankingTvMode() {
       <div class="medal">${place}</div>
       <h2>${escapeHtml(row.name)}</h2>
       <strong>${money(row.total)}</strong>
-      <span>${row.count} venda${row.count === 1 ? "" : "s"} - ${row.conversion.toFixed(1)}% conversão</span>
+      <span>${row.count} venda${row.count === 1 ? "" : "s"} registrada${row.count === 1 ? "" : "s"}</span>
      </article>` : `
      <article class="podium-card empty ${heightClass}">
       <div class="medal">${place}</div>
@@ -10738,14 +10783,14 @@ function renderSalesRankingTvMode() {
    }).join("")}
   </section>
   <section class="ranking-tv-list">
-   ${rows.slice(3, 10).map((row, index) => `
+   ${topFive.map((row, index) => `
     <article>
      <span>${index + 4}</span>
      <strong>${escapeHtml(row.name)}</strong>
      <em>${money(row.total)}</em>
      <small>${row.count} venda${row.count === 1 ? "" : "s"}</small>
     </article>
-   `).join("") || `<article><strong>Sem outros vendedores no ranking</strong><em>${money(0)}</em></article>`}
+   `).join("") || `<article><strong>Aguardando 4º e 5º colocados</strong><em>${money(0)}</em><small>Cadastre mais vendas no ranking</small></article>`}
   </section>
  `;
 }
