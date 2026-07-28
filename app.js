@@ -2447,6 +2447,10 @@ async function hashPassword(password, salt) {
  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function normalizeLoginText(value) {
+ return displayText(value).trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 async function ensureMasterUser({ save = true } = {}) {
  let master = state.users.find((user) => user.username.toLowerCase() === MASTER_USERNAME);
  let changed = false;
@@ -2720,29 +2724,34 @@ function updateSessionUi() {
 }
 
 function isMasterCredentials(username, password) {
- return username.toLowerCase() === MASTER_USERNAME && password === MASTER_INITIAL_PASSWORD;
+ return normalizeLoginText(username) === MASTER_USERNAME && password.trim() === MASTER_INITIAL_PASSWORD;
 }
 
 async function handleLogin(event) {
  event.preventDefault();
  const username = els.loginUsername.value.trim();
- const password = els.loginPassword.value;
- const normalizedUsername = username.toLowerCase();
+ const password = els.loginPassword.value.trim();
+ const normalizedUsername = normalizeLoginText(username);
 
  try {
   if (isMasterCredentials(username, password)) {
    await ensureMasterUser({ save: false });
-   const master = state.users.find((item) => item.username.toLowerCase() === MASTER_USERNAME);
+   const master = state.users.find((item) => normalizeLoginText(item.username) === MASTER_USERNAME);
    els.loginError.textContent = "";
    setSession(master);
    showApp();
    return;
   }
 
-  const user = state.users.find((item) => item.username.toLowerCase() === normalizedUsername);
+  const user = state.users.find((item) => normalizeLoginText(item.username) === normalizedUsername);
 
-  if (!user || !user.active || !user.salt || !user.passwordHash) {
+  if (!user || !user.active) {
    els.loginError.textContent = "Usuário ou senha inválidos.";
+   return;
+  }
+
+  if (!user.salt || !user.passwordHash) {
+   els.loginError.textContent = "Senha não cadastrada. Entre como administrador, edite o usuário e informe a senha novamente.";
    return;
   }
 
@@ -2821,14 +2830,14 @@ async function saveUser(event) {
  const password = els.userPassword.value;
  const existing = state.users.find((item) => item.id === id);
 
- const usernameTaken = state.users.some((item) => item.id !== id && item.username.toLowerCase() === username.toLowerCase());
+ const usernameTaken = state.users.some((item) => item.id !== id && normalizeLoginText(item.username) === normalizeLoginText(username));
  if (usernameTaken) {
   toast("Já existe um usuário com esse login.");
   return;
  }
 
- if (!existing && !password) {
-  toast("Informe uma senha para o novo usuário.");
+ if ((!existing || !existing.passwordHash || !existing.salt) && !password) {
+  toast("Informe uma senha para este usuário.");
   return;
  }
 
