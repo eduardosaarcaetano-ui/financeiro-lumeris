@@ -3176,6 +3176,7 @@ function hydrateCrmOptions() {
 }
 
 function setSelectOptions(select, html) {
+ if (!select) return;
  const current = select.value;
  select.innerHTML = html;
  if ([...select.options].some((option) => option.value === current)) select.value = current;
@@ -4150,6 +4151,7 @@ function moveOpportunity(id, newStageId) {
 }
 
 function renderOpportunityHistory(opportunityId) {
+ if (!els.opportunityHistory) return;
  const rows = state.opportunityHistory
   .filter((item) => item.opportunityId === opportunityId)
   .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -9828,12 +9830,17 @@ function findOrCreatePersonByName(name, fallbackType = "cliente") {
 }
 
 function hydrateOpportunityPersonSuggestions() {
+ if (!els.opportunityPersonSuggestions) return;
  const clients = state.people.filter((person) => person.type === "cliente" || person.type === "ambos");
  els.opportunityPersonSuggestions.innerHTML = clients.map((person) => `<option value="${escapeHtml(person.name)}"></option>`).join("");
 }
 
 function openOpportunityDialog(item = null) {
  const opportunity = item || {};
+ if (!els.opportunityDialog || !els.opportunityForm) {
+  toast("Janela de oportunidade não encontrada. Atualize a página.");
+  return;
+ }
  els.opportunityForm.reset();
  hydrateCrmOptions();
  els.opportunityId.value = opportunity.id || "";
