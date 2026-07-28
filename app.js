@@ -2170,9 +2170,16 @@ setSyncStatus("Carregando dados compartilhados...", "syncing");
   remoteUpdatedAt = result.updatedAt || "";
   if (result.data) {
    const remoteState = normalizeState(result.data);
-   Object.assign(state, remoteState);
+   const localState = loadState();
+   const mergedUsers = mergeArrayById(remoteState.users || [], localState.users || []);
+   const shouldResyncUsers = JSON.stringify(mergedUsers) !== JSON.stringify(remoteState.users || []);
+   const syncedState = { ...remoteState, users: mergedUsers };
+   Object.assign(state, syncedState);
    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
    renderAll();
+   if (shouldResyncUsers) {
+    scheduleRemoteSync("config");
+   }
   }
   if (!enforceMaintenanceMode()) {
    setSyncStatus("Sincronizado com o Google Sheets", "ok");
