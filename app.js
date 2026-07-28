@@ -9833,35 +9833,36 @@ function hydrateOpportunityPersonSuggestions() {
 }
 
 function openOpportunityDialog(item = null) {
+ const opportunity = item || {};
  els.opportunityForm.reset();
  hydrateCrmOptions();
- els.opportunityId.value = item.id || "";
- els.opportunityPerson.value = item.personId || els.opportunityPerson.value;
- els.opportunityCompany.value = item.company || "";
- els.opportunityNumber.value = item.number || item.title || nextOpportunityNumber();
- els.opportunityValue.value = item.value || 0;
- els.opportunityUnit.value = item.unitId || state.crmUnits[0].id || "";
- els.opportunityPipeline.value = item.pipelineId || els.crmPipelineFilter.value || state.crmPipelines[0].id || "";
- els.opportunityStage.value = item.stageId || state.opportunityStages[0].id || "";
- if (els.opportunityClosedDate) els.opportunityClosedDate.value = item.closedDate || (isOpportunityWon(item || {}) ? opportunityWonDate(item) : "");
- setOpportunityOwnerValue(item);
- els.opportunityPhone.value = item.phone || "";
- els.opportunityEmail.value = item.email || "";
- els.opportunityProject.value = item.projectId || "";
- els.opportunityTags.value = normalizeTags(item.tags).join(", ");
- els.opportunityNextActivity.value = item.nextActivityDate || "";
- els.opportunityPendingActivity.checked = Boolean(item.pendingActivity);
- els.opportunityNotes.value = item.notes || "";
- els.opportunityAddress.value = item.location.address || "";
- els.opportunityLatitude.value = item.location.latitude || "";
- els.opportunityLongitude.value = item.location.longitude || "";
- els.opportunityDriveFolder.value = item.driveFolderUrl || "";
- opportunityAttachmentsDraft = normalizeOpportunityAttachments(item.attachments);
+ els.opportunityId.value = opportunity.id || "";
+ els.opportunityPerson.value = opportunity.personId || els.opportunityPerson.value;
+ els.opportunityCompany.value = opportunity.company || "";
+ els.opportunityNumber.value = opportunity.number || opportunity.title || nextOpportunityNumber();
+ els.opportunityValue.value = opportunity.value || 0;
+ els.opportunityUnit.value = opportunity.unitId || state.crmUnits[0]?.id || "";
+ els.opportunityPipeline.value = opportunity.pipelineId || els.crmPipelineFilter.value || state.crmPipelines[0]?.id || "";
+ els.opportunityStage.value = opportunity.stageId || state.opportunityStages[0]?.id || "";
+ if (els.opportunityClosedDate) els.opportunityClosedDate.value = opportunity.closedDate || (isOpportunityWon(opportunity) ? opportunityWonDate(opportunity) : "");
+ setOpportunityOwnerValue(opportunity);
+ els.opportunityPhone.value = opportunity.phone || "";
+ els.opportunityEmail.value = opportunity.email || "";
+ els.opportunityProject.value = opportunity.projectId || "";
+ els.opportunityTags.value = normalizeTags(opportunity.tags).join(", ");
+ els.opportunityNextActivity.value = opportunity.nextActivityDate || "";
+ els.opportunityPendingActivity.checked = Boolean(opportunity.pendingActivity);
+ els.opportunityNotes.value = opportunity.notes || "";
+ els.opportunityAddress.value = opportunity.location?.address || "";
+ els.opportunityLatitude.value = opportunity.location?.latitude || "";
+ els.opportunityLongitude.value = opportunity.location?.longitude || "";
+ els.opportunityDriveFolder.value = opportunity.driveFolderUrl || "";
+ opportunityAttachmentsDraft = normalizeOpportunityAttachments(opportunity.attachments);
  renderOpportunityAttachmentRows();
  setOpportunityAttachmentStatus("Arraste links ou arquivos para anexar ao lead. Salve a oportunidade ao concluir.", "neutral");
- setOpportunityProposalForm(item.proposal || {});
+ setOpportunityProposalForm(opportunity.proposal || {});
  els.opportunityTitle.textContent = item ? "Editar oportunidade" : "Nova oportunidade";
- renderOpportunityHistory(item.id || "");
+ renderOpportunityHistory(opportunity.id || "");
  els.opportunityDialog.showModal();
 }
 
@@ -9869,6 +9870,7 @@ function saveOpportunity() {
  const now = new Date().toISOString();
  const id = els.opportunityId.value || crypto.randomUUID();
  const existing = state.opportunities.find((item) => item.id === id);
+ const previous = existing || {};
  const ownerData = readOpportunityOwnerFromForm();
  const stageId = els.opportunityStage.value;
  const pipelineStage = stageId === "ganho" ? "ganho"
@@ -9876,21 +9878,21 @@ function saveOpportunity() {
    : stageId === "proposta" ? "proposta"
     : stageId === "negociacao" ? "negociacao"
      : "prospeccao";
- const closedDate = els.opportunityClosedDate.value || existing.closedDate || "";
+ const closedDate = els.opportunityClosedDate.value || previous.closedDate || "";
  const data = {
-  ...(existing || {}),
+  ...previous,
   id,
   personId: els.opportunityPerson.value,
-  title: existing.title || els.opportunityNumber.value.trim() || nextOpportunityNumber(),
+  title: previous.title || els.opportunityNumber.value.trim() || nextOpportunityNumber(),
   company: els.opportunityCompany.value.trim(),
-  number: els.opportunityNumber.value.trim() || existing.number || nextOpportunityNumber(),
+  number: els.opportunityNumber.value.trim() || previous.number || nextOpportunityNumber(),
   value: Number(els.opportunityValue.value || 0),
   unitId: els.opportunityUnit.value,
   pipelineId: els.opportunityPipeline.value,
   stageId,
   stage: pipelineStage,
   closedDate: pipelineStage === "ganho" ? closedDate : "",
-  wonAt: pipelineStage === "ganho" && closedDate ? new Date(`${closedDate}T12:00:00`).toISOString() : existing.wonAt || "",
+  wonAt: pipelineStage === "ganho" && closedDate ? new Date(`${closedDate}T12:00:00`).toISOString() : previous.wonAt || "",
   owner: ownerData.owner,
   ownerUserId: ownerData.ownerUserId,
   phone: els.opportunityPhone.value.trim(),
@@ -9908,12 +9910,12 @@ function saveOpportunity() {
   driveFolderUrl: els.opportunityDriveFolder.value.trim(),
   attachments: readOpportunityAttachmentsFromForm(),
   proposal: readOpportunityProposalFromForm(),
-  createdAt: existing.createdAt || now,
+  createdAt: previous.createdAt || now,
   updatedAt: now,
-  lastMovedAt: existing.lastMovedAt || now,
-  lastContactAt: existing.lastContactAt || "",
-  stageChangedAt: existing.stageId === stageId ? existing.stageChangedAt || now : now,
-  stageHistory: existing.stageHistory.length ? [...existing.stageHistory] : [{ stage: pipelineStage, at: now }],
+  lastMovedAt: previous.lastMovedAt || now,
+  lastContactAt: previous.lastContactAt || "",
+  stageChangedAt: previous.stageId === stageId ? previous.stageChangedAt || now : now,
+  stageHistory: Array.isArray(previous.stageHistory) && previous.stageHistory.length ? [...previous.stageHistory] : [{ stage: pipelineStage, at: now }],
  };
  if (existing && existing.stageId !== data.stageId) {
   addOpportunityHistory(id, "mudanca de etapa", existing.stageId, data.stageId);
