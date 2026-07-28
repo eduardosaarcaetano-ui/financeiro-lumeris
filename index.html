@@ -1477,7 +1477,10 @@
                   <input id="stockDescription" maxlength="200" />
                 </label>
                 <label>Categoria
-                  <input id="stockCategory" maxlength="60" />
+                  <select id="stockCategory"></select>
+                </label>
+                <label class="hidden" id="stockNewCategoryWrap">Nova categoria
+                  <input id="stockNewCategory" maxlength="60" />
                 </label>
                 <label>Subcategoria
                   <input id="stockSubcategory" maxlength="60" />
@@ -1513,6 +1516,9 @@
                 </label>
                 <label>Estoque máximo
                   <input id="stockMaxQuantity" type="number" min="0" step="0.01" value="0" />
+                </label>
+                <label>Valor unitário
+                  <input id="stockAverageCost" type="number" min="0" step="0.01" value="0" />
                 </label>
                 <label class="checkbox-line">
                   <input id="stockActive" type="checkbox" checked />

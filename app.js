@@ -337,6 +337,8 @@ const els = {
  stockName: document.querySelector("#stockName"),
  stockDescription: document.querySelector("#stockDescription"),
  stockCategory: document.querySelector("#stockCategory"),
+ stockNewCategoryWrap: document.querySelector("#stockNewCategoryWrap"),
+ stockNewCategory: document.querySelector("#stockNewCategory"),
  stockSubcategory: document.querySelector("#stockSubcategory"),
  stockBrand: document.querySelector("#stockBrand"),
  stockModel: document.querySelector("#stockModel"),
@@ -345,6 +347,7 @@ const els = {
  stockLocation: document.querySelector("#stockLocation"),
  stockMinQuantity: document.querySelector("#stockMinQuantity"),
  stockMaxQuantity: document.querySelector("#stockMaxQuantity"),
+ stockAverageCost: document.querySelector("#stockAverageCost"),
  stockActive: document.querySelector("#stockActive"),
  stockNotes: document.querySelector("#stockNotes"),
  stockItemSearch: document.querySelector("#stockItemSearch"),
@@ -932,6 +935,7 @@ function bindEvents() {
  });
  els.stockItemForm.addEventListener("submit", saveStockItem);
  els.cancelStockItemEditBtn.addEventListener("click", resetStockItemForm);
+ els.stockCategory.addEventListener("change", toggleNewStockCategoryField);
  els.stockItemSearch.addEventListener("input", renderStockItems);
  els.importIluminarStockBtn.addEventListener("click", importIluminarStock);
  [els.stockFilterStart, els.stockFilterEnd, els.stockFilterType, els.stockFilterProject, els.stockFilterItem, els.stockFilterStatus, els.stockFilterCategory].forEach((field) => {
@@ -8750,6 +8754,33 @@ function isStockItemActive(item) {
  return item && item.active !== false;
 }
 
+function stockCategoryList() {
+ return [...new Set(state.stockItems
+  .map((item) => String(item.category || "").trim())
+  .filter(Boolean))]
+  .sort((a, b) => a.localeCompare(b, "pt-BR"));
+}
+
+function nextStockInternalCode() {
+ const codes = state.stockItems
+  .map((item) => String(item.internalCode || "").trim())
+  .map((code) => code.match(/^IE(\d+)$/i))
+  .filter(Boolean);
+ const maxNumber = codes.reduce((max, match) => Math.max(max, Number(match[1] || 0)), 0);
+ const width = Math.max(4, ...codes.map((match) => match[1].length));
+ return `IE${String(maxNumber + 1).padStart(width, "0")}`;
+}
+
+function toggleNewStockCategoryField() {
+ const isNewCategory = els.stockCategory.value === "__new__";
+ els.stockNewCategoryWrap.classList.toggle("hidden", !isNewCategory);
+ if (isNewCategory) {
+  setTimeout(() => els.stockNewCategory.focus(), 50);
+ } else {
+  els.stockNewCategory.value = "";
+ }
+}
+
 function stockAlertLevel(item) {
  if (item.quantity <= 0) return "zero";
  if (item.quantity < item.minQuantity) return "below-min";
@@ -9220,6 +9251,7 @@ function setStockTab(tab) {
 function hydrateStockCatalogOptions() {
  const currentStockFilterItem = els.stockFilterItem.value || "";
  const currentStockFilterCategory = els.stockFilterCategory.value || "";
+ const currentStockCategory = els.stockCategory.value || "";
  const suppliers = state.people.filter((person) => person.type === "fornecedor" || person.type === "ambos");
  const supplierOptions = suppliers.length ?
    suppliers.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")
@@ -9240,7 +9272,19 @@ function hydrateStockCatalogOptions() {
  els.stockExitItem.innerHTML = itemOptions;
  els.stockFilterItem.innerHTML = `<option value="">Todos os itens</option>${activeItems.map((item) => `<option value="${item.id}">${escapeHtml(stockItemLabel(item))}</option>`).join("")}`;
  if (currentStockFilterItem) els.stockFilterItem.value = currentStockFilterItem;
- const categories = [...new Set(state.stockItems.map((item) => item.category || "SEM CADASTRO"))].sort((a, b) => a.localeCompare(b));
+ const categories = stockCategoryList();
+ const stockCategoryOptions = [
+  `<option value="">Selecione uma categoria</option>`,
+  ...categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`),
+  `<option value="__new__">+ Nova categoria</option>`,
+ ].join("");
+ els.stockCategory.innerHTML = stockCategoryOptions;
+ if (currentStockCategory && categories.includes(currentStockCategory)) {
+  els.stockCategory.value = currentStockCategory;
+ } else if (currentStockCategory === "__new__") {
+  els.stockCategory.value = "__new__";
+ }
+ toggleNewStockCategoryField();
  els.stockFilterCategory.innerHTML = `<option value="">Todas as categorias</option>${categories.map((category) => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("")}`;
  if (currentStockFilterCategory) els.stockFilterCategory.value = currentStockFilterCategory;
  refreshSearchableSelect(els.stockEntryItem);
@@ -9271,34 +9315,41 @@ function resetStockItemForm() {
  els.cancelStockItemEditBtn.classList.add("hidden");
  els.stockItemForm.classList.remove("editing");
  els.stockActive.checked = true;
+ els.stockInternalCode.value = nextStockInternalCode();
+ els.stockCategory.value = "";
+ els.stockNewCategory.value = "";
+ els.stockAverageCost.value = "0";
+ toggleNewStockCategoryField();
 }
 
 function saveStockItem(event) {
  event.preventDefault();
  const id = els.stockItemId.value || crypto.randomUUID();
  const existing = state.stockItems.find((item) => item.id === id);
+ const category = els.stockCategory.value === "__new__" ? els.stockNewCategory.value.trim() : els.stockCategory.value.trim();
+ const unitCost = Number(els.stockAverageCost.value || 0);
 
  const item = {
   id,
-  internalCode: els.stockInternalCode.value.trim(),
+  internalCode: els.stockInternalCode.value.trim() || nextStockInternalCode(),
   barcode: els.stockBarcode.value.trim(),
   name: els.stockName.value.trim(),
   description: els.stockDescription.value.trim(),
-  category: els.stockCategory.value.trim(),
+  category,
   subcategory: els.stockSubcategory.value.trim(),
   brand: els.stockBrand.value.trim(),
   model: els.stockModel.value.trim(),
   unit: els.stockUnit.value,
   primarySupplierId: els.stockSupplier.value,
   locationId: els.stockLocation.value,
-  quantity: existing.quantity || 0,
+  quantity: existing?.quantity || 0,
   minQuantity: Number(els.stockMinQuantity.value || 0),
   maxQuantity: Number(els.stockMaxQuantity.value || 0),
-  averageCost: existing.averageCost || 0,
-  lastPurchaseCost: existing.lastPurchaseCost || 0,
+  averageCost: unitCost,
+  lastPurchaseCost: unitCost || existing?.lastPurchaseCost || 0,
   active: els.stockActive.checked,
   notes: els.stockNotes.value.trim(),
-  createdAt: existing.createdAt || new Date().toISOString(),
+  createdAt: existing?.createdAt || new Date().toISOString(),
   updatedAt: new Date().toISOString(),
  };
 
@@ -9306,7 +9357,7 @@ function saveStockItem(event) {
  if (index >= 0) state.stockItems[index] = item;
  else state.stockItems.push(item);
 
- persist();
+ persist("estoque");
  renderAll();
  resetStockItemForm();
  toast("Item de estoque salvo.");
@@ -9389,6 +9440,13 @@ function handleStockItemAction(action, id) {
   els.stockName.value = item.name;
   els.stockDescription.value = item.description;
   els.stockCategory.value = item.category;
+  if (item.category && els.stockCategory.value !== item.category) {
+   els.stockCategory.value = "__new__";
+   els.stockNewCategory.value = item.category;
+  } else {
+   els.stockNewCategory.value = "";
+  }
+  toggleNewStockCategoryField();
   els.stockSubcategory.value = item.subcategory;
   els.stockBrand.value = item.brand;
   els.stockModel.value = item.model;
@@ -9397,6 +9455,7 @@ function handleStockItemAction(action, id) {
   els.stockLocation.value = item.locationId;
   els.stockMinQuantity.value = item.minQuantity;
   els.stockMaxQuantity.value = item.maxQuantity;
+  els.stockAverageCost.value = Number(item.averageCost || 0);
   els.stockActive.checked = isStockItemActive(item);
   els.stockNotes.value = item.notes;
   els.stockItemFormTitle.textContent = `Editar item - ${item.name}`;
@@ -9761,6 +9820,9 @@ function renderStock() {
  ensureIluminarStockLoaded();
  reconcileStockBalancesFromMovements();
  hydrateStockCatalogOptions();
+ if (!els.stockItemId.value && !els.stockInternalCode.value.trim()) {
+  els.stockInternalCode.value = nextStockInternalCode();
+ }
  renderStockItems();
  renderStockEntryList();
  renderStockExitList();
