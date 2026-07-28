@@ -2743,7 +2743,10 @@ async function handleLogin(event) {
    return;
   }
 
-  const user = state.users.find((item) => normalizeLoginText(item.username) === normalizedUsername);
+  const user = state.users.find((item) =>
+   normalizeLoginText(item.username) === normalizedUsername ||
+   normalizeLoginText(item.name) === normalizedUsername
+  );
 
   if (!user || !user.active) {
    els.loginError.textContent = "Usuário ou senha inválidos.";
@@ -2827,7 +2830,7 @@ async function saveUser(event) {
  }
  const id = els.userId.value || crypto.randomUUID();
  const username = els.userUsername.value.trim();
- const password = els.userPassword.value;
+ const password = els.userPassword.value.trim();
  const existing = state.users.find((item) => item.id === id);
 
  const usernameTaken = state.users.some((item) => item.id !== id && normalizeLoginText(item.username) === normalizeLoginText(username));
