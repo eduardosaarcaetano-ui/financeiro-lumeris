@@ -91,7 +91,7 @@ const SAVE_SCOPE_FIELDS = {
  crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "sellers", "interactions", "tasks"],
  financeiro: ["transactions", "bankAccounts", "bankMovements", "bankApiConfigs", "invoices"],
  protocolo: ["protocols", "protocolHistory", "utilityCompanies", "protocolActivityTypes"],
- estoque: ["stockItems", "stockMovements", "stockLocations"],
+ estoque: ["stockItems", "stockMovements", "stockLocations", "stockBaselineVersion"],
  projetos: ["projects", "costCenters", "installations", "installationWorkers"],
  config: ["users", "maintenance"],
 };
@@ -1391,6 +1391,7 @@ function loadState() {
   stockItems: [],
   stockMovements: [],
   stockLocations: [],
+  stockBaselineVersion: "",
   installationWorkers: [],
   installations: [],
   opportunities: [],
@@ -1426,6 +1427,7 @@ function normalizeState(data) {
   stockItems: Array.isArray(data.stockItems) ? data.stockItems : [],
   stockMovements: Array.isArray(data.stockMovements) ? data.stockMovements : [],
   stockLocations: Array.isArray(data.stockLocations) ? data.stockLocations : [],
+  stockBaselineVersion: data.stockBaselineVersion || "",
   installationWorkers: Array.isArray(data.installationWorkers) ? data.installationWorkers : [],
   installations: Array.isArray(data.installations) ? data.installations : [],
   opportunities: Array.isArray(data.opportunities) ? data.opportunities : [],
@@ -2178,10 +2180,14 @@ setSyncStatus("Carregando dados compartilhados...", "syncing");
      { ...mergeStateForScopes(remoteState, localState, pendingScopesDuringLoad), users: mergedUsers }
     : { ...remoteState, users: mergedUsers };
    Object.assign(state, syncedState);
+   const shouldResyncStockBaseline = applyIluminarStockBaseline();
    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
    renderAll();
    if (shouldResyncUsers) {
     scheduleRemoteSync("config");
+   }
+   if (shouldResyncStockBaseline) {
+    scheduleRemoteSync("estoque");
    }
   }
   if (!enforceMaintenanceMode()) {
@@ -8822,7 +8828,7 @@ function reconcileStockBalancesFromMovements(targetState = state) {
 function importIluminarStock(options = {}) {
  const silent = options.silent === true;
  const includeMovements = options.includeMovements !== false;
- const payload = window.ILUMINAR_STOCK_IMPORT;
+ const payload = stockImportPayload();
  if (!payload.items.length) {
   if (!silent) toast("Base da planilha Iluminar não encontrada no sistema.");
   return { changed: false, importedItems: 0, updatedItems: 0, importedMovements: 0 };
@@ -8845,31 +8851,7 @@ function importIluminarStock(options = {}) {
 
  [...payload.items, ...(payload.uncatalogedItems || [])].forEach((sourceItem) => {
   const existing = findImportedStockItem(sourceItem) || {};
-  const item = {
-   id: existing.id || sourceItem.id || crypto.randomUUID(),
-   internalCode: sourceItem.internalCode || "",
-   barcode: sourceItem.barcode || "",
-   name: sourceItem.name || "",
-   description: sourceItem.description || sourceItem.name || "",
-   category: sourceItem.category || "SEM CATEGORIA",
-   subcategory: sourceItem.subcategory || "",
-   brand: sourceItem.brand || "",
-   model: sourceItem.model || "",
-   unit: sourceItem.unit || "unidade",
-   primarySupplierId: existing.primarySupplierId || "",
-   locationId: mainLocationId,
-   quantity: Number(sourceItem.quantity || 0),
-   minQuantity: Number(sourceItem.minQuantity || 0),
-   maxQuantity: Number(sourceItem.maxQuantity || 0),
-   averageCost: Number(sourceItem.averageCost || 0),
-   lastPurchaseCost: Number(sourceItem.lastPurchaseCost || sourceItem.averageCost || 0),
-   active: sourceItem.active !== false,
-   notes: sourceItem.notes || "Importado da planilha Controle Estoque Iluminar.",
-   source: sourceItem.source || payload.sourceFile,
-   sourceRow: sourceItem.sourceRow || "",
-   createdAt: existing.createdAt || new Date().toISOString(),
-   updatedAt: new Date().toISOString(),
-  };
+  const item = buildStockItemFromImport(sourceItem, mainLocationId, existing, payload.sourceFile);
   const index = state.stockItems.findIndex((entry) => entry.id === item.id);
   if (index >= 0) {
    state.stockItems[index] = { ...state.stockItems[index], ...item };
@@ -8915,12 +8897,66 @@ function importIluminarStock(options = {}) {
 
  const result = { changed: importedItems > 0 || updatedItems > 0 || importedMovements > 0, importedItems, updatedItems, importedMovements };
  if (!silent) {
-  persist();
+  persist("estoque");
   renderAll();
   setStockTab("itens");
   toast(`Planilha Iluminar importada: ${importedItems} item(ns), ${updatedItems} atualizado(s), ${importedMovements} movimento(s).`);
  }
  return result;
+}
+
+function stockImportPayload() {
+ const payload = window.ILUMINAR_STOCK_IMPORT || {};
+ return {
+  ...payload,
+  sourceFile: payload.sourceFile || "Controle Estoque Iluminar.xlsx",
+  items: Array.isArray(payload.items) ? payload.items : [],
+  uncatalogedItems: Array.isArray(payload.uncatalogedItems) ? payload.uncatalogedItems : [],
+  movements: Array.isArray(payload.movements) ? payload.movements : [],
+ };
+}
+
+function buildStockItemFromImport(sourceItem, mainLocationId, existing = {}, sourceFile = "Controle Estoque Iluminar.xlsx") {
+ const now = new Date().toISOString();
+ return {
+  id: existing.id || sourceItem.id || crypto.randomUUID(),
+  internalCode: sourceItem.internalCode || "",
+  barcode: sourceItem.barcode || "",
+  name: sourceItem.name || "",
+  description: sourceItem.description || sourceItem.name || "",
+  category: sourceItem.category || "SEM CATEGORIA",
+  subcategory: sourceItem.subcategory || "",
+  brand: sourceItem.brand || "",
+  model: sourceItem.model || "",
+  unit: sourceItem.unit || "unidade",
+  primarySupplierId: existing.primarySupplierId || "",
+  locationId: mainLocationId,
+  quantity: Number(sourceItem.quantity || 0),
+  minQuantity: Number(sourceItem.minQuantity || 0),
+  maxQuantity: Number(sourceItem.maxQuantity || 0),
+  averageCost: Number(sourceItem.averageCost || 0),
+  lastPurchaseCost: Number(sourceItem.lastPurchaseCost || sourceItem.averageCost || 0),
+  active: sourceItem.active !== false,
+  notes: sourceItem.notes || "Importado da planilha Controle Estoque Iluminar.",
+  source: sourceItem.source || sourceFile,
+  sourceRow: sourceItem.sourceRow || "",
+  createdAt: existing.createdAt || now,
+  updatedAt: now,
+ };
+}
+
+function applyIluminarStockBaseline() {
+ const payload = stockImportPayload();
+ if (!payload.items.length) return false;
+ const baselineVersion = payload.baselineVersion || payload.generatedAt || "";
+ if (!baselineVersion || state.stockBaselineVersion === baselineVersion) return false;
+ const mainLocationId = ensureStockLocation("Estoque principal");
+ state.stockItems = [...payload.items, ...payload.uncatalogedItems].map((sourceItem) =>
+  buildStockItemFromImport(sourceItem, mainLocationId, {}, payload.sourceFile)
+ );
+ state.stockMovements = [];
+ state.stockBaselineVersion = baselineVersion;
+ return true;
 }
 
 function findImportedStockItem(sourceItem) {
@@ -9726,8 +9762,12 @@ function renderStock() {
 
 function ensureIluminarStockLoaded() {
  if (stockAutoImportRunning) return;
- const payload = window.ILUMINAR_STOCK_IMPORT;
+ const payload = stockImportPayload();
  if (!payload.items.length) return;
+ if (applyIluminarStockBaseline()) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  return;
+ }
  const expectedImportedItems = payload.items.length + (payload.uncatalogedItems || []).length;
  const importedItemsCount = state.stockItems.filter((item) => item.source === payload.sourceFile || item.notes.includes("Controle Estoque Iluminar")).length;
  if (importedItemsCount >= expectedImportedItems) return;
