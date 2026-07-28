@@ -6,10 +6,12 @@ const LEGACY_STORAGE_KEYS = ["financeiro-lumeris-v2", "financeiro-lumeris-v1"];
 const SHEETS_ENDPOINT = "https://script.google.com/macros/s/AKfycbw6UqQ8YH0jMLdvDfSumh6h8zZfBSh91NIOd6oqJo_DP5bgP88N8lLl25daHvwCUWSq/exec";
 const SYNC_DEBOUNCE_MS = 800;
 const SYNC_TIMEOUT_MS = 45000;
+const SYNC_RETRY_DELAY_MS = 12000;
 const FORCE_MAINTENANCE_MODE = false;
 const FORCE_MAINTENANCE_MESSAGE = "Sistema em manutencao para ajustes. Por favor, aguarde a liberacao.";
 let remoteUpdatedAt = "";
 let syncTimer = null;
+let syncRetryTimer = null;
 let syncInFlight = false;
 let syncQueued = false;
 let pendingSyncScopes = new Set();
@@ -94,7 +96,7 @@ const SAVE_SCOPE_FIELDS = {
  config: ["users", "maintenance"],
 };
 
-const SHARED_MERGE_FIELDS = ["people", "projects", "costCenters", "installations", "installationWorkers"];
+const SHARED_MERGE_FIELDS = ["people", "projects", "costCenters", "installations", "installationWorkers", "users"];
 
 const ROLE_LABELS = {
  administrador: "Administrador",
@@ -2313,6 +2315,7 @@ function mergeLocalBankDataIntoRemote(remoteState, localState) {
 
 function scheduleRemoteSync(scopes) {
  if (!SHEETS_ENDPOINT) return;
+ window.clearTimeout(syncRetryTimer);
  normalizePersistScopes(scopes).forEach((scope) => pendingSyncScopes.add(scope));
  if (syncInFlight) {
   syncQueued = true;
@@ -2322,6 +2325,17 @@ function scheduleRemoteSync(scopes) {
  window.clearTimeout(syncTimer);
  setSyncStatus("Salvo localmente. Sincronizando...", "syncing");
  syncTimer = window.setTimeout(pushToSheets, SYNC_DEBOUNCE_MS);
+}
+
+function scheduleRemoteSyncRetry() {
+ if (!SHEETS_ENDPOINT || !pendingSyncScopes.size) return;
+ window.clearTimeout(syncRetryTimer);
+ syncRetryTimer = window.setTimeout(() => {
+  syncRetryTimer = null;
+  if (!syncInFlight && pendingSyncScopes.size) {
+   scheduleRemoteSync(Array.from(pendingSyncScopes));
+  }
+ }, SYNC_RETRY_DELAY_MS);
 }
 
 async function pushToSheets() {
@@ -2361,11 +2375,13 @@ async function pushToSheets() {
   Object.assign(state, sectorState);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   renderAll();
+  window.clearTimeout(syncRetryTimer);
   setSyncStatus("Sincronizado com o Google Sheets", "ok");
  } catch (error) {
   console.error(error);
   scopes.forEach((scope) => pendingSyncScopes.add(scope));
-  setSyncStatus("Erro ao sincronizar - dados salvos neste computador", "error");
+  setSyncStatus("Erro ao sincronizar - nova tentativa automatica em instantes", "error");
+  scheduleRemoteSyncRetry();
  } finally {
   syncInFlight = false;
   if (syncQueued) scheduleRemoteSync(Array.from(pendingSyncScopes));
@@ -2391,6 +2407,7 @@ async function retrySyncAfterConflict(scopes, localState) {
  Object.assign(state, sectorState);
  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
  renderAll();
+ window.clearTimeout(syncRetryTimer);
  setSyncStatus("Sincronizado com o Google Sheets", "ok");
 }
 
