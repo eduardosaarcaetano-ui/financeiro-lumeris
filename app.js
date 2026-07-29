@@ -3,10 +3,17 @@ const LEGACY_STORAGE_KEYS = ["financeiro-lumeris-v2", "financeiro-lumeris-v1"];
 
 // URL de implantação do Google Apps Script (Web App). Preencha depois de publicar o Code.gs
 // na sua planilha para que todos os usuários passem a compartilhar os mesmos dados.
-const SHEETS_ENDPOINT = "https://script.google.com/macros/s/AKfycbw6UqQ8YH0jMLdvDfSumh6h8zZfBSh91NIOd6oqJo_DP5bgP88N8lLl25daHvwCUWSq/exec";
+const SHEETS_ENDPOINT = new URLSearchParams(window.location.search).get("localtest") === "1"
+ ? ""
+ : "https://script.google.com/macros/s/AKfycbwvq0ov-i-Zdk3T5G-jm5WGPYLPnvZTvxxM53lTy4yAqd9XWQL4I2UKVeGAOdWCzQ83/exec";
 const SYNC_DEBOUNCE_MS = 800;
 const SYNC_TIMEOUT_MS = 45000;
 const SYNC_RETRY_DELAY_MS = 12000;
+const MAINTENANCE_POLL_MS = 10000;
+const SYNC_PROTOCOL_VERSION = 2;
+const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
+const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
+const SYNC_BASE_STORAGE_KEY = "financeiro-lumeris-sync-base-v2";
 const FORCE_MAINTENANCE_MODE = false;
 const FORCE_MAINTENANCE_MESSAGE = "Sistema em manutencao para ajustes. Por favor, aguarde a liberacao.";
 let remoteUpdatedAt = "";
@@ -15,6 +22,12 @@ let syncRetryTimer = null;
 let syncInFlight = false;
 let syncQueued = false;
 let pendingSyncScopes = new Set();
+let remoteSyncBaseState = null;
+let remoteProtocolVersion = 1;
+let localStateRevision = 0;
+let syncConflictBlocked = false;
+let maintenancePollTimer = null;
+let maintenancePollInFlight = false;
 
 const AUTH_STORAGE_KEY = "financeiro-lumeris-session";
 const MASTER_USERNAME = "adm";
@@ -96,11 +109,7 @@ const SAVE_SCOPE_FIELDS = {
  config: ["users", "maintenance"],
 };
 
-const SHARED_MERGE_FIELDS = ["people", "projects", "costCenters", "installations", "installationWorkers", "users"];
-const ZERO_PROTECTED_REMOTE_FIELDS = {
- projetos: ["projects", "costCenters", "installations", "installationWorkers"],
- protocolo: ["protocols", "protocolHistory", "utilityCompanies", "protocolActivityTypes"],
-};
+const SHARED_SYNC_FIELDS = ["people"];
 
 const ROLE_LABELS = {
  administrador: "Administrador",
@@ -266,6 +275,9 @@ const currentMonthStart = toIso(startOfMonth(today));
 const currentMonthEnd = toIso(endOfMonth(today));
 
 const state = loadState();
+// Base imutavel da sessao. Se o usuario editar antes do primeiro carregamento
+// remoto terminar, calculamos somente o que ele mudou nesta sessao.
+const sessionStartState = normalizeState(cloneStateValue(state));
 
 const els = {
  viewTitle: document.querySelector("#viewTitle"),
@@ -280,6 +292,12 @@ const els = {
  maintenanceScreen: document.querySelector("#maintenanceScreen"),
  maintenanceMessage: document.querySelector("#maintenanceMessage"),
  maintenanceLogoutBtn: document.querySelector("#maintenanceLogoutBtn"),
+ maintenanceToggleBtn: document.querySelector("#maintenanceToggleBtn"),
+ maintenanceControlDialog: document.querySelector("#maintenanceControlDialog"),
+ maintenanceControlForm: document.querySelector("#maintenanceControlForm"),
+ maintenanceControlStatus: document.querySelector("#maintenanceControlStatus"),
+ maintenanceControlMessage: document.querySelector("#maintenanceControlMessage"),
+ maintenanceControlSubmit: document.querySelector("#maintenanceControlSubmit"),
  appShell: document.querySelector("#appShell"),
  sessionUserName: document.querySelector("#sessionUserName"),
  sessionUserRole: document.querySelector("#sessionUserRole"),
@@ -873,7 +891,8 @@ async function boot() {
    .catch((error) => {
     console.error(error);
     setSyncStatus("Sem conexão com o Sheets - usando dados locais", "error");
-   });
+   })
+   .finally(startMaintenancePolling);
  } finally {
   els.loginSubmit.disabled = false;
   els.loginSubmit.textContent = "Entrar";
@@ -899,6 +918,8 @@ function bindEvents() {
  els.logoutBtn.addEventListener("click", handleLogout);
  els.topbarLogoutBtn.addEventListener("click", handleLogout);
  els.maintenanceLogoutBtn.addEventListener("click", handleLogout);
+ els.maintenanceToggleBtn.addEventListener("click", openMaintenanceControl);
+ els.maintenanceControlForm.addEventListener("submit", saveMaintenanceControl);
  els.userForm.addEventListener("submit", saveUser);
  els.userRole.addEventListener("change", updateUserSectorUi);
  enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente" });
@@ -1170,15 +1191,7 @@ function bindEvents() {
   "#dreBasis",
  ].forEach((selector) => document.querySelector(selector).addEventListener("input", renderAll));
 
- els.opportunityForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  if (event.submitter.value === "cancel") {
-   els.opportunityDialog.close();
-   return;
-  }
-  saveOpportunity();
- });
- els.newOpportunityPersonBtn.addEventListener("click", createPersonFromOpportunityDialog);
+	els.newOpportunityPersonBtn.addEventListener("click", createPersonFromOpportunityDialog);
 
  document.querySelectorAll("[data-export-csv]").forEach((button) => {
   button.addEventListener("click", () => exportCsv(button.dataset.exportCsv));
@@ -1434,6 +1447,7 @@ function loadState() {
 }
 
 function normalizeState(data) {
+ data = ensureStableRecordIds(data || {});
  const normalized = {
   people: Array.isArray(data.people) ? data.people : [],
   sales: Array.isArray(data.sales) ? data.sales : [],
@@ -1476,14 +1490,14 @@ function normalizeState(data) {
  };
 
  normalized.sellers = normalized.sellers.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   name: "",
   active: true,
   ...item,
  }));
 
  normalized.opportunities = normalized.opportunities.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   personId: "",
   title: "",
   value: 0,
@@ -1504,12 +1518,12 @@ function normalizeState(data) {
   postSaleDueDate: "",
   closedDate: "",
   lostReason: "",
-  stageChangedAt: item.createdAt || new Date().toISOString(),
+  stageChangedAt: item.stageChangedAt || item.createdAt || item.updatedAt || item.closedDate || "",
   stageHistory: [],
   wonAt: "",
   lostAt: "",
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+  createdAt: item.createdAt || item.updatedAt || item.closedDate || "",
+  updatedAt: item.updatedAt || item.createdAt || item.closedDate || "",
   ...item,
  }));
  normalized.opportunities.forEach((item) => {
@@ -1517,19 +1531,19 @@ function normalizeState(data) {
  });
 
  normalized.interactions = normalized.interactions.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   opportunityId: "",
   type: "ligacao",
   notes: "",
   date: "",
   nextFollowUpDate: "",
   sellerId: "",
-  createdAt: new Date().toISOString(),
+  createdAt: item.createdAt || item.date || "",
   ...item,
  }));
 
  normalized.tasks = normalized.tasks.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   title: "",
   description: "",
   dueDate: "",
@@ -1537,23 +1551,23 @@ function normalizeState(data) {
   opportunityId: "",
   personId: "",
   sellerId: "",
-  createdAt: new Date().toISOString(),
+  createdAt: item.createdAt || item.dueDate || "",
   ...item,
  }));
 
  normalized.stockLocations = normalized.stockLocations.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   name: "",
   type: "estoque",
   active: true,
   ...item,
  }));
  if (!normalized.stockLocations.length) {
-  normalized.stockLocations.push({ id: crypto.randomUUID(), name: "Estoque Principal", type: "estoque", active: true });
+  normalized.stockLocations.push({ id: "stock-main", name: "Estoque Principal", type: "estoque", active: true });
  }
 
  normalized.stockItems = normalized.stockItems.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   internalCode: "",
   barcode: "",
   name: "",
@@ -1578,7 +1592,7 @@ function normalizeState(data) {
  }));
 
  normalized.stockMovements = normalized.stockMovements.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   itemId: "",
   type: "entrada",
   date: "",
@@ -1606,7 +1620,7 @@ function normalizeState(data) {
  reconcileStockBalancesFromMovements(normalized);
 
  normalized.installations = normalized.installations.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   projectId: "",
   customerId: "",
   serviceType: "instalacao_projeto",
@@ -1635,8 +1649,8 @@ function normalizeState(data) {
   conclusion: "",
   opportunityId: "",
   contractId: "",
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+  createdAt: item.createdAt || item.closedDate || item.scheduledDate || "",
+  updatedAt: item.updatedAt || item.createdAt || item.closedDate || item.scheduledDate || "",
   ...item,
  })).map((item) => ({
   ...item,
@@ -1660,7 +1674,7 @@ function normalizeState(data) {
  }));
 
  normalized.installationWorkers = normalized.installationWorkers.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   name: "",
   role: "Técnico",
   dailyRate: 0,
@@ -1671,7 +1685,7 @@ function normalizeState(data) {
  }));
 
  normalized.invoices = normalized.invoices.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   kind: "servico",
   number: "",
   series: "",
@@ -1694,7 +1708,7 @@ function normalizeState(data) {
  }));
 
  normalized.users = normalized.users.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   name: "",
   username: "",
   passwordHash: "",
@@ -1735,7 +1749,7 @@ function normalizeState(data) {
  }
 
  normalized.opportunities = normalized.opportunities.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   personId: "",
   company: "",
   number: "",
@@ -1759,27 +1773,27 @@ function normalizeState(data) {
   serviceType: "",
   postSaleDueDate: "",
   closedDate: "",
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+  createdAt: item.createdAt || item.updatedAt || item.closedDate || "",
+  updatedAt: item.updatedAt || item.createdAt || item.closedDate || "",
   lastMovedAt: "",
   lastContactAt: "",
   ...item,
  }));
 
  normalized.opportunityHistory = normalized.opportunityHistory.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   opportunityId: "",
   action: "registro",
   fromStageId: "",
   toStageId: "",
-  user: currentCrmUser(),
-  createdAt: new Date().toISOString(),
+  user: "",
+  createdAt: item.createdAt || "",
   notes: "",
   ...item,
  }));
 
  normalized.projects = normalized.projects.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   code: "",
   name: "",
   customerId: "",
@@ -1793,10 +1807,9 @@ function normalizeState(data) {
   notes: "",
   ...item,
  }));
- deduplicateProjects(normalized);
 
  normalized.costCenters = normalized.costCenters.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   projectId: "",
   code: "",
   name: "",
@@ -1805,7 +1818,7 @@ function normalizeState(data) {
  }));
 
  normalized.utilityCompanies = normalized.utilityCompanies.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   name: "",
   active: true,
   ...item,
@@ -1815,7 +1828,7 @@ function normalizeState(data) {
  }
 
  normalized.protocolActivityTypes = normalized.protocolActivityTypes.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   name: "",
   active: true,
   ...item,
@@ -1825,7 +1838,7 @@ function normalizeState(data) {
  }
 
  normalized.protocols = normalized.protocols.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   internalNumber: "",
   protocolNumber: "",
   activityTypeId: "",
@@ -1843,19 +1856,19 @@ function normalizeState(data) {
   priority: "media",
   notes: "",
   checklist: [],
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+  createdAt: item.createdAt || item.openedAt || "",
+  updatedAt: item.updatedAt || item.lastMovementAt || item.createdAt || item.openedAt || "",
   ...item,
  }));
 
  normalized.protocolHistory = normalized.protocolHistory.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   protocolId: "",
   action: "registro",
   fromStatus: "",
   toStatus: "",
   user: "",
-  createdAt: new Date().toISOString(),
+  createdAt: item.createdAt || "",
   notes: "",
   ...item,
  }));
@@ -1895,7 +1908,7 @@ function normalizeState(data) {
  hydrateBankMovementNaturalKeys(normalized.bankMovements);
 
  normalized.bankAccounts = normalized.bankAccounts.map((item) => ({
-  id: item.accountId || item.id || crypto.randomUUID(),
+  id: item.accountId || item.id,
   accountKey: item.accountKey || `${item.bankId || "Banco"}-${item.accountId || item.id || ""}`,
   accountId: item.accountId || item.id || "",
   bankId: item.bankId || "Banco",
@@ -1914,7 +1927,7 @@ function normalizeState(data) {
  applyManualBankBalanceOverrides(normalized.bankAccounts);
 
  normalized.bankApiConfigs = normalized.bankApiConfigs.map((item) => ({
-  id: crypto.randomUUID(),
+  id: item.id,
   provider: "inter",
   accountKey: "",
   endpoint: "",
@@ -1953,10 +1966,28 @@ function normalizeState(data) {
   normalized.bankAccounts = [...inferred.values()];
  }
 
- seedInstallationBacklog(normalized);
- deduplicateProjects(normalized);
-
  return normalized;
+}
+
+function ensureStableRecordIds(source) {
+ const normalizedSource = cloneStateValue(source || {});
+ const fields = new Set(SHARED_SYNC_FIELDS);
+ Object.values(SAVE_SCOPE_FIELDS).forEach((scopeFields) => scopeFields.forEach((field) => fields.add(field)));
+ fields.forEach((field) => {
+  if (!Array.isArray(normalizedSource[field])) return;
+  const usedIds = new Set();
+  normalizedSource[field] = normalizedSource[field].map((item, index) => {
+   if (!item || typeof item !== "object") return item;
+   let id = String(item.id || "").trim();
+   if (!id || usedIds.has(id)) {
+    const signature = syncChecksum({ ...item, id: undefined });
+    id = `legacy-${field}-${signature}-${index + 1}`;
+   }
+   usedIds.add(id);
+   return { ...item, id };
+  });
+ });
+ return normalizedSource;
 }
 
 function seedSlug(value) {
@@ -2175,11 +2206,12 @@ function seedInstallationBacklog(normalized) {
 }
 
 function persist(scopes) {
- if (isMaintenanceActive()) {
+ if (isMaintenanceActive() && !isMaintenanceController()) {
   setSyncStatus("Sistema em manutenção - salvamento bloqueado", "error");
   toast("Sistema em manutenção. Alterações não foram salvas.");
   return false;
  }
+ localStateRevision += 1;
  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
  scheduleRemoteSync(scopes);
  return true;
@@ -2191,43 +2223,37 @@ async function initRemoteSync() {
   return;
  }
 
-setSyncStatus("Carregando dados compartilhados...", "syncing");
+ restorePendingSyncScopes();
+ const storedBase = loadStoredSyncBase();
+ setSyncStatus("Carregando dados compartilhados...", "syncing");
  try {
-  const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, SYNC_TIMEOUT_MS);
-  const result = await response.json();
-  if (!result.ok) throw new Error(result.error || "Falha ao carregar");
+  const result = await fetchRemoteState();
   remoteUpdatedAt = result.updatedAt || "";
+  remoteProtocolVersion = Number(result.protocolVersion || 1);
   if (result.data) {
    const remoteState = normalizeState(result.data);
    const localState = loadState();
-   const pendingScopesDuringLoad = pendingSyncScopes.size ? Array.from(pendingSyncScopes) : [];
-   const mergedUsers = mergeArrayById(remoteState.users || [], localState.users || []);
-   const shouldResyncUsers = JSON.stringify(mergedUsers) !== JSON.stringify(remoteState.users || []);
-   const protectedRemote = recoverZeroedRemoteCollections(remoteState, localState);
-   const syncedState = pendingScopesDuringLoad.length ?
-     { ...mergeStateForScopes(protectedRemote.state, localState, pendingScopesDuringLoad), users: mergedUsers }
-    : { ...protectedRemote.state, users: mergedUsers };
+   const pendingScopesDuringLoad = Array.from(pendingSyncScopes);
+   const pendingBase = storedBase || sessionStartState;
+   const pendingOperations = pendingScopesDuringLoad.length
+    ? buildSyncOperations(pendingBase, localState, pendingScopesDuringLoad)
+    : [];
+   const syncedState = pendingOperations.length
+    ? normalizeState(applySyncOperationsLocally(remoteState, pendingOperations))
+    : remoteState;
+   remoteSyncBaseState = remoteState;
+   storeSyncBase(remoteState);
    Object.assign(state, syncedState);
-   const shouldResyncStockBaseline = applyIluminarStockBaseline() || stockCatalogNeedsLatestBaseline();
-   if (shouldResyncStockBaseline && state.stockBaselineVersion) applyLatestStockCatalog();
    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
    renderAll();
-   if (shouldResyncUsers) {
-    scheduleRemoteSync("config");
-   }
-   if (protectedRemote.scopes.length) {
-    scheduleRemoteSync(protectedRemote.scopes);
-   }
-   if (shouldResyncStockBaseline) {
-    scheduleRemoteSync("estoque");
-   }
+   if (pendingScopesDuringLoad.length) scheduleRemoteSync(pendingScopesDuringLoad);
   }
   if (!enforceMaintenanceMode()) {
-   setSyncStatus("Sincronizado com o Google Sheets", "ok");
+   if (!pendingSyncScopes.size) setSyncStatus("Sincronizado com o Google Sheets", "ok");
   }
  } catch (error) {
   console.error(error);
-  setSyncStatus("Sem conexão com o Sheets - usando dados locais", "error");
+  setSyncStatus("Sem conexão com o Sheets - alterações ficam na fila local", "error");
  }
 }
 
@@ -2235,6 +2261,56 @@ function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
  const controller = new AbortController();
  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
  return fetch(url, { ...options, signal: controller.signal }).finally(() => window.clearTimeout(timeout));
+}
+
+function normalizeMaintenanceState(value) {
+ return value && typeof value === "object"
+  ? {
+    enabled: Boolean(value.enabled),
+    message: String(value.message || ""),
+    startedAt: String(value.startedAt || ""),
+    startedBy: String(value.startedBy || ""),
+   }
+  : { enabled: false, message: "", startedAt: "", startedBy: "" };
+}
+
+function maintenanceStatusUrl() {
+ const url = new URL(SHEETS_ENDPOINT);
+ url.searchParams.set("maintenance", "1");
+ url.searchParams.set("_", String(Date.now()));
+ return url.toString();
+}
+
+async function pollRemoteMaintenanceStatus() {
+ if (!SHEETS_ENDPOINT || maintenancePollInFlight) return;
+ maintenancePollInFlight = true;
+ try {
+  const response = await fetchWithTimeout(maintenanceStatusUrl(), { cache: "no-store" }, 8000);
+  const result = await response.json();
+  if (!result.ok) throw new Error(result.error || "Falha ao consultar manutenção");
+  const wasBlocking = shouldBlockForMaintenance();
+  state.maintenance = normalizeMaintenanceState(result.maintenance);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  updateMaintenanceControlUi();
+  const nowBlocking = shouldBlockForMaintenance();
+  if (nowBlocking) {
+   showMaintenance();
+  } else if (wasBlocking && currentSessionUser()) {
+   showApp();
+   if (pendingSyncScopes.size) scheduleRemoteSync(Array.from(pendingSyncScopes));
+  }
+ } catch (error) {
+  console.warn("Não foi possível consultar o modo de manutenção:", error);
+ } finally {
+  maintenancePollInFlight = false;
+ }
+}
+
+function startMaintenancePolling() {
+ window.clearInterval(maintenancePollTimer);
+ if (!SHEETS_ENDPOINT || isSalesRankingTvMode()) return;
+ pollRemoteMaintenanceStatus();
+ maintenancePollTimer = window.setInterval(pollRemoteMaintenanceStatus, MAINTENANCE_POLL_MS);
 }
 
 function normalizePersistScopes(scopes) {
@@ -2255,134 +2331,164 @@ function inferPersistScopes() {
 }
 
 function cloneStateValue(value) {
- return JSON.parse(JSON.stringify(value ?? null));
+ if (value === undefined) return undefined;
+ return JSON.parse(JSON.stringify(value));
 }
 
-function itemMergeStamp(item) {
- return item.updatedAt || item.createdAt || item.balanceDate || item.date || item.timestamp || "";
+function syncFieldsForScopes(scopes) {
+ const normalizedScopes = normalizePersistScopes(scopes);
+ const allScopes = normalizedScopes.includes("all") ? Object.keys(SAVE_SCOPE_FIELDS) : normalizedScopes;
+ const fields = new Set(SHARED_SYNC_FIELDS);
+ allScopes.forEach((scope) => (SAVE_SCOPE_FIELDS[scope] || []).forEach((field) => fields.add(field)));
+ return Array.from(fields);
 }
 
-function mergeArrayById(remoteItems = [], localItems = []) {
- const merged = new Map();
- remoteItems.forEach((item) => {
-  if (item.id) merged.set(item.id, cloneStateValue(item));
- });
- localItems.forEach((item) => {
-  if (!item.id) return;
-  const current = merged.get(item.id);
-  if (!current) {
-   merged.set(item.id, cloneStateValue(item));
+function syncCanonical(value) {
+ if (value === undefined) return "__undefined__";
+ if (value === null || typeof value !== "object") return JSON.stringify(value);
+ if (Array.isArray(value)) return `[${value.map(syncCanonical).join(",")}]`;
+ return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${syncCanonical(value[key])}`).join(",")}}`;
+}
+
+function syncChecksum(value) {
+ const text = syncCanonical(value);
+ let hash = 2166136261;
+ for (let index = 0; index < text.length; index += 1) {
+  hash ^= text.charCodeAt(index);
+  hash = (hash + ((hash << 1) + (hash << 4) + (hash << 7) + (hash << 8) + (hash << 24))) >>> 0;
+ }
+ return hash.toString(16).padStart(8, "0");
+}
+
+function buildSyncOperations(baseState, localState, scopes) {
+ const operations = [];
+ syncFieldsForScopes(scopes).forEach((field) => {
+  const baseValue = baseState?.[field];
+  const localValue = localState?.[field];
+  if (Array.isArray(baseValue) || Array.isArray(localValue)) {
+   const baseItems = Array.isArray(baseValue) ? baseValue : [];
+   const localItems = Array.isArray(localValue) ? localValue : [];
+   const baseById = new Map(baseItems.filter((item) => item?.id).map((item) => [String(item.id), item]));
+   const localById = new Map(localItems.filter((item) => item?.id).map((item) => [String(item.id), item]));
+
+   localById.forEach((item, id) => {
+    const baseItem = baseById.get(id);
+    if (baseItem && syncCanonical(baseItem) === syncCanonical(item)) return;
+    operations.push({
+     field,
+     type: "upsert",
+     id,
+     value: cloneStateValue(item),
+     baseExists: Boolean(baseItem),
+     baseChecksum: baseItem ? syncChecksum(baseItem) : "",
+     baseValue: baseItem ? cloneStateValue(baseItem) : null,
+    });
+   });
+   baseById.forEach((item, id) => {
+    if (localById.has(id)) return;
+    operations.push({
+     field,
+     type: "delete",
+     id,
+     baseExists: true,
+     baseChecksum: syncChecksum(item),
+    });
+   });
    return;
   }
-  const localStamp = itemMergeStamp(item);
-  const remoteStamp = itemMergeStamp(current);
-  if (localStamp && (!remoteStamp || localStamp >= remoteStamp)) {
-   merged.set(item.id, cloneStateValue(item));
+
+  if (syncCanonical(baseValue) !== syncCanonical(localValue)) {
+   operations.push({
+    field,
+    type: "replace",
+    value: cloneStateValue(localValue),
+    baseChecksum: syncChecksum(baseValue),
+   });
   }
  });
- return Array.from(merged.values());
+ return operations;
 }
 
-function recoverZeroedRemoteCollections(remoteState, localState) {
- const merged = normalizeState(cloneStateValue(remoteState));
- const scopesToResync = new Set();
-
- Object.entries(ZERO_PROTECTED_REMOTE_FIELDS).forEach(([scope, fields]) => {
-  fields.forEach((field) => {
-   const remoteValue = Array.isArray(remoteState[field]) ? remoteState[field] : [];
-   const localValue = Array.isArray(localState[field]) ? localState[field] : [];
-   if (!remoteValue.length && localValue.length) {
-    merged[field] = mergeArrayById(remoteValue, localValue);
-    scopesToResync.add(scope);
-   }
-  });
+function applySyncOperationsLocally(baseState, operations) {
+ const next = cloneStateValue(baseState || {});
+ operations.forEach((operation) => {
+  if (operation.type === "replace") {
+   next[operation.field] = cloneStateValue(operation.value);
+   return;
+  }
+  if (!Array.isArray(next[operation.field])) next[operation.field] = [];
+  const index = next[operation.field].findIndex((item) => String(item?.id || "") === String(operation.id));
+  if (operation.type === "delete") {
+   if (index >= 0) next[operation.field].splice(index, 1);
+   return;
+  }
+  if (index >= 0) next[operation.field][index] = cloneStateValue(operation.value);
+  else next[operation.field].push(cloneStateValue(operation.value));
  });
-
- return { state: normalizeState(merged), scopes: Array.from(scopesToResync) };
+ return next;
 }
 
-function mergeStateForScopes(remoteState, localState, scopes) {
- const normalizedScopes = normalizePersistScopes(scopes);
- if (normalizedScopes.includes("all")) return normalizeState(cloneStateValue(localState));
-
- const merged = normalizeState(cloneStateValue(remoteState));
- normalizedScopes.forEach((scope) => {
-  (SAVE_SCOPE_FIELDS[scope] || []).forEach((field) => {
-   const remoteValue = remoteState[field] || [];
-   const localValue = localState[field] || [];
-   merged[field] = Array.isArray(remoteValue) && Array.isArray(localValue) ?
-     mergeArrayById(remoteValue, localValue)
-    : cloneStateValue(localValue);
-  });
- });
-
- SHARED_MERGE_FIELDS.forEach((field) => {
-  if (normalizedScopes.some((scope) => (SAVE_SCOPE_FIELDS[scope] || []).includes(field))) return;
-  merged[field] = mergeArrayById(remoteState[field] || [], localState[field] || []);
- });
-
- return normalizeState(merged);
-}
-
-async function fetchRemoteForSectorSave() {
+async function fetchRemoteState() {
  const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, SYNC_TIMEOUT_MS);
  const result = await response.json();
  if (!result.ok) throw new Error(result.error || "Falha ao carregar versao atual");
- return {
-  state: normalizeState(result.data || {}),
-  updatedAt: result.updatedAt || "",
- };
+ return result;
 }
 
-function mergeLocalBankDataIntoRemote(remoteState, localState) {
- const merged = normalizeState(remoteState);
- let changed = false;
-
- const remoteMovementKeys = new Set(
-  merged.bankMovements.flatMap((movement) => [movement.id, movement.importKey, movement.naturalKey].filter(Boolean))
- );
- const rescuedMovements = (localState.bankMovements || []).filter((movement) => {
-  const keys = [movement.id, movement.importKey, movement.naturalKey].filter(Boolean);
-  return keys.length && keys.every((key) => !remoteMovementKeys.has(key));
- });
-
- if (rescuedMovements.length) {
-  merged.bankMovements.push(...rescuedMovements);
-  hydrateBankMovementNaturalKeys(merged.bankMovements);
-  changed = true;
+function syncClientId() {
+ let id = localStorage.getItem(SYNC_CLIENT_STORAGE_KEY);
+ if (!id) {
+  id = crypto.randomUUID();
+  localStorage.setItem(SYNC_CLIENT_STORAGE_KEY, id);
  }
+ return id;
+}
 
- (localState.bankAccounts || []).forEach((localAccount) => {
-  const localKey = localAccount.accountKey || `${localAccount.bankId || "Banco"}-${localAccount.accountId || ""}`;
-  const index = merged.bankAccounts.findIndex((remoteAccount) => (remoteAccount.accountKey || `${remoteAccount.bankId}-${remoteAccount.accountId}`) === localKey);
-  if (index < 0) {
-   merged.bankAccounts.push(localAccount);
-   changed = true;
-   return;
-  }
-  const remoteAccount = merged.bankAccounts[index];
-  if ((localAccount.balanceDate || "") > (remoteAccount.balanceDate || "")) {
-   merged.bankAccounts[index] = { ...remoteAccount, ...localAccount };
-   changed = true;
-  }
- });
+function saveSyncOutbox() {
+ if (!pendingSyncScopes.size) {
+  localStorage.removeItem(SYNC_OUTBOX_STORAGE_KEY);
+  return;
+ }
+ localStorage.setItem(SYNC_OUTBOX_STORAGE_KEY, JSON.stringify({
+  scopes: Array.from(pendingSyncScopes),
+  savedAt: new Date().toISOString(),
+ }));
+}
 
- const remoteConfigKeys = new Set(merged.bankApiConfigs.map((config) => `${config.provider}:${config.accountKey}`));
- (localState.bankApiConfigs || []).forEach((localConfig) => {
-  const key = `${localConfig.provider}:${localConfig.accountKey}`;
-  if (!remoteConfigKeys.has(key)) {
-   merged.bankApiConfigs.push(localConfig);
-   changed = true;
-  }
- });
+function restorePendingSyncScopes() {
+ try {
+  const stored = JSON.parse(localStorage.getItem(SYNC_OUTBOX_STORAGE_KEY) || "null");
+  (stored?.scopes || []).forEach((scope) => {
+   if (scope === "all" || SAVE_SCOPE_FIELDS[scope]) pendingSyncScopes.add(scope);
+  });
+ } catch (error) {
+  console.error("Fila local de sincronizacao invalida", error);
+ }
+}
 
- return { state: merged, changed };
+function storeSyncBase(baseState) {
+ try {
+  localStorage.setItem(SYNC_BASE_STORAGE_KEY, JSON.stringify(baseState));
+ } catch (error) {
+  console.warn("Nao foi possivel guardar a base local de sincronizacao", error);
+ }
+}
+
+function loadStoredSyncBase() {
+ try {
+  const stored = localStorage.getItem(SYNC_BASE_STORAGE_KEY);
+  return stored ? normalizeState(JSON.parse(stored)) : null;
+ } catch (error) {
+  console.error("Base local de sincronizacao invalida", error);
+  return null;
+ }
 }
 
 function scheduleRemoteSync(scopes) {
  if (!SHEETS_ENDPOINT) return;
  window.clearTimeout(syncRetryTimer);
  normalizePersistScopes(scopes).forEach((scope) => pendingSyncScopes.add(scope));
+ saveSyncOutbox();
  if (syncInFlight) {
   syncQueued = true;
   setSyncStatus("Salvo localmente. Aguardando sincronizacao...", "syncing");
@@ -2412,69 +2518,115 @@ async function pushToSheets() {
 
  syncInFlight = true;
  syncQueued = false;
+ syncConflictBlocked = false;
  const scopes = pendingSyncScopes.size ? Array.from(pendingSyncScopes) : inferPersistScopes();
  pendingSyncScopes.clear();
+ saveSyncOutbox();
  const localState = normalizeState(cloneStateValue(state));
+ const capturedRevision = localStateRevision;
  window.clearTimeout(syncTimer);
  setSyncStatus(`Sincronizando ${syncScopeLabel(scopes)} com o Google Sheets...`, "syncing");
 
  try {
-  const latest = await fetchRemoteForSectorSave();
-  const sectorState = mergeStateForScopes(latest.state, localState, scopes);
-  const response = await fetchWithTimeout(
-   SHEETS_ENDPOINT,
-   {
-    method: "POST",
-    body: JSON.stringify({ data: sectorState, baseUpdatedAt: latest.updatedAt }),
-   },
-   SYNC_TIMEOUT_MS
-  );
-  const result = await response.json();
-  if (!result.ok) {
-   if (result.error === "conflict") {
-    await retrySyncAfterConflict(scopes, localState);
-    return;
+   if (remoteProtocolVersion < SYNC_PROTOCOL_VERSION) {
+    const error = new Error("Backend desatualizado para sincronizacao segura");
+    error.code = "backend_update_required";
+    throw error;
    }
-   throw new Error(result.error || "Falha ao salvar");
-  }
+   const result = await pushAtomicPatch(scopes, localState);
   remoteUpdatedAt = result.updatedAt || remoteUpdatedAt;
-  Object.assign(state, sectorState);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  renderAll();
+  if (result.data) {
+   const confirmedRemoteState = normalizeState(result.data);
+   const changesMadeDuringRequest = capturedRevision === localStateRevision
+    ? []
+    : buildSyncOperations(localState, normalizeState(cloneStateValue(state)), Array.from(pendingSyncScopes));
+   remoteSyncBaseState = confirmedRemoteState;
+   if (changesMadeDuringRequest.length) {
+    Object.assign(state, normalizeState(applySyncOperationsLocally(confirmedRemoteState, changesMadeDuringRequest)));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    renderAll();
+   }
+  } else if (result.appliedOperations) {
+   remoteSyncBaseState = normalizeState(applySyncOperationsLocally(remoteSyncBaseState || {}, result.appliedOperations));
+  }
+  if (remoteSyncBaseState) storeSyncBase(remoteSyncBaseState);
+  if (capturedRevision === localStateRevision && !pendingSyncScopes.size && remoteSyncBaseState) {
+   Object.assign(state, remoteSyncBaseState);
+   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+   renderAll();
+  }
   window.clearTimeout(syncRetryTimer);
-  setSyncStatus("Sincronizado com o Google Sheets", "ok");
+  if (!pendingSyncScopes.size) setSyncStatus("Sincronizado com o Google Sheets", "ok");
  } catch (error) {
   console.error(error);
   scopes.forEach((scope) => pendingSyncScopes.add(scope));
-  setSyncStatus("Erro ao sincronizar - nova tentativa automatica em instantes", "error");
-  scheduleRemoteSyncRetry();
+  saveSyncOutbox();
+  if (error.code === "maintenance_active") {
+   syncConflictBlocked = true;
+   if (error.maintenance) {
+    state.maintenance = normalizeMaintenanceState(error.maintenance);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+   }
+   setSyncStatus("Sistema em manutenção - dados preservados neste computador", "error");
+   toast(error.userMessage || "O administrador ativou a manutenção. Seus dados locais foram preservados.");
+   showMaintenance();
+  } else if (error.code === "record_conflict") {
+   syncConflictBlocked = true;
+   const target = error.conflicts?.[0];
+   const detail = target ? `${target.field}${target.id ? ` (${target.id})` : ""}` : "um registro";
+   setSyncStatus(`Conflito no mesmo registro: ${detail}. Dados locais preservados.`, "error");
+   toast("Outro usuario alterou o mesmo registro. Seus dados continuam salvos neste computador.");
+   } else if (error.code === "backend_update_required" || error.code === "client_update_required") {
+    syncConflictBlocked = true;
+    setSyncStatus("Atualização de segurança pendente. Dados preservados neste computador.", "error");
+    toast("Salvamento remoto bloqueado até a atualização segura do sistema.");
+   } else {
+   setSyncStatus("Erro ao sincronizar - dados preservados na fila local", "error");
+   scheduleRemoteSyncRetry();
+  }
  } finally {
   syncInFlight = false;
-  if (syncQueued) scheduleRemoteSync(Array.from(pendingSyncScopes));
+  if (syncQueued && !syncConflictBlocked) scheduleRemoteSync(Array.from(pendingSyncScopes));
  }
 }
 
-async function retrySyncAfterConflict(scopes, localState) {
- setSyncStatus("Conflito detectado. Mesclando somente o setor alterado...", "syncing");
- const latest = await fetchRemoteForSectorSave();
- const sectorState = mergeStateForScopes(latest.state, localState, scopes);
-
- const retryResponse = await fetchWithTimeout(
-  SHEETS_ENDPOINT,
-  {
-   method: "POST",
-   body: JSON.stringify({ data: sectorState, baseUpdatedAt: latest.updatedAt }),
-  },
-  SYNC_TIMEOUT_MS
- );
- const retryResult = await retryResponse.json();
- if (!retryResult.ok) throw new Error(retryResult.error || "Falha ao salvar apos conflito");
- remoteUpdatedAt = retryResult.updatedAt || remoteUpdatedAt;
- Object.assign(state, sectorState);
- localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
- renderAll();
- window.clearTimeout(syncRetryTimer);
- setSyncStatus("Sincronizado com o Google Sheets", "ok");
+async function pushAtomicPatch(scopes, localState) {
+ if (!remoteSyncBaseState) {
+  const latest = await fetchRemoteState();
+  remoteProtocolVersion = Number(latest.protocolVersion || 1);
+  remoteSyncBaseState = normalizeState(latest.data || {});
+  storeSyncBase(remoteSyncBaseState);
+ }
+ const operations = buildSyncOperations(remoteSyncBaseState, localState, scopes);
+ if (!operations.length) {
+  return { ok: true, updatedAt: remoteUpdatedAt, data: remoteSyncBaseState };
+ }
+ const actor = currentSessionUser();
+ const response = await fetchWithTimeout(SHEETS_ENDPOINT, {
+  method: "POST",
+  body: JSON.stringify({
+   action: "sync.patch",
+   protocolVersion: SYNC_PROTOCOL_VERSION,
+   mutationId: `${syncClientId()}-${Date.now()}-${crypto.randomUUID()}`,
+   clientId: syncClientId(),
+   actorId: String(actor?.id || actor?.username || ""),
+   actorName: String(actor?.name || actor?.username || ""),
+   actorUsername: String(actor?.username || ""),
+   view: String(document.body?.dataset?.view || ""),
+   scopes: normalizePersistScopes(scopes),
+   operations,
+  }),
+ }, SYNC_TIMEOUT_MS);
+ const result = await response.json();
+ if (!result.ok) {
+  const error = new Error(result.error || "Falha ao salvar alteracoes");
+  error.code = result.error;
+  error.conflicts = result.conflicts || [];
+  error.maintenance = result.maintenance || null;
+  error.userMessage = result.message || "";
+  throw error;
+ }
+ return { ...result, appliedOperations: operations };
 }
 
 function syncScopeLabel(scopes) {
@@ -2559,7 +2711,7 @@ async function ensureMasterUser({ save = true } = {}) {
   changed = true;
  }
 
- if (changed && save) persist();
+ if (changed && save) persist("config");
 }
 
 function getSession() {
@@ -2596,13 +2748,75 @@ function isMaintenanceActive() {
  return FORCE_MAINTENANCE_MODE || Boolean(state.maintenance.enabled);
 }
 
+function isMaintenanceController() {
+ const sessionUsername = getSession()?.username || "";
+ return normalizeLoginText(sessionUsername || currentSessionUser()?.username || "") === MASTER_USERNAME;
+}
+
 function maintenanceMessage() {
  if (FORCE_MAINTENANCE_MODE) return FORCE_MAINTENANCE_MESSAGE;
  return state.maintenance.message || "Estamos realizando ajustes. Por favor, tente novamente em alguns minutos.";
 }
 
 function shouldBlockForMaintenance() {
- return isMaintenanceActive();
+ return isMaintenanceActive() && Boolean(currentSessionUser()) && !isMaintenanceController();
+}
+
+function updateMaintenanceControlUi() {
+ if (!els.maintenanceToggleBtn) return;
+ const active = isMaintenanceActive();
+ els.maintenanceToggleBtn.classList.toggle("hidden", !isMaintenanceController());
+ els.maintenanceToggleBtn.dataset.active = active ? "true" : "false";
+ els.maintenanceToggleBtn.textContent = active ? "Finalizar manutenção" : "Ativar manutenção";
+ if (els.maintenanceControlStatus) {
+  els.maintenanceControlStatus.dataset.active = active ? "true" : "false";
+  els.maintenanceControlStatus.innerHTML = active
+   ? `<strong>Manutenção ativa</strong>Somente o usuário adm permanece com acesso e salvamento liberados.`
+   : `<strong>Sistema liberado</strong>Os usuários podem acessar e salvar normalmente.`;
+ }
+ if (els.maintenanceControlMessage) {
+  els.maintenanceControlMessage.disabled = active;
+  els.maintenanceControlMessage.value = active
+   ? maintenanceMessage()
+   : (state.maintenance.message || "Estamos realizando ajustes no sistema. Por favor, aguarde a liberação do administrador.");
+ }
+ if (els.maintenanceControlSubmit) {
+  els.maintenanceControlSubmit.textContent = active ? "Finalizar manutenção" : "Ativar manutenção";
+ }
+}
+
+function openMaintenanceControl() {
+ if (!isMaintenanceController()) {
+  toast("Somente o usuário adm pode controlar a manutenção.");
+  return;
+ }
+ updateMaintenanceControlUi();
+ els.maintenanceControlDialog.showModal();
+}
+
+function saveMaintenanceControl(event) {
+ if (event.submitter?.value === "cancel") return;
+ event.preventDefault();
+ if (!isMaintenanceController()) {
+  toast("Somente o usuário adm pode controlar a manutenção.");
+  return;
+ }
+ const enabling = !Boolean(state.maintenance.enabled);
+ const message = String(els.maintenanceControlMessage.value || "").trim()
+  || "Estamos realizando ajustes no sistema. Por favor, aguarde a liberação do administrador.";
+ state.maintenance = enabling
+  ? {
+    enabled: true,
+    message,
+    startedAt: new Date().toISOString(),
+    startedBy: currentSessionUser()?.username || MASTER_USERNAME,
+   }
+  : { enabled: false, message: "", startedAt: "", startedBy: "" };
+ if (!persist("config")) return;
+ updateMaintenanceControlUi();
+ els.maintenanceControlDialog.close();
+ setSyncStatus(enabling ? "Ativando manutenção para os demais usuários..." : "Liberando o sistema para os usuários...", "syncing");
+ toast(enabling ? "Manutenção ativada. O usuário adm continua liberado." : "Manutenção finalizada. Os usuários serão liberados automaticamente.");
 }
 
 function showMaintenance() {
@@ -2789,6 +3003,7 @@ function updateSessionUi() {
   item.classList.toggle("hidden", !canAccessView(item.dataset.view));
  });
  document.querySelector("#newSaleInlineBtn").classList.toggle("hidden", !canAccessView("vendas") && !canAccessView("crm"));
+ updateMaintenanceControlUi();
 }
 
 function isMasterCredentials(username, password) {
@@ -4191,7 +4406,7 @@ function saveOpportunity() {
   addOpportunityHistory(id, "criação", "", data.stageId);
  }
 
- persist();
+ persist("crm");
  renderAll();
  els.opportunityDialog.close();
  toast("Oportunidade salva.");
@@ -4205,7 +4420,7 @@ function moveOpportunity(id, newStageId) {
  item.updatedAt = new Date().toISOString();
  item.lastMovedAt = item.updatedAt;
  addOpportunityHistory(id, "mudança de etapa", previousStage, newStageId);
- persist();
+ persist("crm");
  renderCrm();
 }
 
@@ -4838,7 +5053,7 @@ function saveSale() {
   });
  });
 
- persist();
+ persist(["crm", "financeiro"]);
  renderAll();
  els.saleDialog.close();
  setView("vendas");
@@ -4890,7 +5105,6 @@ function nextInstallmentDate(firstDate, index, interval, customDays) {
 }
 
 function renderProjects() {
- deduplicateProjects(state);
  const search = document.querySelector("#projectSearch").value.toLowerCase().trim();
  const projects = state.projects
   .filter((project) => `${project.name} ${personName(project.customerId)} ${project.status}`.toLowerCase().includes(search))
@@ -5089,7 +5303,6 @@ function renderProjectDashboard() {
 }
 
 function projectDashboardRows() {
- deduplicateProjects(state);
  return state.projects.map((project) => {
   const summary = projectSummary(project.id);
   const transactions = projectTransactions(project.id);
@@ -6267,7 +6480,7 @@ function changeProtocolStatus(protocolId, newStatus, { reopenDrawer = true } = {
  if (newStatus === PROTOCOL_RELEASE_STATUS && protocol.projectId) {
   releaseProjectFromHomologation(protocol.projectId);
  }
- persist();
+ persist(newStatus === PROTOCOL_RELEASE_STATUS && protocol.projectId ? ["protocolo", "projetos"] : "protocolo");
  renderProtocols();
  if (reopenDrawer) openProtocolDrawer(protocolId);
  toast("Status do protocolo atualizado.");
@@ -6313,7 +6526,7 @@ function addChecklistItem(protocolId, label) {
  protocol.checklist.push({ id: crypto.randomUUID(), label, status: "pendente" });
  protocol.lastMovementAt = new Date().toISOString();
  protocol.updatedAt = protocol.lastMovementAt;
- persist();
+ persist("protocolo");
  renderProtocols();
  openProtocolDrawer(protocolId);
 }
@@ -6374,7 +6587,7 @@ function addUtilityCompany() {
  if (!name) return;
  state.utilityCompanies.push({ id: crypto.randomUUID(), name, active: true });
  els.utilityCompanyNameInput.value = "";
- persist();
+ persist("protocolo");
  renderUtilityCompanyList();
  hydrateProtocolOptions();
  toast("Concessionária adicionada.");
@@ -6384,7 +6597,7 @@ function toggleUtilityCompanyActive(id) {
  const item = state.utilityCompanies.find((entry) => entry.id === id);
  if (!item) return;
  item.active = !item.active;
- persist();
+ persist("protocolo");
  renderUtilityCompanyList();
  hydrateProtocolOptions();
 }
@@ -6409,7 +6622,7 @@ function addActivityType() {
  if (!name) return;
  state.protocolActivityTypes.push({ id: crypto.randomUUID(), name, active: true });
  els.activityTypeNameInput.value = "";
- persist();
+ persist("protocolo");
  renderActivityTypeList();
  hydrateProtocolOptions();
  toast("Tipo de atividade adicionado.");
@@ -6419,7 +6632,7 @@ function toggleActivityTypeActive(id) {
  const item = state.protocolActivityTypes.find((entry) => entry.id === id);
  if (!item) return;
  item.active = !item.active;
- persist();
+ persist("protocolo");
  renderActivityTypeList();
  hydrateProtocolOptions();
 }
@@ -6503,7 +6716,7 @@ function legacySaveInstallation(event) {
  if (index >= 0) state.installations[index] = data;
  else state.installations.push(data);
 
- persist();
+ persist("projetos");
  renderAll();
  resetInstallationForm();
  toast("Instalação salva.");
@@ -7352,7 +7565,7 @@ function deleteCurrentInstallation() {
  const installation = state.installations.find((item) => item.id === id);
  if (!installation) return;
  const label = projectName(installation.projectId) || personName(installation.customerId) || "este serviço";
- const confirmed = window.confirm(`Deseja excluir o serviço/instalação "${label}"\n\nEssa ação remove apenas o registro da instalação. Cliente, projeto, financeiro e estoque não ser?o apagados.`);
+ const confirmed = window.confirm(`Deseja excluir o serviço/instalação "${label}"\n\nEssa ação remove apenas o registro da instalação. Cliente, projeto, financeiro e estoque não serão apagados.`);
  if (!confirmed) return;
 
  state.installations = state.installations.filter((item) => item.id !== id);
@@ -7367,7 +7580,7 @@ function deleteCurrentInstallation() {
   if (opportunity.installationId === id) opportunity.installationId = "";
  });
 
- persist(["projetos", "vendas"]);
+ persist(["projetos", "crm"]);
  renderAll();
  resetInstallationForm();
  setInstallationFormVisible(false);
@@ -7426,7 +7639,7 @@ function handleInstallationAction(action, id) {
 
 function renderProjectReports() {
  const summaries = state.projects.map(projectSummary);
- const selectedId = els.projectReportSelect.value || state.projects[0].id || "";
+ const selectedId = els.projectReportSelect.value || state.projects[0]?.id || "";
  const selected = summaries.find((summary) => summary.project.id === selectedId);
 
  renderSelectedProjectSummary(selected);
@@ -7693,7 +7906,7 @@ function importOfx(event) {
    const parsed = parseOfx(String(reader.result), file.name);
    upsertBankAccount(parsed.account);
    const { added, duplicates } = mergeBankMovements(parsed.movements);
-   persist();
+   persist("financeiro");
    renderAll();
    setView("banco");
    toast(`${added} movimento(s) importado(s). ${duplicates} duplicado(s) ignorado(s). ${parsed.skipped} sem data/valor.`);
@@ -8093,7 +8306,7 @@ function saveBankApiConfig(event) {
  else state.bankApiConfigs.push(config);
 
  applyBankApiConfigToAccount(config);
- persist();
+ persist("financeiro");
  renderAll();
  resetBankApiForm();
 toast("Configuração de API bancária salva.");
@@ -8163,7 +8376,7 @@ function handleBankApiAction(action, id) {
  }
  if (action === "delete") {
   state.bankApiConfigs = state.bankApiConfigs.filter((item) => item.id !== id);
-  persist();
+  persist("financeiro");
   renderAll();
   toast("Configuração removida.");
  }
@@ -8222,7 +8435,7 @@ async function syncBankApiConfig(config, { manual = false, auto = false } = {}) 
    applyBankApiConfigToAccount(stored);
   }
   account.lastSyncedAt = new Date().toISOString();
-  persist();
+  persist("financeiro");
   renderAll();
   if (manual) toast(`${added} movimento(s) importado(s). ${duplicates} duplicado(s) ignorado(s).`);
  } catch (error) {
@@ -8230,7 +8443,7 @@ async function syncBankApiConfig(config, { manual = false, auto = false } = {}) 
   const stored = state.bankApiConfigs.find((item) => item.id === config.id);
   if (stored) {
    stored.lastResult = error.message || "Falha ao baixar extrato";
-   persist();
+   persist("financeiro");
    renderBankApiConfigs();
   }
   if (manual) toast(error.message || "Não foi possível baixar o extrato.");
@@ -8294,7 +8507,7 @@ async function handleBankSyncSubmit() {
   const { added, duplicates } = mergeBankMovements(movements);
   account.lastSyncedAt = new Date().toISOString();
   updateBankApiSyncResult(account, providerKey, { added, duplicates });
-  persist();
+  persist("financeiro");
   renderAll();
   els.bankSyncDialog.close();
   toast(`${added} movimento(s) importado(s). ${duplicates} duplicado(s) ignorado(s).`);
@@ -8467,7 +8680,7 @@ function handleBankAction(action, id) {
  if (action === "unlink") {
   unlinkBankMovement(movement);
   movement.updatedAt = new Date().toISOString();
-  persist();
+  persist("financeiro");
   renderAll();
   toast("Conciliação desfeita.");
  }
@@ -8704,7 +8917,7 @@ function saveBankClassification() {
   }
  }
 
- persist();
+ persist("financeiro");
  renderAll();
  els.bankDialog.close();
  toast("Movimento bancário salvo.");
@@ -9883,7 +10096,7 @@ function handleStockItemAction(action, id) {
    return;
   }
   state.stockItems = state.stockItems.filter((entry) => entry.id !== id);
-  persist();
+  persist("estoque");
   renderAll();
   toast("Item excluído.");
  }
@@ -9944,7 +10157,7 @@ function saveStockEntry(event) {
   notes: els.stockEntryNotes.value.trim(),
  });
 
- persist();
+ persist("estoque");
  renderAll();
  els.stockFilterItem.value = item.id;
  refreshSearchableSelect(els.stockFilterItem);
@@ -10217,7 +10430,6 @@ function renderStockPurchaseNeed() {
 }
 
 function renderStock() {
- ensureIluminarStockLoaded();
  reconcileStockBalancesFromMovements();
  hydrateStockCatalogOptions();
  if (!els.stockItemId.value && !els.stockInternalCode.value.trim()) {
@@ -10314,7 +10526,7 @@ function renderSellerList() {
    const seller = state.sellers.find((entry) => entry.id === button.dataset.id);
    if (!seller) return;
    seller.active = !seller.active;
-   persist();
+   persist("crm");
    renderSellerList();
    renderAll();
   });
@@ -10329,7 +10541,7 @@ function addSeller() {
  }
  state.sellers.push({ id: crypto.randomUUID(), name, active: true });
  els.sellerName.value = "";
- persist();
+ persist("crm");
  renderSellerList();
  renderAll();
  toast("Vendedor adicionado.");
@@ -10647,7 +10859,7 @@ function changeOpportunityStage(opportunity, newStage) {
  opportunity.updatedAt = now;
  if (newStage === "ganho" && !opportunity.wonAt) opportunity.wonAt = now;
  if (newStage === "perdido" && !opportunity.lostAt) opportunity.lostAt = now;
- persist();
+ persist("crm");
  renderAll();
 }
 
@@ -10989,7 +11201,7 @@ function saveInteraction() {
   createdAt: new Date().toISOString(),
  });
 
- persist();
+ persist("crm");
  renderAll();
  els.interactionDialog.close();
  toast("Contato registrado.");
@@ -11036,7 +11248,7 @@ function saveTask() {
  if (index >= 0) state.tasks[index] = task;
  else state.tasks.push(task);
 
- persist();
+ persist("crm");
  renderAll();
  els.taskDialog.close();
  toast("Tarefa salva.");
@@ -11056,7 +11268,7 @@ function completeTask(id) {
  const task = state.tasks.find((item) => item.id === id);
  if (!task) return;
  task.status = "concluida";
- persist();
+ persist("crm");
  renderAll();
  toast("Tarefa concluída.");
 }
@@ -11539,7 +11751,7 @@ function upsertPersonFromInvoiceXml(data) {
   contact: "",
  };
  state.people.push(person);
- persist();
+ persist("financeiro");
  renderPeople();
  return person.id;
 }
@@ -11627,7 +11839,7 @@ function saveInvoice() {
  if (index >= 0) state.invoices[index] = invoice;
  else state.invoices.push(invoice);
 
- persist();
+ persist("financeiro");
  renderAll();
  resetInvoiceForm();
  toast("Nota fiscal salva.");
@@ -11714,7 +11926,7 @@ function handleInvoiceAction(action, id) {
    item.invoiceId = "";
   });
   state.invoices = state.invoices.filter((item) => item.id !== invoice.id);
-  persist();
+  persist("financeiro");
   renderAll();
   toast("Nota fiscal excluída.");
  }
@@ -11764,7 +11976,7 @@ function saveInvoiceLink() {
   }
  });
 
- persist();
+ persist("financeiro");
  renderAll();
  els.invoiceLinkDialog.close();
  toast("V?nculo atualizado.");
@@ -11808,7 +12020,7 @@ function savePerson() {
 
  els.personForm.reset();
  els.personId.value = "";
- persist();
+ persist("config");
  renderAll();
  toast("Cadastro salvo.");
 }
@@ -11833,7 +12045,7 @@ function handlePersonAction(action, id) {
  }
 
  state.people = state.people.filter((item) => item.id !== id);
- persist();
+ persist("config");
  renderAll();
  toast("Cadastro excluído.");
 }
@@ -11918,7 +12130,7 @@ function saveTransaction() {
  if (index >= 0) state.transactions[index] = data;
  else state.transactions.push(data);
 
- persist();
+ persist("financeiro");
  renderAll();
  els.transactionDialog.close();
  toast("Lançamento salvo.");
@@ -11965,7 +12177,7 @@ function saveTransactionInstallments(type, status, allocations) {
   });
  });
 
- persist();
+ persist("financeiro");
  renderAll();
  els.transactionDialog.close();
  toast(`${count} previs?es geradas em contas a receber.`);
@@ -12050,7 +12262,7 @@ function saveQuickPersonFromTransaction() {
  };
 
  state.people.push(person);
- persist();
+ persist("config");
  hydratePersonOptions();
  hydrateSalePeople();
  hydrateProjectOptions();
@@ -12118,7 +12330,7 @@ function saveQuickProjectFromTransaction() {
 
  state.projects.push(project);
  upsertCostCenter(project);
- persist();
+ persist("projetos");
  hydrateProjectOptions();
  if (quickProjectTarget === "stockExit") {
   els.stockExitProject.value = project.id;

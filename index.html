@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260728-ranking-tv-trophy1" />
+    <link rel="stylesheet" href="styles.css?v=20260729-maintenance-control2" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -89,6 +89,7 @@
         </nav>
 
         <div class="sidebar-actions">
+          <button class="ghost-btn maintenance-toggle-btn hidden" id="maintenanceToggleBtn" type="button">Ativar manutenção</button>
           <button class="ghost-btn" id="exportJson" type="button">Exportar backup</button>
           <label class="ghost-btn file-btn" for="importJson">Importar backup</label>
           <input id="importJson" type="file" accept="application/json" />
@@ -2074,6 +2075,27 @@
       </main>
     </div>
 
+    <dialog id="maintenanceControlDialog">
+      <form method="dialog" class="modal" id="maintenanceControlForm">
+        <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
+        <div class="modal-head">
+          <div>
+            <h2>Manutenção do sistema</h2>
+            <p class="muted-text">Bloqueia o acesso e o salvamento dos demais usuários. O usuário adm continua liberado.</p>
+          </div>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
+        </div>
+        <div class="maintenance-control-status" id="maintenanceControlStatus"></div>
+        <label class="full">Mensagem exibida aos usuários
+          <textarea id="maintenanceControlMessage" rows="4" maxlength="240">Estamos realizando ajustes no sistema. Por favor, aguarde a liberação do administrador.</textarea>
+        </label>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
+          <button class="primary-btn" id="maintenanceControlSubmit" value="save" type="submit">Ativar manutenção</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="transactionDialog">
       <form method="dialog" class="modal" id="transactionForm">
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
@@ -3056,6 +3078,6 @@
     <script src="assets/estoque-iluminar-data.js?v=20260728-stock-baseline-reset1"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260728-bank-bulk-import1"></script>
+    <script src="app.js?v=20260729-maintenance-control2"></script>
   </body>
 </html>
