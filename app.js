@@ -3584,12 +3584,16 @@ function bindKanbanEvents() {
 
 function opportunityLocationText(item) {
  const location = item.location || {};
+ const address = (location.address || "").trim();
+ if (/^https?:\/\//i.test(address)) return address;
  const coords = [location.latitude, location.longitude].filter(Boolean).join(",");
- return coords || location.address || "";
+ return coords || address;
 }
 
 function googleMapsUrlFromLocation(locationText) {
- return `https://www.google.com/maps/search/api=1&query=${encodeURIComponent(locationText)}`;
+ const trimmed = locationText.trim();
+ if (/^https?:\/\//i.test(trimmed)) return trimmed;
+ return `https://www.google.com/maps/search/api=1&query=${encodeURIComponent(trimmed)}`;
 }
 
 function googleMapsRouteUrl(locations) {
