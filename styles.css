@@ -431,6 +431,10 @@ body[data-view="dashboard"] #newTransactionBtn {
   border-color: var(--danger);
 }
 
+.modal-delete-action {
+ margin-right: auto;
+}
+
 .icon-btn {
   width: 40px;
   padding: 0;

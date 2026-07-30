@@ -583,6 +583,7 @@ const els = {
  proposalNotes: document.querySelector("#proposalNotes"),
  generateOpportunityProposalBtn: document.querySelector("#generateOpportunityProposalBtn"),
  opportunityHistory: document.querySelector("#opportunityHistory"),
+ opportunityDeleteBtn: document.querySelector("#deleteOpportunityBtn"),
  transactionDialog: document.querySelector("#transactionDialog"),
  transactionForm: document.querySelector("#transactionForm"),
  transactionTitle: document.querySelector("#transactionTitle"),
@@ -1109,6 +1110,7 @@ function bindEvents() {
  document.querySelector("#newSaleBtn").addEventListener("click", openSaleDialog);
  document.querySelector("#newSaleInlineBtn").addEventListener("click", openSaleDialog);
  bindClickOnce("#newOpportunityBtn", "Opportunity", () => openOpportunityDialog());
+ els.opportunityDeleteBtn?.addEventListener("click", deleteOpportunity);
  document.querySelector("#clearCrmFilters").addEventListener("click", clearCrmFilters);
  els.addOpportunityAttachmentBtn.addEventListener("click", () => addOpportunityAttachmentRow());
  els.opportunityAttachmentRows.addEventListener("click", handleOpportunityAttachmentAction);
@@ -10596,6 +10598,7 @@ function openOpportunityDialog(item = null) {
  setOpportunityAttachmentStatus("Arraste links ou arquivos para anexar ao lead. Salve a oportunidade ao concluir.", "neutral");
  setOpportunityProposalForm(opportunity.proposal || {});
  els.opportunityTitle.textContent = item ? "Editar oportunidade" : "Nova oportunidade";
+ if (els.opportunityDeleteBtn) els.opportunityDeleteBtn.hidden = !opportunity.id;
  renderOpportunityHistory(opportunity.id || "");
  els.opportunityDialog.showModal();
 }
@@ -10676,6 +10679,38 @@ function saveOpportunity() {
  if (data.stage === "ganho" && (!existing || existing.stage !== "ganho") && !data.installationId && !data.contractId) {
   openOpportunityWonDialog(data);
  }
+}
+
+function deleteOpportunity() {
+ const id = els.opportunityId.value;
+ const opportunity = state.opportunities.find((item) => item.id === id);
+ if (!opportunity) {
+  toast("Oportunidade não encontrada.");
+  return;
+ }
+
+ const client = personName(opportunity.personId) || opportunity.company || opportunity.number || "esta oportunidade";
+ const hasLinkedRecords = Boolean(
+  opportunity.projectId
+  || opportunity.installationId
+  || opportunity.contractId
+  || state.projects.some((item) => item.opportunityId === id)
+  || state.installations.some((item) => item.opportunityId === id)
+  || state.sales.some((item) => item.opportunityId === id)
+ );
+ const linkedWarning = hasLinkedRecords
+  ? "\n\nO cliente e os registros já gerados em Projetos, Instalações e Financeiro serão preservados."
+  : "\n\nO cadastro do cliente será preservado.";
+ if (!window.confirm(`Excluir a oportunidade de ${client}?${linkedWarning}`)) return;
+
+ state.opportunities = state.opportunities.filter((item) => item.id !== id);
+ state.opportunityHistory = state.opportunityHistory.filter((item) => item.opportunityId !== id);
+ state.interactions = state.interactions.filter((item) => item.opportunityId !== id);
+ state.tasks = state.tasks.filter((item) => item.opportunityId !== id);
+ persist("crm");
+ els.opportunityDialog.close();
+ renderAll();
+ toast("Oportunidade excluída.");
 }
 
 function renderPipelineBoard() {
