@@ -2257,7 +2257,7 @@ async function initRemoteSync() {
     : remoteState;
    remoteSyncBaseState = remoteState;
    storeSyncBase(remoteState);
-   Object.assign(state, syncedState);
+   Object.assign(state, cloneStateValue(syncedState));
    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
    renderAll();
    if (pendingScopesDuringLoad.length) scheduleRemoteSync(pendingScopesDuringLoad);
