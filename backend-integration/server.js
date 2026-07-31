@@ -3,6 +3,7 @@
 const http = require("http");
 const { URL } = require("url");
 const inter = require("./providers/inter");
+const receita = require("./providers/receita");
 
 loadEnv();
 
@@ -28,6 +29,7 @@ const server = http.createServer(async (req, res) => {
       ok: true,
       service: "financeiro-lumeris-bank-backend",
       interConfigured: inter.isConfigured(),
+      receitaConfigured: receita.isConfigured(),
     });
   }
 
@@ -40,6 +42,10 @@ const server = http.createServer(async (req, res) => {
       ok: false,
       error: "Santander ainda nao configurado neste backend local.",
     });
+  }
+
+  if (req.method === "POST" && url.pathname === "/receita/notas") {
+    return handleReceitaNotas(req, res);
   }
 
   return sendJson(res, 404, { ok: false, error: "Rota nao encontrada." });
@@ -80,6 +86,31 @@ async function handleStatement(req, res, fetchStatement, fetchBalance, fetchInve
     return sendJson(res, 500, {
       ok: false,
       error: error.message || "Falha ao consultar extrato bancario.",
+    });
+  }
+}
+
+async function handleReceitaNotas(req, res) {
+  try {
+    const body = await readJsonBody(req);
+    const cnpj = body.cnpj;
+    const start = body.start;
+    const end = body.end;
+
+    if (!cnpj || !start || !end) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: "Informe cnpj, start e end (YYYY-MM-DD).",
+      });
+    }
+
+    const notas = await receita.fetchNotas({ cnpj, start, end });
+    return sendJson(res, 200, { ok: true, notas });
+  } catch (error) {
+    console.error(error);
+    return sendJson(res, error.code === "not_configured" ? 409 : 500, {
+      ok: false,
+      error: error.message || "Falha ao consultar notas fiscais na Receita Federal.",
     });
   }
 }

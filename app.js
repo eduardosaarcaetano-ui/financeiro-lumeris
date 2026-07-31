@@ -317,6 +317,15 @@ const els = {
  invoiceId: document.querySelector("#invoiceId"),
  invoiceKind: document.querySelector("#invoiceKind"),
  invoiceXmlFile: document.querySelector("#invoiceXmlFile"),
+ openNfeLookupTab: document.querySelector("#openNfeLookupTab"),
+ nfeLookupCnpj: document.querySelector("#nfeLookupCnpj"),
+ nfeLookupStart: document.querySelector("#nfeLookupStart"),
+ nfeLookupEnd: document.querySelector("#nfeLookupEnd"),
+ nfeLookupSearchBtn: document.querySelector("#nfeLookupSearchBtn"),
+ nfeLookupStatus: document.querySelector("#nfeLookupStatus"),
+ nfeLookupResults: document.querySelector("#nfeLookupResults"),
+ nfeLookupEndpoint: document.querySelector("#nfeLookupEndpoint"),
+ saveNfeLookupConfigBtn: document.querySelector("#saveNfeLookupConfigBtn"),
  invoiceNumber: document.querySelector("#invoiceNumber"),
  invoiceSeries: document.querySelector("#invoiceSeries"),
  invoicePersonWrap: document.querySelector("#invoicePersonWrap"),
@@ -942,6 +951,9 @@ function bindEvents() {
  els.invoiceGrossAmount.addEventListener("input", suggestInvoiceAccountingValue);
  els.invoiceTaxAmount.addEventListener("input", suggestInvoiceAccountingValue);
  els.invoiceXmlFile.addEventListener("change", importInvoiceXml);
+ els.openNfeLookupTab?.addEventListener("click", openNfeLookupPanel);
+ els.saveNfeLookupConfigBtn?.addEventListener("click", saveNfeLookupConfig);
+ els.nfeLookupSearchBtn?.addEventListener("click", searchNfeLookup);
  els.invoiceLinkForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (event.submitter.value === "cancel") {
@@ -11656,11 +11668,98 @@ function renderVisibleCrmKanban() {
 
 function setInvoiceKind(kind) {
  currentInvoiceKind = kind;
+ setInvoicePanel("form");
  document.querySelectorAll("[data-invoice-kind]").forEach((button) => {
   button.classList.toggle("active", button.dataset.invoiceKind === kind);
  });
  resetInvoiceForm();
  renderInvoices();
+}
+
+// ---- Consulta automática de NF na Receita Federal (esqueleto, ver backend-integration/providers/receita.js) ----
+
+const NFE_LOOKUP_CONFIG_KEY = "financeiro-lumeris-nfe-lookup-config";
+
+function setInvoicePanel(panel) {
+ document.querySelectorAll("[data-invoice-panel]").forEach((section) => {
+  section.classList.toggle("hidden", section.dataset.invoicePanel !== panel);
+ });
+ els.openNfeLookupTab?.classList.toggle("active", panel === "nfe-lookup");
+ if (panel === "nfe-lookup") {
+  document.querySelectorAll("[data-invoice-kind]").forEach((button) => button.classList.remove("active"));
+ }
+}
+
+function loadNfeLookupConfig() {
+ try {
+  return JSON.parse(localStorage.getItem(NFE_LOOKUP_CONFIG_KEY) || "{}");
+ } catch {
+  return {};
+ }
+}
+
+function openNfeLookupPanel() {
+ setInvoicePanel("nfe-lookup");
+ const config = loadNfeLookupConfig();
+ els.nfeLookupEndpoint.value = config.endpoint || "";
+ if (!els.nfeLookupStart.value) els.nfeLookupStart.value = currentMonthStart;
+ if (!els.nfeLookupEnd.value) els.nfeLookupEnd.value = todayIso;
+ els.nfeLookupStatus.textContent = config.endpoint
+  ? ""
+  : "Configure a URL do backend ao lado para habilitar a busca.";
+}
+
+function saveNfeLookupConfig() {
+ const endpoint = els.nfeLookupEndpoint.value.trim().replace(/\/$/, "");
+ localStorage.setItem(NFE_LOOKUP_CONFIG_KEY, JSON.stringify({ endpoint }));
+ toast("Configuração salva neste navegador.");
+ els.nfeLookupStatus.textContent = endpoint ? "" : "Configure a URL do backend ao lado para habilitar a busca.";
+}
+
+async function searchNfeLookup() {
+ const config = loadNfeLookupConfig();
+ const endpoint = (config.endpoint || "").trim().replace(/\/$/, "");
+ const cnpj = els.nfeLookupCnpj.value.trim();
+ const start = els.nfeLookupStart.value;
+ const end = els.nfeLookupEnd.value;
+
+ if (!endpoint) {
+  toast("Configure a URL do backend antes de buscar.");
+  return;
+ }
+ if (!cnpj || !start || !end) {
+  toast("Informe CNPJ, data inicial e data final.");
+  return;
+ }
+
+ els.nfeLookupStatus.textContent = "Buscando notas...";
+ els.nfeLookupResults.innerHTML = "";
+ try {
+  const response = await fetchWithTimeout(`${endpoint}/receita/notas`, {
+   method: "POST",
+   headers: { "Content-Type": "application/json" },
+   body: JSON.stringify({ cnpj, start, end }),
+  }, 20000);
+  const result = await response.json();
+  if (!result.ok) throw new Error(result.error || "Falha ao consultar notas fiscais.");
+  renderNfeLookupResults(result.notas || []);
+  els.nfeLookupStatus.textContent = result.notas?.length
+   ? `${result.notas.length} nota(s) encontrada(s).`
+   : "Nenhuma nota encontrada no período.";
+ } catch (error) {
+  console.error(error);
+  els.nfeLookupStatus.textContent = error.message || "Falha ao consultar a Receita Federal. Verifique o backend e o certificado digital.";
+ }
+}
+
+function renderNfeLookupResults(notas) {
+ els.nfeLookupResults.innerHTML = notas.length
+  ? notas.map((nota) => `
+    <article class="report-item">
+     <strong><span>${escapeHtml(nota.number || "Sem número")}</span><span>${formatDate(nota.issueDate)}</span></strong>
+     <span class="muted">${escapeHtml(nota.issuerName || nota.recipientName || "")} - ${money(Number(nota.amount || 0))}</span>
+    </article>`).join("")
+  : emptyMessage("Nenhuma nota encontrada.");
 }
 
 function resetInvoiceForm() {
