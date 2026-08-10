@@ -1730,13 +1730,30 @@ button.project-chip {
 }
 
 .sales-rank-entry span { display: block; color: var(--muted); font-size: 12px; }
+.sales-rank-form-actions,
+.sales-rank-entry-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.sales-rank-form-actions .primary-btn {
+  flex: 1;
+}
+
+.sales-rank-entry-actions {
+  justify-content: flex-end;
+}
+
 .sales-rank-entry button {
   border: 0;
   background: transparent;
-  color: var(--danger);
   font-weight: 700;
   cursor: pointer;
 }
+
+.sales-rank-entry button[data-action="edit-rank-entry"] { color: var(--primary); }
+.sales-rank-entry button[data-action="delete-rank-entry"] { color: var(--danger); }
 
 @media (max-width: 980px) {
   .sales-rank-layout { grid-template-columns: 1fr; }
@@ -1747,6 +1764,8 @@ button.project-chip {
   .sales-rank-value { grid-column: 3; }
   .sales-rank-head { align-items: stretch; }
   .sales-rank-head label { width: 100%; margin-left: 0; }
+  .sales-rank-entry { grid-template-columns: minmax(0, 1fr) auto; }
+  .sales-rank-entry-actions { grid-column: 1 / -1; justify-content: flex-start; }
 }
 
 .ranking-tv-screen {

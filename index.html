@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260729-maintenance-control2" />
+    <link rel="stylesheet" href="styles.css?v=20260810-sales-rank-edit" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -435,6 +435,7 @@
                   </div>
                 </div>
                 <form class="form-grid" id="salesRankForm">
+                  <input id="salesRankEntryId" type="hidden" />
                   <label class="full">Vendedor
                     <input id="salesRankSeller" required maxlength="100" list="salesRankSellerSuggestions" placeholder="Nome do vendedor" />
                   </label>
@@ -450,7 +451,10 @@
                   <label>Período
                     <input id="salesRankPeriod" required type="month" />
                   </label>
-                  <button class="primary-btn full" type="submit">Adicionar ao ranking</button>
+                  <div class="form-actions full sales-rank-form-actions">
+                    <button class="primary-btn" id="salesRankSubmitBtn" type="submit">Adicionar ao ranking</button>
+                    <button class="secondary-btn hidden" id="cancelSalesRankEditBtn" type="button">Cancelar edição</button>
+                  </div>
                 </form>
                 <datalist id="salesRankSellerSuggestions"></datalist>
                 <div class="sales-rank-recent">
@@ -3110,6 +3114,6 @@
     <script src="assets/estoque-iluminar-data.js?v=20260728-stock-baseline-reset1"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260729-maintenance-control2"></script>
+    <script src="app.js?v=20260810-sales-rank-edit"></script>
   </body>
 </html>

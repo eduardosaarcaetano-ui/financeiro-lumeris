@@ -494,6 +494,7 @@ const els = {
  crmStageConversionReport: document.querySelector("#crmStageConversionReport"),
  crmSellerRankingTable: document.querySelector("#crmSellerRankingTable"),
  salesRankForm: document.querySelector("#salesRankForm"),
+ salesRankEntryId: document.querySelector("#salesRankEntryId"),
  salesRankSeller: document.querySelector("#salesRankSeller"),
  salesRankClient: document.querySelector("#salesRankClient"),
  salesRankCity: document.querySelector("#salesRankCity"),
@@ -504,6 +505,8 @@ const els = {
  salesRankEntries: document.querySelector("#salesRankEntries"),
  salesRankList: document.querySelector("#salesRankList"),
  salesRankSummary: document.querySelector("#salesRankSummary"),
+ salesRankSubmitBtn: document.querySelector("#salesRankSubmitBtn"),
+ cancelSalesRankEditBtn: document.querySelector("#cancelSalesRankEditBtn"),
  openManualSalesRankMonthTvBtn: document.querySelector("#openManualSalesRankMonthTvBtn"),
  openManualSalesRankYearTvBtn: document.querySelector("#openManualSalesRankYearTvBtn"),
  openSalesRankMonthTvBtn: document.querySelector("#openSalesRankMonthTvBtn"),
@@ -969,6 +972,7 @@ function bindEvents() {
   button.addEventListener("click", () => setSalesTab(button.dataset.salesTab));
  });
  els.salesRankForm.addEventListener("submit", saveManualSalesRankEntry);
+ els.cancelSalesRankEditBtn.addEventListener("click", resetManualSalesRankForm);
  els.salesRankFilterPeriod.addEventListener("change", renderManualSalesRanking);
  els.salesRankEntries.addEventListener("click", handleManualSalesRankAction);
  els.salesRankPeriod.value = todayIso.slice(0, 7);
@@ -4910,6 +4914,7 @@ function setSalesTab(tab) {
 
 function saveManualSalesRankEntry(event) {
  event.preventDefault();
+ const entryId = els.salesRankEntryId.value;
  const seller = els.salesRankSeller.value.trim();
  const client = els.salesRankClient.value.trim();
  const amount = Number(els.salesRankAmount.value);
@@ -4918,23 +4923,51 @@ function saveManualSalesRankEntry(event) {
   toast("Preencha vendedor, cliente, valor e período.");
   return;
  }
- state.salesRankingEntries.push({
-  id: crypto.randomUUID(),
+ const existingEntry = entryId ? state.salesRankingEntries.find((item) => item.id === entryId) : null;
+ const entry = {
+  ...(existingEntry || {}),
+  id: existingEntry?.id || crypto.randomUUID(),
   seller,
   client,
   city: els.salesRankCity.value.trim(),
   amount: roundCurrency(amount),
   period,
-  source: "manual",
-  createdAt: new Date().toISOString(),
+  source: existingEntry?.source || "manual",
+  createdAt: existingEntry?.createdAt || new Date().toISOString(),
   updatedAt: new Date().toISOString(),
- });
+ };
+ if (existingEntry) {
+  state.salesRankingEntries = state.salesRankingEntries.map((item) => item.id === entry.id ? entry : item);
+ } else {
+  state.salesRankingEntries.push(entry);
+ }
  if (!persist("crm")) return;
- els.salesRankForm.reset();
- els.salesRankPeriod.value = period;
+ resetManualSalesRankForm(period);
  els.salesRankFilterPeriod.value = period;
  renderManualSalesRanking();
- toast("Venda adicionada ao ranking.");
+ toast(existingEntry ? "Venda atualizada no ranking." : "Venda adicionada ao ranking.");
+}
+
+function resetManualSalesRankForm(period = "") {
+ const selectedPeriod = period || els.salesRankPeriod.value || els.salesRankFilterPeriod.value || todayIso.slice(0, 7);
+ els.salesRankForm.reset();
+ els.salesRankEntryId.value = "";
+ els.salesRankPeriod.value = selectedPeriod;
+ els.salesRankSubmitBtn.textContent = "Adicionar ao ranking";
+ els.cancelSalesRankEditBtn.classList.add("hidden");
+}
+
+function editManualSalesRankEntry(entry) {
+ els.salesRankEntryId.value = entry.id;
+ els.salesRankSeller.value = entry.seller || "";
+ els.salesRankClient.value = entry.client || "";
+ els.salesRankCity.value = entry.city || "";
+ els.salesRankAmount.value = Number(entry.amount || 0).toFixed(2);
+ els.salesRankPeriod.value = entry.period || todayIso.slice(0, 7);
+ els.salesRankSubmitBtn.textContent = "Salvar alterações";
+ els.cancelSalesRankEditBtn.classList.remove("hidden");
+ els.salesRankForm.scrollIntoView({ behavior: "smooth", block: "start" });
+ els.salesRankSeller.focus();
 }
 
 function renderManualSalesRanking() {
@@ -4969,7 +5002,10 @@ function renderManualSalesRanking() {
   <article class="sales-rank-entry">
    <div><strong>${escapeHtml(item.client)}</strong><span>${escapeHtml(item.seller)}${item.city ? ` - ${escapeHtml(item.city)}` : ""}</span></div>
    <strong>${money(item.amount)}</strong>
-   <button type="button" data-action="delete-rank-entry" data-id="${item.id}" aria-label="Excluir lançamento">Excluir</button>
+   <div class="sales-rank-entry-actions">
+    <button type="button" data-action="edit-rank-entry" data-id="${item.id}" aria-label="Editar lançamento">Editar</button>
+    <button type="button" data-action="delete-rank-entry" data-id="${item.id}" aria-label="Excluir lançamento">Excluir</button>
+   </div>
   </article>`).join("") : emptyMessage("Nenhum lançamento manual neste período.");
  const names = [...new Set([
   ...state.sellers.filter((item) => item.active !== false).map((item) => item.name),
@@ -4979,11 +5015,17 @@ function renderManualSalesRanking() {
 }
 
 function handleManualSalesRankAction(event) {
- const button = event.target.closest("[data-action='delete-rank-entry']");
+ const button = event.target.closest("[data-action]");
  if (!button) return;
  const entry = state.salesRankingEntries.find((item) => item.id === button.dataset.id);
- if (!entry || !window.confirm(`Excluir a venda de ${entry.client} do ranking?`)) return;
+ if (!entry) return;
+ if (button.dataset.action === "edit-rank-entry") {
+  editManualSalesRankEntry(entry);
+  return;
+ }
+ if (button.dataset.action !== "delete-rank-entry" || !window.confirm(`Excluir a venda de ${entry.client} do ranking?`)) return;
  state.salesRankingEntries = state.salesRankingEntries.filter((item) => item.id !== entry.id);
+ if (els.salesRankEntryId.value === entry.id) resetManualSalesRankForm(entry.period);
  persist("crm");
  renderManualSalesRanking();
  toast("Lançamento excluído do ranking.");
