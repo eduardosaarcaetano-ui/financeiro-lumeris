@@ -3239,19 +3239,22 @@ dialog::backdrop {
 
 @media (max-width: 1050px) {
   .app-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: 220px minmax(0, 1fr);
   }
 
   .sidebar {
     position: sticky;
     top: 0;
     z-index: 3;
+    height: 100vh;
+    overflow-y: auto;
     padding: 14px;
+    gap: 18px;
   }
 
   .nav-list {
-    grid-template-columns: repeat(8, minmax(130px, 1fr));
-    overflow-x: auto;
+    grid-template-columns: 1fr;
+    overflow: visible;
   }
 
   .sidebar-actions {
@@ -3280,6 +3283,20 @@ dialog::backdrop {
 }
 
 @media (max-width: 760px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    height: auto;
+    overflow: visible;
+  }
+
+  .nav-list {
+    grid-template-columns: repeat(8, minmax(130px, 1fr));
+    overflow-x: auto;
+  }
+
   .main {
     padding: 18px;
   }
