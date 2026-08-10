@@ -3029,6 +3029,10 @@ dialog::backdrop {
 }
 
 .pipeline-column-alert {
+  flex: 0 0 auto;
+  align-self: stretch;
+  height: auto;
+  min-height: 0;
   margin: 8px 8px 0;
   padding: 5px 8px;
   border: 1px solid #f3b0b0;
