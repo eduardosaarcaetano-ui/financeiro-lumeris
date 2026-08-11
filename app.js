@@ -2538,6 +2538,67 @@ function applySyncOperationsLocally(baseState, operations) {
  return next;
 }
 
+function isInactiveDuplicateStockConflict(remoteState, conflict) {
+ if (conflict?.field !== "stockItems" || !conflict.id) return false;
+ const items = Array.isArray(remoteState?.stockItems) ? remoteState.stockItems : [];
+ const conflictedItem = items.find((item) => String(item?.id || "") === String(conflict.id));
+ if (!conflictedItem || conflictedItem.active !== false) return false;
+ const conflictedKey = stockCatalogKey(conflictedItem);
+ if (!conflictedKey || conflictedKey === "::") return false;
+ return items.some((item) =>
+  String(item?.id || "") !== String(conflict.id) &&
+  isStockItemActive(item) &&
+  stockCatalogKey(item) === conflictedKey
+ );
+}
+
+async function resolveInactiveDuplicateStockConflicts(conflicts, scopes) {
+ const conflictList = Array.isArray(conflicts) ? conflicts.filter(Boolean) : [];
+ if (!conflictList.length) return false;
+
+ const latest = await fetchRemoteState();
+ const latestRemoteState = normalizeState(latest.data || {});
+ if (!conflictList.every((conflict) => isInactiveDuplicateStockConflict(latestRemoteState, conflict))) {
+  return false;
+ }
+
+ // Reaplica sobre a versao remota somente as alteracoes locais que nao pertencem
+ // as copias inativas em conflito. Assim os demais dados locais e remotos sao preservados.
+ const currentLocalState = normalizeState(cloneStateValue(state));
+ const pendingOperations = buildSyncOperations(remoteSyncBaseState || {}, currentLocalState, scopes);
+ const remoteStockItems = Array.isArray(latestRemoteState.stockItems) ? latestRemoteState.stockItems : [];
+ const catalogKeysToUseRemote = new Set(conflictList.map((conflict) => {
+  const item = remoteStockItems.find((entry) => String(entry?.id || "") === String(conflict.id || ""));
+  return item ? stockCatalogKey(item) : "";
+ }).filter(Boolean));
+ const stockItemIdsToUseRemote = new Set(remoteStockItems
+  .filter((item) => catalogKeysToUseRemote.has(stockCatalogKey(item)))
+  .map((item) => String(item.id || "")));
+ const conflictedIds = new Set(conflictList.map((conflict) => String(conflict.id || "")));
+ const activeEquivalentWasEdited = pendingOperations.some((operation) =>
+  operation.field === "stockItems" &&
+  operation.type === "upsert" &&
+  stockItemIdsToUseRemote.has(String(operation.id || "")) &&
+  !conflictedIds.has(String(operation.id || ""))
+ );
+ if (activeEquivalentWasEdited) return false;
+ const operationsToKeep = pendingOperations.filter((operation) => {
+  if (operation.field === "stockBaselineVersion") return false;
+  if (operation.field !== "stockItems") return true;
+  return !stockItemIdsToUseRemote.has(String(operation.id || ""));
+ });
+ const rebasedLocalState = normalizeState(applySyncOperationsLocally(latestRemoteState, operationsToKeep));
+
+ remoteUpdatedAt = latest.updatedAt || remoteUpdatedAt;
+ remoteProtocolVersion = Number(latest.protocolVersion || remoteProtocolVersion || 1);
+ remoteSyncBaseState = latestRemoteState;
+ storeSyncBase(latestRemoteState);
+ Object.assign(state, rebasedLocalState);
+ localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+ renderAll();
+ return true;
+}
+
 async function fetchRemoteState() {
  const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, SYNC_TIMEOUT_MS);
  const result = await response.json();
@@ -2681,11 +2742,24 @@ async function pushToSheets() {
    toast(error.userMessage || "O administrador ativou a manutenção. Seus dados locais foram preservados.");
    showMaintenance();
   } else if (error.code === "record_conflict") {
-   syncConflictBlocked = true;
-   const target = error.conflicts?.[0];
-   const detail = target ? `${target.field}${target.id ? ` (${target.id})` : ""}` : "um registro";
-   setSyncStatus(`Conflito no mesmo registro: ${detail}. Dados locais preservados.`, "error");
-   toast("Outro usuario alterou o mesmo registro. Seus dados continuam salvos neste computador.");
+   let resolvedInactiveDuplicate = false;
+   try {
+    resolvedInactiveDuplicate = await resolveInactiveDuplicateStockConflicts(error.conflicts, scopes);
+   } catch (resolutionError) {
+    console.error("Falha ao reconciliar copia inativa do estoque", resolutionError);
+   }
+   if (resolvedInactiveDuplicate) {
+    syncConflictBlocked = false;
+    setSyncStatus("Cópia inativa do estoque conciliada. Finalizando sincronização...", "syncing");
+    toast("Uma cópia antiga e inativa do estoque foi conciliada sem alterar o item ativo.");
+    scheduleRemoteSync(Array.from(pendingSyncScopes));
+   } else {
+    syncConflictBlocked = true;
+    const target = error.conflicts?.[0];
+    const detail = target ? `${target.field}${target.id ? ` (${target.id})` : ""}` : "um registro";
+    setSyncStatus(`Conflito no mesmo registro: ${detail}. Dados locais preservados.`, "error");
+    toast("Outro usuario alterou o mesmo registro. Seus dados continuam salvos neste computador.");
+   }
    } else if (error.code === "backend_update_required" || error.code === "client_update_required") {
     syncConflictBlocked = true;
     setSyncStatus("Atualização de segurança pendente. Dados preservados neste computador.", "error");
