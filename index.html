@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260811-sale-installment-editor35" />
+    <link rel="stylesheet" href="styles.css?v=20260811-dashboard-order36" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -128,132 +128,186 @@
             </div>
           </section>
 
-          <div class="kpi-grid dashboard-kpis">
-            <article class="kpi">
-              <span>A receber em aberto</span>
-              <strong id="kpiReceberAberto">R$ 0,00</strong>
-              <small id="kpiReceberVencido">R$ 0,00 vencido</small>
-            </article>
-            <article class="kpi">
-              <span>A pagar em aberto</span>
-              <strong id="kpiPagarAberto">R$ 0,00</strong>
-              <small id="kpiPagarVencido">R$ 0,00 vencido</small>
-            </article>
-            <article class="kpi kpi-danger">
-              <span>A receber vencido</span>
-              <strong id="kpiReceberVencidoCard">R$ 0,00</strong>
-              <small id="kpiReceberVencidoCount">0 lançamento(s) vencido(s)</small>
-            </article>
-            <article class="kpi">
-              <span>Saldo previsto</span>
-              <strong id="kpiSaldoPrevisto">R$ 0,00</strong>
-              <small>Recebimentos menos pagamentos abertos</small>
-            </article>
-            <article class="kpi">
-              <span>Resultado do mês</span>
-              <strong id="kpiRealizadoMes">R$ 0,00</strong>
-              <small>Entradas menos saídas baixadas</small>
-            </article>
-          </div>
-
-          <section class="panel bank-balances-panel">
-            <div class="panel-head">
-              <h2>Saldos bancários</h2>
-              <small class="muted">Saldo mais atual conforme OFX importado</small>
-            </div>
-            <div class="bank-balance-list" id="bankBalanceList"></div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-head">
-              <h2>Notas fiscais</h2>
-              <small class="muted">Indicadores do mês corrente</small>
-            </div>
-            <div class="kpi-grid invoice-kpis">
-              <article class="kpi">
-                <span>Faturado no mês (NF)</span>
-                <strong id="kpiInvoiceMonthTotal">R$ 0,00</strong>
-              </article>
-              <article class="kpi">
-                <span>Faturado em serviço</span>
-                <strong id="kpiInvoiceServiceTotal">R$ 0,00</strong>
-              </article>
-              <article class="kpi">
-                <span>Faturado em material/produto</span>
-                <strong id="kpiInvoiceMaterialTotal">R$ 0,00</strong>
-              </article>
-              <article class="kpi">
-                <span>Despesas com NF (mês)</span>
-                <strong id="kpiInvoiceExpenseTotal">R$ 0,00</strong>
-              </article>
-              <article class="kpi">
-                <span>Despesas sem NF (mês)</span>
-                <strong id="kpiExpenseNoInvoice">R$ 0,00</strong>
-              </article>
-              <article class="kpi">
-                <span>NF emitidas ainda não recebidas</span>
-                <strong id="kpiInvoiceIssuedPending">R$ 0,00</strong>
-              </article>
-              <article class="kpi">
-                <span>NF recebidas ainda não pagas</span>
-                <strong id="kpiInvoiceReceivedPending">R$ 0,00</strong>
-              </article>
-            </div>
-          </section>
-
-          <section class="panel sector-overview-panel">
-            <div class="panel-head">
-              <h2>Visão por setor</h2>
-              <small class="muted">Indicadores principais para acompanhamento operacional</small>
-            </div>
-            <div class="sector-grid">
-              <article class="sector-card">
-                <span>Vendas</span>
-                <strong id="dashboardSalesTotal">R$ 0,00</strong>
-                <small id="dashboardSalesSmall">0 vendas no mês</small>
-              </article>
-              <article class="sector-card">
-                <span>Financeiro</span>
-                <strong id="dashboardFinanceBalance">R$ 0,00</strong>
-                <small id="dashboardFinanceSmall">saldo previsto</small>
-              </article>
-              <article class="sector-card">
-                <span>Projetos</span>
-                <strong id="dashboardProjectsCount">0</strong>
-                <small id="dashboardProjectsSmall">em andamento</small>
-              </article>
-              <article class="sector-card">
-                <span>Instalações</span>
-                <strong id="dashboardInstallationsCount">0</strong>
-                <small id="dashboardInstallationsSmall">programadas</small>
-              </article>
-              <article class="sector-card">
-                <span>Estoque</span>
-                <strong id="dashboardStockValue">R$ 0,00</strong>
-                <small id="dashboardStockSmall">valor em estoque</small>
-              </article>
-              <article class="sector-card">
-                <span>Notas fiscais</span>
-                <strong id="dashboardInvoicesTotal">R$ 0,00</strong>
-                <small id="dashboardInvoicesSmall">faturado no mês</small>
-              </article>
-            </div>
-          </section>
-
-          <div class="dashboard-grid">
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Fluxo dos próximos 6 meses</h2>
+          <section class="panel dashboard-section-panel">
+            <div class="panel-head dashboard-section-head">
+              <div class="dashboard-section-title">
+                <span>1</span>
+                <div>
+                  <h2>Rank de vendas do mês</h2>
+                  <small class="muted" id="dashboardSalesRankPeriod">Mês atual</small>
+                </div>
               </div>
-              <div class="bars" id="cashflowBars"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Próximos vencimentos</h2>
+            </div>
+            <div class="sales-rank-goal-progress dashboard-sales-goal" id="dashboardSalesRankGoal"></div>
+            <div class="sales-rank-list dashboard-sales-rank-list" id="dashboardSalesRankList"></div>
+          </section>
+
+          <section class="panel dashboard-section-panel">
+            <div class="panel-head dashboard-section-head">
+              <div class="dashboard-section-title">
+                <span>2</span>
+                <div>
+                  <h2>Dashboard de protocolos</h2>
+                  <small class="muted">Prazos, andamento e alertas da Central de Protocolos</small>
+                </div>
               </div>
-              <div class="mini-list" id="upcomingList"></div>
+            </div>
+            <div class="kpi-grid dashboard-protocol-kpis" id="dashboardProtocolKpis"></div>
+            <h3 class="dashboard-subtitle">Alertas dos protocolos</h3>
+            <div class="project-chip-row dashboard-protocol-alerts" id="dashboardProtocolAlerts"></div>
+          </section>
+
+          <section class="panel dashboard-section-panel">
+            <div class="panel-head dashboard-section-head">
+              <div class="dashboard-section-title">
+                <span>3</span>
+                <div>
+                  <h2>Dashboard de instalações</h2>
+                  <small class="muted">Todos os indicadores operacionais das instalações</small>
+                </div>
+              </div>
+            </div>
+            <div class="installation-kpis dashboard-installation-kpis" id="dashboardInstallationKpis"></div>
+          </section>
+
+          <section class="dashboard-finance-section">
+            <div class="panel dashboard-section-banner">
+              <div class="dashboard-section-title">
+                <span>4</span>
+                <div>
+                  <h2>Financeiro</h2>
+                  <small class="muted">Indicadores financeiros, bancos, notas fiscais e vencimentos</small>
+                </div>
+              </div>
+            </div>
+
+            <section class="panel sector-overview-panel">
+              <div class="panel-head">
+                <h2>Visão consolidada</h2>
+                <small class="muted">Indicadores principais para acompanhamento da empresa</small>
+              </div>
+              <div class="sector-grid">
+                <article class="sector-card">
+                  <span>Vendas</span>
+                  <strong id="dashboardSalesTotal">R$ 0,00</strong>
+                  <small id="dashboardSalesSmall">0 vendas no mês</small>
+                </article>
+                <article class="sector-card">
+                  <span>Financeiro</span>
+                  <strong id="dashboardFinanceBalance">R$ 0,00</strong>
+                  <small id="dashboardFinanceSmall">saldo previsto</small>
+                </article>
+                <article class="sector-card">
+                  <span>Projetos</span>
+                  <strong id="dashboardProjectsCount">0</strong>
+                  <small id="dashboardProjectsSmall">em andamento</small>
+                </article>
+                <article class="sector-card">
+                  <span>Instalações</span>
+                  <strong id="dashboardInstallationsCount">0</strong>
+                  <small id="dashboardInstallationsSmall">programadas</small>
+                </article>
+                <article class="sector-card">
+                  <span>Estoque</span>
+                  <strong id="dashboardStockValue">R$ 0,00</strong>
+                  <small id="dashboardStockSmall">valor em estoque</small>
+                </article>
+                <article class="sector-card">
+                  <span>Notas fiscais</span>
+                  <strong id="dashboardInvoicesTotal">R$ 0,00</strong>
+                  <small id="dashboardInvoicesSmall">faturado no mês</small>
+                </article>
+              </div>
             </section>
-          </div>
+
+            <div class="kpi-grid dashboard-kpis">
+              <article class="kpi">
+                <span>A receber em aberto</span>
+                <strong id="kpiReceberAberto">R$ 0,00</strong>
+                <small id="kpiReceberVencido">R$ 0,00 vencido</small>
+              </article>
+              <article class="kpi">
+                <span>A pagar em aberto</span>
+                <strong id="kpiPagarAberto">R$ 0,00</strong>
+                <small id="kpiPagarVencido">R$ 0,00 vencido</small>
+              </article>
+              <article class="kpi kpi-danger">
+                <span>A receber vencido</span>
+                <strong id="kpiReceberVencidoCard">R$ 0,00</strong>
+                <small id="kpiReceberVencidoCount">0 lançamento(s) vencido(s)</small>
+              </article>
+              <article class="kpi">
+                <span>Saldo previsto</span>
+                <strong id="kpiSaldoPrevisto">R$ 0,00</strong>
+                <small>Recebimentos menos pagamentos abertos</small>
+              </article>
+              <article class="kpi">
+                <span>Resultado do mês</span>
+                <strong id="kpiRealizadoMes">R$ 0,00</strong>
+                <small>Entradas menos saídas baixadas</small>
+              </article>
+            </div>
+
+            <section class="panel bank-balances-panel">
+              <div class="panel-head">
+                <h2>Saldos bancários</h2>
+                <small class="muted">Saldo mais atual conforme OFX importado</small>
+              </div>
+              <div class="bank-balance-list" id="bankBalanceList"></div>
+            </section>
+
+            <section class="panel dashboard-invoice-panel">
+              <div class="panel-head">
+                <h2>Notas fiscais</h2>
+                <small class="muted">Indicadores do mês corrente</small>
+              </div>
+              <div class="kpi-grid invoice-kpis">
+                <article class="kpi">
+                  <span>Faturado no mês (NF)</span>
+                  <strong id="kpiInvoiceMonthTotal">R$ 0,00</strong>
+                </article>
+                <article class="kpi">
+                  <span>Faturado em serviço</span>
+                  <strong id="kpiInvoiceServiceTotal">R$ 0,00</strong>
+                </article>
+                <article class="kpi">
+                  <span>Faturado em material/produto</span>
+                  <strong id="kpiInvoiceMaterialTotal">R$ 0,00</strong>
+                </article>
+                <article class="kpi">
+                  <span>Despesas com NF (mês)</span>
+                  <strong id="kpiInvoiceExpenseTotal">R$ 0,00</strong>
+                </article>
+                <article class="kpi">
+                  <span>Despesas sem NF (mês)</span>
+                  <strong id="kpiExpenseNoInvoice">R$ 0,00</strong>
+                </article>
+                <article class="kpi">
+                  <span>NF emitidas ainda não recebidas</span>
+                  <strong id="kpiInvoiceIssuedPending">R$ 0,00</strong>
+                </article>
+                <article class="kpi">
+                  <span>NF recebidas ainda não pagas</span>
+                  <strong id="kpiInvoiceReceivedPending">R$ 0,00</strong>
+                </article>
+              </div>
+            </section>
+
+            <div class="dashboard-grid">
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>Fluxo dos próximos 6 meses</h2>
+                </div>
+                <div class="bars" id="cashflowBars"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-head">
+                  <h2>Próximos vencimentos</h2>
+                </div>
+                <div class="mini-list" id="upcomingList"></div>
+              </section>
+            </div>
+          </section>
         </section>
 
         <section class="view" id="crm">
@@ -3152,6 +3206,6 @@
     <script src="assets/estoque-iluminar-data.js?v=20260811-base-estoque-corrigida29"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260811-sale-installment-editor35"></script>
+    <script src="app.js?v=20260811-dashboard-order36"></script>
   </body>
 </html>

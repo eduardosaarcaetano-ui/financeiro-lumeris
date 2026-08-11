@@ -4975,12 +4975,88 @@ function renderDashboard() {
  document.querySelector("#kpiPagarVencido").textContent = `${money(pagarVencido)} vencido`;
  document.querySelector("#kpiSaldoPrevisto").textContent = money(receberAberto - pagarAberto);
  document.querySelector("#kpiRealizadoMes").textContent = money(realizadoMes);
+ renderDashboardSalesRanking();
+ renderDashboardProtocols();
+ renderDashboardInstallations();
  renderSectorOverview(receberAberto, pagarAberto);
 
  renderBankBalances();
  renderCashflowBars();
  renderUpcoming();
  renderInvoiceDashboardKpis();
+}
+
+function dashboardSalesRankingForPeriod(period) {
+ const entries = state.salesRankingEntries
+  .filter((item) => !isSalesTargetCompatibilityEntry(item) && item.period === period);
+ const grouped = new Map();
+ entries.forEach((item) => {
+  const seller = String(item.seller || "Sem vendedor").trim() || "Sem vendedor";
+  const key = seller.toLocaleLowerCase("pt-BR");
+  const current = grouped.get(key) || { seller, total: 0, count: 0 };
+  current.total += Number(item.amount || 0);
+  current.count += 1;
+  grouped.set(key, current);
+ });
+ return {
+  entries,
+  total: sum(entries.map((item) => Number(item.amount || 0))),
+  ranking: [...grouped.values()].sort((a, b) => b.total - a.total || b.count - a.count || a.seller.localeCompare(b.seller)),
+ };
+}
+
+function renderDashboardSalesRanking() {
+ const goalContainer = document.querySelector("#dashboardSalesRankGoal");
+ const listContainer = document.querySelector("#dashboardSalesRankList");
+ const periodLabel = document.querySelector("#dashboardSalesRankPeriod");
+ if (!goalContainer || !listContainer || !periodLabel) return;
+ const period = todayIso.slice(0, 7);
+ const { entries, total, ranking } = dashboardSalesRankingForPeriod(period);
+ const monthlyTarget = salesRankTargetForPeriod(period);
+ const decade = salesRankDecadeForPeriod(period);
+ const decadeEntries = entries.filter((item) => {
+  const day = Number(salesRankEntryDate(item).slice(8, 10));
+  return day >= decade.start && day <= decade.end;
+ });
+ const decadeSold = sum(decadeEntries.map((item) => Number(item.amount || 0)));
+ periodLabel.textContent = `${monthLabel(period)} · ${entries.length} venda${entries.length === 1 ? "" : "s"} · ${money(total)}`;
+ goalContainer.innerHTML = monthlyTarget > 0 ? [
+  salesRankGoalCard("Meta mensal", monthlyTarget, total, monthLabel(period)),
+  salesRankGoalCard(`${decade.label} — dias ${decade.start} a ${decade.end}`, monthlyTarget / 3, decadeSold, `${decadeEntries.length} venda${decadeEntries.length === 1 ? "" : "s"} na dezena atual`, true),
+ ].join("") : `<div class="sales-rank-goal-empty">Meta mensal ainda não definida no Rank de Vendas.</div>`;
+ listContainer.innerHTML = ranking.length ? ranking.map((row, index) => `
+  <article class="sales-rank-card ${index < 3 ? `place-${index + 1}` : ""}">
+   <span class="sales-rank-position">${index + 1}º</span>
+   <div class="sales-rank-avatar">${escapeHtml(row.seller.slice(0, 1).toUpperCase())}</div>
+   <div class="sales-rank-person">
+    <small>${index === 0 ? "1º lugar" : `${index + 1}º lugar`}</small>
+    <strong>${escapeHtml(row.seller)}</strong>
+    <span>${row.count} venda${row.count === 1 ? "" : "s"}</span>
+   </div>
+   <strong class="sales-rank-value">${money(row.total)}</strong>
+  </article>`).join("") : emptyMessage("Nenhuma venda lançada no ranking deste mês.");
+}
+
+function renderDashboardProtocols() {
+ const kpiContainer = document.querySelector("#dashboardProtocolKpis");
+ const alertContainer = document.querySelector("#dashboardProtocolAlerts");
+ if (!kpiContainer || !alertContainer) return;
+ const kpis = computeProtocolKpis();
+ kpiContainer.innerHTML = protocolKpiCardsMarkup(kpis);
+ const alerts = computeProtocolAlerts();
+ alertContainer.innerHTML = PROTOCOL_ALERT_CATEGORIES.map((category) => {
+  const count = alerts[category.key].length;
+  return `<article class="project-chip ${count ? "danger" : "ok"}">
+   <span>${escapeHtml(category.label)}</span>
+   <strong>${count}</strong>
+  </article>`;
+ }).join("");
+}
+
+function renderDashboardInstallations() {
+ const container = document.querySelector("#dashboardInstallationKpis");
+ if (!container) return;
+ container.innerHTML = installationKpiCardsMarkup(installationKpiCards());
 }
 
 function renderSectorOverview(receberAberto, pagarAberto) {
@@ -7056,7 +7132,11 @@ function renderProtocolKpis() {
  const container = document.querySelector("#protocolKpis");
  if (!container) return;
  const kpis = computeProtocolKpis();
- container.innerHTML = [
+ container.innerHTML = protocolKpiCardsMarkup(kpis);
+}
+
+function protocolKpiCardsMarkup(kpis) {
+ return [
   projectKpiCard("Protocolos no período", kpis.totalInPeriod, "Todos os status, inclusive concluídos"),
   projectKpiCard("Tickets abertos", kpis.open, "Em andamento agora"),
   projectKpiCard("Tickets em atraso", kpis.overdue, "Prazo da concessionária vencido", kpis.overdue ? "danger" : "ok"),
@@ -8349,8 +8429,7 @@ function installationMatchesFilters(item) {
  return true;
 }
 
-function renderInstallationKpis() {
- if (!els.installationKpis) return;
+function installationKpiCards() {
  const installations = businessInstallations();
  const monthStart = todayIso.slice(0, 8) + "01";
  const monthEnd = toIso(endOfMonth(today));
@@ -8377,7 +8456,7 @@ function renderInstallationKpis() {
  const ownCost = sum(efficiencyRows.map(installationOwnLaborCost));
  const outsourceCost = sum(efficiencyRows.map(installationOutsourceCost));
  const saving = outsourceCost - ownCost;
- els.installationKpis.innerHTML = [
+ return [
   { label: "Atividades pendentes", value: postSalePending.length, hint: `${postSaleLate.length} atividade(s) fora do prazo de 2 dias \u00fateis`, tone: postSaleLate.length ? "danger" : postSalePending.length ? "warn" : "ok" },
   { label: "Entraram na semana", value: enteredWeek.length, hint: `${formatDate(weekStart)} at\u00e9 ${formatDate(weekEnd)}`, tone: "neutral" },
   { label: "Realizados na semana", value: completedWeek.length, hint: `${formatDate(weekStart)} at\u00e9 ${formatDate(weekEnd)}`, tone: "ok" },
@@ -8386,13 +8465,22 @@ function renderInstallationKpis() {
   { label: "Em andamento", value: inProgress.length, hint: "Execução aberta", tone: "warn" },
   { label: "Falta programação", value: unscheduled.length, hint: "Aguardando projeto, material, cliente ou instalação", tone: unscheduled.length ? "warn" : "ok" },
   { label: "Eficiência da equipe", value: money(saving), hint: `Terceiro ${money(outsourceCost)} - Equipe ${money(ownCost)}`, tone: saving >= 0 ? "ok" : "danger" },
- ].map((card) => `
+ ];
+}
+
+function installationKpiCardsMarkup(cards) {
+ return cards.map((card) => `
   <article class="installation-kpi ${card.tone}">
    <span>${card.label}</span>
    <strong>${card.value}</strong>
    <small>${card.hint}</small>
   </article>
  `).join("");
+}
+
+function renderInstallationKpis() {
+ if (!els.installationKpis) return;
+ els.installationKpis.innerHTML = installationKpiCardsMarkup(installationKpiCards());
 }
 
 function renderInstallations() {

@@ -479,6 +479,80 @@ body[data-view="dashboard"] #newTransactionBtn {
   color: #d7c27a;
 }
 
+.dashboard-section-panel,
+.dashboard-finance-section {
+  margin-bottom: 18px;
+}
+
+.dashboard-section-head {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.dashboard-section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-section-title > span {
+  display: grid;
+  place-items: center;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.dashboard-section-title > div {
+  display: grid;
+  gap: 3px;
+}
+
+.dashboard-section-banner {
+  border-left: 5px solid var(--primary);
+  background: linear-gradient(90deg, #edf7f3, var(--surface));
+}
+
+.dashboard-finance-section {
+  display: grid;
+  gap: 18px;
+}
+
+.dashboard-finance-section .sector-overview-panel,
+.dashboard-finance-section .bank-balances-panel,
+.dashboard-finance-section .dashboard-kpis,
+.dashboard-finance-section .invoice-kpis {
+  margin-bottom: 0;
+}
+
+.dashboard-sales-goal {
+  margin-top: 0;
+}
+
+.dashboard-sales-rank-list {
+  margin-top: 14px;
+}
+
+.dashboard-protocol-kpis {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.dashboard-subtitle {
+  margin: 4px 0 10px;
+  font-size: 15px;
+}
+
+.dashboard-protocol-alerts,
+.dashboard-installation-kpis {
+  margin-bottom: 0;
+}
+
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
