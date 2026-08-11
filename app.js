@@ -907,6 +907,8 @@ async function boot() {
   initRemoteSync()
    .then(async () => {
     await ensureMasterUser({ save: true });
+    ensureIluminarStockLoaded();
+    renderAll();
     renderUsers();
     if (!currentSessionUser()) {
      restoreSessionOrShowLogin();
@@ -1006,7 +1008,7 @@ function bindEvents() {
  els.cancelStockItemEditBtn.addEventListener("click", resetStockItemForm);
  els.stockCategory.addEventListener("change", toggleNewStockCategoryField);
  els.stockItemSearch.addEventListener("input", renderStockItems);
- els.importIluminarStockBtn.addEventListener("click", importIluminarStock);
+ els.importIluminarStockBtn.addEventListener("click", () => importIluminarStock({ includeMovements: false }));
  [els.stockFilterStart, els.stockFilterEnd, els.stockFilterType, els.stockFilterProject, els.stockFilterItem, els.stockFilterStatus, els.stockFilterCategory].forEach((field) => {
   field.addEventListener("input", renderStock);
  });
