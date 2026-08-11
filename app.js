@@ -115,6 +115,7 @@ const SHARED_SYNC_FIELDS = ["people"];
 
 const ROLE_LABELS = {
  administrador: "Administrador",
+ gerente_comercial: "Gerente comercial",
  estoque: "Estoque",
  usuario: "Usuário",
 };
@@ -1802,9 +1803,10 @@ normalized.salesTargets = normalized.salesTargets
   ...item,
  })).map((user) => {
   const sectors = normalizeUserSectors(user);
+  const validRole = ["administrador", "gerente_comercial", "usuario"].includes(user.role) ? user.role : "usuario";
   return {
    ...user,
-   role: user.role === "administrador" ? "administrador" : "usuario",
+   role: validRole,
    sectors,
   };
  });
@@ -2839,6 +2841,14 @@ function isAdmin() {
  return currentSessionUser()?.role === "administrador";
 }
 
+function isCommercialManager(user = currentSessionUser()) {
+ return user?.role === "gerente_comercial";
+}
+
+function canViewCommercialTeam() {
+ return isAdmin() || isCommercialManager();
+}
+
 function isMaintenanceActive() {
  return FORCE_MAINTENANCE_MODE || Boolean(state.maintenance.enabled);
 }
@@ -2937,6 +2947,12 @@ function enforceMaintenanceMode() {
 
 function normalizeUserSectors(user) {
  if (user.role === "administrador") return DEFAULT_USER_SECTORS.slice();
+ if (user.role === "gerente_comercial") {
+  const selected = Array.isArray(user.sectors)
+   ? user.sectors.filter((sector) => SECTOR_ALLOWED_VIEWS[sector])
+   : [];
+  return [...new Set(["comercial", "vendas", ...selected])];
+ }
  if (Array.isArray(user.sectors)) {
   const valid = user.sectors.filter((sector) => SECTOR_ALLOWED_VIEWS[sector]);
   if (valid.length) return [...new Set(valid)];
@@ -2983,9 +2999,10 @@ function guardViewAccess(view) {
 
 function userAccessLabel(user) {
  if (user.role === "administrador") return "Administrador";
- return normalizeUserSectors(user)
+ const sectors = normalizeUserSectors(user)
   .map((sector) => SECTOR_LABELS[sector] || sector)
   .join(", ") || "Sem setor";
+ return user.role === "gerente_comercial" ? `Gerente comercial - ${sectors}` : sectors;
 }
 
 function roleLabel(role) {
@@ -3008,7 +3025,7 @@ function opportunityOwnerDisplay(opportunity) {
 }
 
 function canViewOpportunity(opportunity) {
- if (isAdmin()) return true;
+ if (canViewCommercialTeam()) return true;
  const user = currentSessionUser();
  if (!user) return false;
  if (opportunity.ownerUserId) return opportunity.ownerUserId === user.id;
@@ -3026,7 +3043,7 @@ function opportunitiesVisibleToCurrentUser() {
 
 function opportunityOwnerSelectOptions(currentOpportunity = null) {
  const sessionUser = currentSessionUser();
- const availableUsers = isAdmin() ? state.users.filter(isCommercialUser) : [sessionUser].filter(Boolean);
+ const availableUsers = canViewCommercialTeam() ? state.users.filter(isCommercialUser) : [sessionUser].filter(Boolean);
  const commercialUsers = availableUsers
   .sort((a, b) => (a.name || a.username).localeCompare(b.name || b.username));
  const currentOwner = currentOpportunity?.owner || "";
@@ -3180,9 +3197,11 @@ function setUserSectorFields(sectors) {
 
 function updateUserSectorUi() {
  const isAdministrator = els.userRole.value === "administrador";
+ const isManager = els.userRole.value === "gerente_comercial";
  els.userSectorFields.forEach((field) => {
-  field.disabled = isAdministrator;
-  if (isAdministrator) field.checked = true;
+  const managerRequiredSector = isManager && ["comercial", "vendas"].includes(field.dataset.userSector);
+  field.disabled = isAdministrator || managerRequiredSector;
+  if (isAdministrator || managerRequiredSector) field.checked = true;
  });
 }
 
@@ -3238,7 +3257,11 @@ async function saveUser(event) {
   return;
  }
 
- const sectors = els.userRole.value === "administrador" ? DEFAULT_USER_SECTORS.slice() : selectedUserSectors();
+ const sectors = els.userRole.value === "administrador"
+  ? DEFAULT_USER_SECTORS.slice()
+  : els.userRole.value === "gerente_comercial"
+   ? [...new Set(["comercial", "vendas", ...selectedUserSectors()])]
+   : selectedUserSectors();
  if (els.userRole.value !== "administrador" && !sectors.length) {
   toast("Selecione pelo menos um setor para o usuário.");
   return;
@@ -3561,7 +3584,7 @@ function hydrateCrmOptions() {
   .map((stage) => `<option value="${stage.id}">${escapeHtml(stage.name)}</option>`)
   .join("");
  const ownerOptions = [...new Set([
-  ...(isAdmin() ? state.users.filter(isCommercialUser) : [currentSessionUser()].filter(Boolean)).map((user) => user.name || user.username),
+  ...(canViewCommercialTeam() ? state.users.filter(isCommercialUser) : [currentSessionUser()].filter(Boolean)).map((user) => user.name || user.username),
   ...opportunitiesVisibleToCurrentUser().map((item) => opportunityOwnerDisplay(item)).filter((name) => name && name !== "Sem respons\u00e1vel"),
  ])]
   .sort((a, b) => a.localeCompare(b))
@@ -11091,7 +11114,7 @@ function hydrateSellerOptions() {
   const key = normalizeText(cleanName);
   if (!sellersByName.has(key)) sellersByName.set(key, { id, name: cleanName });
  };
- const commercialUsers = isAdmin() ? state.users.filter(isCommercialUser) : [currentSessionUser()].filter(Boolean);
+ const commercialUsers = canViewCommercialTeam() ? state.users.filter(isCommercialUser) : [currentSessionUser()].filter(Boolean);
  commercialUsers.forEach((user) => addSeller(user.id, user.name || user.username));
  state.sellers.filter((seller) => seller.active).forEach((seller) => addSeller(seller.id, seller.name));
  opportunitiesVisibleToCurrentUser().forEach((opportunity) => {
