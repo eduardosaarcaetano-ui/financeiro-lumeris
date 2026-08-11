@@ -3696,6 +3696,101 @@ dialog::backdrop {
   align-items: center;
 }
 
+.sale-installments-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+#saleInstallmentsDialog {
+  width: min(1080px, calc(100vw - 32px));
+}
+
+#saleInstallmentsDialog .large-modal {
+  max-width: none;
+}
+
+.sale-installments-summary > div {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf9;
+}
+
+.sale-installments-summary span,
+.sale-installment-edit-label small {
+  color: var(--muted);
+}
+
+.sale-installments-editor {
+  display: grid;
+  gap: 9px;
+  max-height: 48vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.sale-installment-edit-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.1fr) minmax(135px, 1fr) minmax(125px, 0.8fr) minmax(125px, 0.8fr) auto;
+  gap: 9px;
+  align-items: end;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.sale-installment-edit-row.locked {
+  background: #f4f6f5;
+}
+
+.sale-installment-edit-label {
+  display: grid;
+  gap: 4px;
+  align-self: center;
+}
+
+.sale-installments-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.sale-installments-footer .invalid {
+  color: var(--danger);
+}
+
+.receivable-sale-group td {
+  padding: 12px;
+  border-top: 2px solid var(--primary);
+  background: #edf7f3;
+}
+
+.receivable-sale-group-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.receivable-sale-group-content > div {
+  display: flex;
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.receivable-sale-group span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .toast {
   position: fixed;
   right: 20px;
@@ -3855,6 +3950,17 @@ dialog::backdrop {
 
   .editable-installment-row {
     grid-template-columns: 1fr;
+  }
+
+  .sale-installments-summary,
+  .sale-installment-edit-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sale-installments-footer,
+  .receivable-sale-group-content {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .installation-worker-register,

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260811-attachment-list28" />
+    <link rel="stylesheet" href="styles.css?v=20260811-sale-installment-editor35" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -418,6 +418,7 @@
                     <th class="money">Total</th>
                     <th class="money">Recebido</th>
                     <th>Status</th>
+                    <th>Ações</th>
                   </tr>
                 </thead>
                 <tbody id="salesTable"></tbody>
@@ -2664,6 +2665,31 @@
       </form>
     </dialog>
 
+    <dialog id="saleInstallmentsDialog">
+      <form method="dialog" class="modal large-modal" id="saleInstallmentsForm">
+        <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
+        <div class="modal-head">
+          <div>
+            <h2>Parcelas da venda</h2>
+            <small class="muted">As alterações são aplicadas nos mesmos lançamentos do A Receber.</small>
+          </div>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
+        </div>
+        <input id="saleInstallmentsSaleId" type="hidden" />
+        <div class="sale-installments-summary" id="saleInstallmentsSummary"></div>
+        <div class="sale-installments-editor" id="saleInstallmentsEditor"></div>
+        <div class="sale-installments-footer">
+          <button class="secondary-btn" id="addSaleInstallmentBtn" type="button">Adicionar parcela</button>
+          <strong id="saleInstallmentsTotal">Total das parcelas: R$ 0,00</strong>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" id="openSaleReceivablesBtn" type="button">Abrir no A Receber</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
+          <button class="primary-btn" value="save" type="submit">Salvar alterações</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="bankDialog">
       <form method="dialog" class="modal" id="bankForm">
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
@@ -3126,6 +3152,6 @@
     <script src="assets/estoque-iluminar-data.js?v=20260811-base-estoque-corrigida29"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260811-custom-sale-installments34"></script>
+    <script src="app.js?v=20260811-sale-installment-editor35"></script>
   </body>
 </html>

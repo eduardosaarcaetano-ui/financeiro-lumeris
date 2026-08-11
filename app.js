@@ -653,6 +653,14 @@ const els = {
  saleDreGroup: document.querySelector("#saleDreGroup"),
  saleNotes: document.querySelector("#saleNotes"),
  installmentPreview: document.querySelector("#installmentPreview"),
+ saleInstallmentsDialog: document.querySelector("#saleInstallmentsDialog"),
+ saleInstallmentsForm: document.querySelector("#saleInstallmentsForm"),
+ saleInstallmentsSaleId: document.querySelector("#saleInstallmentsSaleId"),
+ saleInstallmentsSummary: document.querySelector("#saleInstallmentsSummary"),
+ saleInstallmentsEditor: document.querySelector("#saleInstallmentsEditor"),
+ saleInstallmentsTotal: document.querySelector("#saleInstallmentsTotal"),
+ addSaleInstallmentBtn: document.querySelector("#addSaleInstallmentBtn"),
+ openSaleReceivablesBtn: document.querySelector("#openSaleReceivablesBtn"),
  ofxFile: document.querySelector("#ofxFile"),
  openBankBulkImportBtn: document.querySelector("#openBankBulkImportBtn"),
  bankBulkImportDialog: document.querySelector("#bankBulkImportDialog"),
@@ -1298,6 +1306,20 @@ function bindEvents() {
   }
   saveSale();
  });
+
+ els.saleInstallmentsForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (event.submitter?.value === "cancel") {
+   els.saleInstallmentsDialog.close();
+   return;
+  }
+  saveSaleInstallmentChanges();
+ });
+ els.saleInstallmentsEditor.addEventListener("input", updateSaleInstallmentsEditorTotal);
+ els.saleInstallmentsEditor.addEventListener("change", updateSaleInstallmentsEditorTotal);
+ els.saleInstallmentsEditor.addEventListener("click", handleSaleInstallmentEditorClick);
+ els.addSaleInstallmentBtn.addEventListener("click", addSaleInstallmentEditorRow);
+ els.openSaleReceivablesBtn.addEventListener("click", openCurrentSaleReceivables);
 
  els.bankForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -5159,15 +5181,23 @@ function renderTransactionTable(type) {
  const rows = businessTransactions()
   .filter((item) => item.type === type)
   .filter((item) => matchesTransaction(item, search, statusFilter))
-  .filter((item) => (!periodStart || item.dueDate >= periodStart) && (!periodEnd || item.dueDate <= periodEnd))
-  .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  .filter((item) => (!periodStart || item.dueDate >= periodStart) && (!periodEnd || item.dueDate <= periodEnd));
+
+ if (type === "receber") sortReceivablesBySaleGroup(rows);
+ else rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 
  tbody.innerHTML = rows.length ?
-   rows.map((item) => transactionRow(item, type)).join("")
+   renderTransactionRows(rows, type)
   : `<tr><td colspan="${colspan}">${emptyMessage("Nenhum lançamento encontrado.")}</td></tr>`;
 
  tbody.querySelectorAll("button").forEach((button) => {
-  button.addEventListener("click", () => handleTransactionAction(button.dataset.action, button.dataset.id));
+  button.addEventListener("click", () => {
+   if (button.dataset.action === "sale-installments") {
+    openSaleInstallmentsDialog(button.dataset.id);
+    return;
+   }
+   handleTransactionAction(button.dataset.action, button.dataset.id);
+  });
  });
 
  document.querySelector(`#${type}Total`).textContent = `Total: ${money(sum(rows))}`;
@@ -5261,9 +5291,13 @@ function renderSales() {
   .filter((sale) => `${sale.description} ${sale.category} ${personName(sale.personId)}`.toLowerCase().includes(search))
   .sort((a, b) => b.saleDate.localeCompare(a.saleDate));
 
- document.querySelector("#salesTable").innerHTML = sales.length ?
+ const salesTable = document.querySelector("#salesTable");
+ salesTable.innerHTML = sales.length ?
    sales.map((sale) => saleRow(sale)).join("")
-  : `<tr><td colspan="8">${emptyMessage("Nenhuma venda parcelada cadastrada.")}</td></tr>`;
+  : `<tr><td colspan="9">${emptyMessage("Nenhuma venda parcelada cadastrada.")}</td></tr>`;
+ salesTable.querySelectorAll("[data-sale-action='installments']").forEach((button) => {
+  button.addEventListener("click", () => openSaleInstallmentsDialog(button.dataset.id));
+ });
  renderManualSalesRanking();
 }
 
@@ -5275,6 +5309,68 @@ function setSalesTab(tab) {
   panel.classList.toggle("hidden", panel.dataset.salesPanel !== tab);
  });
  if (tab === "ranking") renderManualSalesRanking();
+}
+
+function linkedSaleForTransaction(item) {
+ if (!item?.saleId) return null;
+ return state.sales.find((sale) => sale.id === item.saleId) || null;
+}
+
+function receivableGroupKey(item) {
+ const sale = linkedSaleForTransaction(item);
+ return sale ? `sale:${sale.id}` : `transaction:${item.id}`;
+}
+
+function installmentSortValue(item) {
+ if (item.installmentNumber === "entrada") return 0;
+ const number = Number(item.installmentNumber);
+ return Number.isFinite(number) && number > 0 ? number : 9999;
+}
+
+function sortReceivablesBySaleGroup(rows) {
+ const firstDueByGroup = new Map();
+ rows.forEach((item) => {
+  const key = receivableGroupKey(item);
+  const current = firstDueByGroup.get(key);
+  if (!current || item.dueDate < current) firstDueByGroup.set(key, item.dueDate);
+ });
+ rows.sort((a, b) => {
+  const aKey = receivableGroupKey(a);
+  const bKey = receivableGroupKey(b);
+  const dueComparison = firstDueByGroup.get(aKey).localeCompare(firstDueByGroup.get(bKey));
+  if (dueComparison) return dueComparison;
+  if (aKey !== bKey) return aKey.localeCompare(bKey);
+  return installmentSortValue(a) - installmentSortValue(b) || a.dueDate.localeCompare(b.dueDate);
+ });
+}
+
+function renderTransactionRows(rows, type) {
+ if (type !== "receber") return rows.map((item) => transactionRow(item, type)).join("");
+ const renderedGroups = new Set();
+ return rows.map((item) => {
+  const sale = linkedSaleForTransaction(item);
+  const groupHeader = sale && !renderedGroups.has(sale.id) ? receivableSaleGroupRow(sale) : "";
+  if (sale) renderedGroups.add(sale.id);
+  return `${groupHeader}${transactionRow(item, type)}`;
+ }).join("");
+}
+
+function receivableSaleGroupRow(sale) {
+ const installments = saleInstallmentsFor(sale.id);
+ const received = sum(installments.filter((item) => item.status === "recebido"));
+ const open = installments.filter((item) => item.status === "aberto").length;
+ return `
+  <tr class="receivable-sale-group">
+   <td colspan="8">
+    <div class="receivable-sale-group-content">
+     <div>
+      <strong>Venda parcelada: ${escapeHtml(personName(sale.personId))} — ${escapeHtml(sale.description)}</strong>
+      <span>${installments.length} parcela(s) · Total ${money(sale.total)} · Recebido ${money(received)} · ${open} em aberto</span>
+     </div>
+     <button type="button" data-action="sale-installments" data-id="${sale.id}">Ver/editar parcelas</button>
+    </div>
+   </td>
+  </tr>`;
 }
 
 function syncSalesRankDateToPeriod() {
@@ -5551,7 +5647,7 @@ function handleManualSalesRankAction(event) {
 }
 
 function saleRow(sale) {
- const installments = state.transactions.filter((item) => item.saleId === sale.id);
+ const installments = saleInstallmentsFor(sale.id);
  const received = sum(installments.filter((item) => item.status === "recebido"));
  const open = installments.filter((item) => item.status === "aberto").length;
  const status = open === 0 && installments.length > 0 ? "Recebida" : `${open} em aberto`;
@@ -5566,7 +5662,209 @@ function saleRow(sale) {
    <td class="money">${money(sale.total)}</td>
    <td class="money">${money(received)}</td>
    <td><span class="status ${open === 0 ? "baixado" : "aberto"}">${status}</span></td>
+   <td><button type="button" data-sale-action="installments" data-id="${sale.id}">Ver/editar parcelas</button></td>
   </tr>`;
+}
+
+function saleInstallmentsFor(saleId) {
+ return state.transactions
+  .filter((item) => item.type === "receber" && item.saleId === saleId)
+  .sort((a, b) => installmentSortValue(a) - installmentSortValue(b) || a.dueDate.localeCompare(b.dueDate));
+}
+
+function openSaleInstallmentsDialog(saleId) {
+ const sale = state.sales.find((item) => item.id === saleId);
+ if (!sale) {
+  toast("Venda não encontrada.");
+  return;
+ }
+ els.saleInstallmentsSaleId.value = sale.id;
+ els.saleInstallmentsSummary.innerHTML = `
+  <div>
+   <span>Cliente</span>
+   <strong>${escapeHtml(personName(sale.personId))}</strong>
+  </div>
+  <div>
+   <span>Venda</span>
+   <strong>${escapeHtml(sale.description)}</strong>
+  </div>
+  <div>
+   <span>Valor total</span>
+   <strong>${money(sale.total)}</strong>
+  </div>`;
+ renderSaleInstallmentsEditor(sale);
+ els.saleInstallmentsDialog.showModal();
+}
+
+function renderSaleInstallmentsEditor(sale) {
+ const installments = saleInstallmentsFor(sale.id);
+ els.saleInstallmentsEditor.innerHTML = installments.length
+  ? installments.map((item) => saleInstallmentEditorRow(item)).join("")
+  : emptyMessage("Nenhuma parcela vinculada. Use “Adicionar parcela” para reconstruir o A Receber desta venda.");
+ updateSaleInstallmentsEditorTotal();
+}
+
+function saleInstallmentEditorRow(item = null) {
+ const isEntry = item?.installmentNumber === "entrada";
+ const locked = Boolean(item?.bankMovementId);
+ const label = item ? installmentLabel(item) : "Nova parcela";
+ const dueDate = item?.dueDate || todayIso;
+ const amount = roundCurrency(Number(item?.amount || 0));
+ const status = item?.status === "recebido" ? "recebido" : "aberto";
+ return `
+  <div class="sale-installment-edit-row${locked ? " locked" : ""}" data-transaction-id="${item?.id || ""}" data-installment-kind="${isEntry ? "entry" : "installment"}">
+   <div class="sale-installment-edit-label">
+    <strong>${escapeHtml(label)}</strong>
+    ${locked ? "<small>Conciliada com banco</small>" : "<small>Vinculada ao A Receber</small>"}
+   </div>
+   <label>Vencimento
+    <input data-sale-edit-due-date type="date" value="${dueDate}" ${locked ? "disabled" : ""} required />
+   </label>
+   <label>Valor
+    <input data-sale-edit-amount type="number" min="0.01" step="0.01" value="${amount.toFixed(2)}" ${locked ? "disabled" : ""} required />
+   </label>
+   <label>Status
+    <select data-sale-edit-status ${locked ? "disabled" : ""}>
+     <option value="aberto" ${status === "aberto" ? "selected" : ""}>Em aberto</option>
+     <option value="recebido" ${status === "recebido" ? "selected" : ""}>Recebida</option>
+    </select>
+   </label>
+   <button class="danger-btn" data-sale-edit-remove type="button" ${locked ? "disabled title=\"Desfaça a conciliação bancária antes de excluir.\"" : ""}>Excluir</button>
+  </div>`;
+}
+
+function addSaleInstallmentEditorRow() {
+ const sale = state.sales.find((item) => item.id === els.saleInstallmentsSaleId.value);
+ if (!sale) return;
+ const currentRows = [...els.saleInstallmentsEditor.querySelectorAll(".sale-installment-edit-row")];
+ if (!currentRows.length) els.saleInstallmentsEditor.innerHTML = "";
+ const lastDate = currentRows.at(-1)?.querySelector("[data-sale-edit-due-date]")?.value || todayIso;
+ const nextDate = toIso(nextInstallmentDate(parseDate(lastDate), 1, "monthly", 30));
+ const wrapper = document.createElement("div");
+ wrapper.innerHTML = saleInstallmentEditorRow({
+  id: "",
+  dueDate: nextDate,
+  amount: 0,
+  status: "aberto",
+  installmentNumber: currentRows.length + 1,
+  installmentTotal: currentRows.length + 1,
+ });
+ els.saleInstallmentsEditor.append(wrapper.firstElementChild);
+ updateSaleInstallmentsEditorTotal();
+}
+
+function handleSaleInstallmentEditorClick(event) {
+ const removeButton = event.target.closest("[data-sale-edit-remove]");
+ if (!removeButton || removeButton.disabled) return;
+ removeButton.closest(".sale-installment-edit-row")?.remove();
+ updateSaleInstallmentsEditorTotal();
+}
+
+function readSaleInstallmentEditorRows() {
+ return [...els.saleInstallmentsEditor.querySelectorAll(".sale-installment-edit-row")].map((row) => {
+  const existing = state.transactions.find((item) => item.id === row.dataset.transactionId) || null;
+  return {
+   row,
+   existing,
+   kind: row.dataset.installmentKind,
+   dueDate: row.querySelector("[data-sale-edit-due-date]").value,
+   amount: roundCurrency(Number(row.querySelector("[data-sale-edit-amount]").value || 0)),
+   status: row.querySelector("[data-sale-edit-status]").value,
+  };
+ });
+}
+
+function updateSaleInstallmentsEditorTotal() {
+ const sale = state.sales.find((item) => item.id === els.saleInstallmentsSaleId.value);
+ if (!sale) return;
+ const rowsTotal = roundCurrency(sum(readSaleInstallmentEditorRows().map((item) => item.amount)));
+ const difference = roundCurrency(Number(sale.total || 0) - rowsTotal);
+ els.saleInstallmentsTotal.textContent = `Total das parcelas: ${money(rowsTotal)} · Diferença: ${money(difference)}`;
+ els.saleInstallmentsTotal.classList.toggle("invalid", Math.abs(difference) >= 0.01);
+}
+
+function saveSaleInstallmentChanges() {
+ const sale = state.sales.find((item) => item.id === els.saleInstallmentsSaleId.value);
+ if (!sale) return;
+ const rows = readSaleInstallmentEditorRows();
+ if (!rows.length) {
+  toast("Mantenha pelo menos uma parcela para esta venda.");
+  return;
+ }
+ if (rows.some((item) => !item.dueDate || item.amount <= 0)) {
+  toast("Preencha o vencimento e um valor maior que zero em todas as parcelas.");
+  return;
+ }
+ const rowsTotal = roundCurrency(sum(rows.map((item) => item.amount)));
+ if (Math.abs(roundCurrency(Number(sale.total || 0) - rowsTotal)) >= 0.01) {
+  toast("A soma das parcelas precisa ser igual ao valor total da venda.");
+  return;
+ }
+
+ const keptIds = new Set(rows.map((item) => item.existing?.id).filter(Boolean));
+ const removed = saleInstallmentsFor(sale.id).filter((item) => !keptIds.has(item.id));
+ if (removed.some((item) => item.bankMovementId)) {
+  toast("Desfaça a conciliação bancária antes de excluir uma parcela conciliada.");
+  return;
+ }
+ state.transactions = state.transactions.filter((item) => item.saleId !== sale.id);
+
+ const entryRows = rows.filter((item) => item.kind === "entry");
+ const balanceRows = rows.filter((item) => item.kind !== "entry");
+ rows.forEach((item) => {
+  const isEntry = item.kind === "entry";
+  const number = isEntry ? "entrada" : balanceRows.indexOf(item) + 1;
+  const oldAmount = Number(item.existing?.amount || item.amount);
+  const sourceAllocations = item.existing
+   ? normalizeAllocations(item.existing)
+   : (sale.projectId ? [{ projectId: sale.projectId, amount: item.amount }] : []);
+  const allocations = scaleAllocations(sourceAllocations, item.amount, oldAmount || item.amount);
+  const transaction = {
+   ...(item.existing || {}),
+   id: item.existing?.id || crypto.randomUUID(),
+   type: "receber",
+   personId: sale.personId,
+   description: isEntry
+    ? `${sale.description} - Entrada`
+    : `${sale.description} - Parcela ${number}/${balanceRows.length}`,
+   category: sale.category,
+   dreGroup: sale.dreGroup,
+   dueDate: item.dueDate,
+   amount: item.amount,
+   status: item.status,
+   paidDate: item.status === "recebido" ? (item.existing?.paidDate || todayIso) : "",
+   notes: sale.notes || "",
+   saleId: sale.id,
+   installmentNumber: number,
+   installmentTotal: balanceRows.length,
+   projectId: allocations.length === 1 ? allocations[0].projectId : "",
+   allocations,
+   bankMovementId: item.existing?.bankMovementId || "",
+   updatedAt: new Date().toISOString(),
+  };
+  state.transactions.push(transaction);
+ });
+
+ sale.installments = rows.length;
+ sale.entryAmount = entryRows[0]?.amount || 0;
+ sale.balanceInstallments = balanceRows.length;
+ sale.updatedAt = new Date().toISOString();
+ persist(["crm", "financeiro"]);
+ renderAll();
+ els.saleInstallmentsDialog.close();
+ toast("Parcelas atualizadas no A Receber.");
+}
+
+function openCurrentSaleReceivables() {
+ const sale = state.sales.find((item) => item.id === els.saleInstallmentsSaleId.value);
+ if (!sale) return;
+ document.querySelector("#receberSearch").value = sale.description;
+ document.querySelector("#receberStatus").value = "todos";
+ document.querySelector("#receberPeriodStart").value = "";
+ document.querySelector("#receberPeriodEnd").value = "";
+ els.saleInstallmentsDialog.close();
+ setView("receber");
+ renderTransactionTable("receber");
 }
 
 function openSaleDialog() {
