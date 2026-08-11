@@ -2625,10 +2625,13 @@
           <label>Valor total
             <input id="saleTotal" type="number" min="0.01" step="0.01" required />
           </label>
-          <label>Quantidade de parcelas
+          <label>Valor da entrada (opcional)
+            <input id="saleEntryAmount" type="number" min="0" step="0.01" value="0" />
+          </label>
+          <label>Parcelas do saldo
             <input id="saleInstallments" type="number" min="1" max="60" step="1" value="1" required />
           </label>
-          <label>Primeiro vencimento
+          <label>Data da entrada / primeiro vencimento
             <input id="saleFirstDueDate" type="date" required />
           </label>
           <label>Intervalo
@@ -3123,6 +3126,6 @@
     <script src="assets/estoque-iluminar-data.js?v=20260811-base-estoque-corrigida29"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260811-manual-bank-reconcile33"></script>
+    <script src="app.js?v=20260811-custom-sale-installments34"></script>
   </body>
 </html>

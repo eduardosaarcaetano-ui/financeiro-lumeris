@@ -644,6 +644,7 @@ const els = {
  saleCategory: document.querySelector("#saleCategory"),
  saleProject: document.querySelector("#saleProject"),
  saleTotal: document.querySelector("#saleTotal"),
+ saleEntryAmount: document.querySelector("#saleEntryAmount"),
  saleInstallments: document.querySelector("#saleInstallments"),
  saleFirstDueDate: document.querySelector("#saleFirstDueDate"),
  saleInterval: document.querySelector("#saleInterval"),
@@ -1280,7 +1281,7 @@ function bindEvents() {
  });
 
  ["input", "change"].forEach((eventName) => {
-  [els.saleTotal, els.saleInstallments, els.saleFirstDueDate, els.saleInterval, els.saleCustomDays].forEach((input) => {
+  [els.saleTotal, els.saleEntryAmount, els.saleInstallments, els.saleFirstDueDate, els.saleInterval, els.saleCustomDays].forEach((input) => {
    input.addEventListener(eventName, renderInstallmentPreview);
   });
  });
@@ -5560,7 +5561,7 @@ function saleRow(sale) {
    <td>${formatDate(sale.saleDate)}</td>
    <td>${escapeHtml(personName(sale.personId))}</td>
    <td>${escapeHtml(sale.description)}</td>
-   <td>${sale.installments}x</td>
+   <td>${sale.entryAmount > 0 ? `Entrada + ${sale.balanceInstallments || Math.max(1, Number(sale.installments || 1) - 1)}x` : `${sale.installments}x`}</td>
    <td>${escapeHtml(sale.category)}</td>
    <td class="money">${money(sale.total)}</td>
    <td class="money">${money(received)}</td>
@@ -5575,6 +5576,7 @@ function openSaleDialog() {
  }
  els.saleForm.reset();
  els.saleCategory.value = "Vendas";
+ els.saleEntryAmount.value = 0;
  els.saleInstallments.value = 1;
  els.saleDate.value = todayIso;
  els.saleFirstDueDate.value = todayIso;
@@ -5592,7 +5594,26 @@ function saveSale() {
  }
  const total = Number(els.saleTotal.value);
  const installmentsCount = Number(els.saleInstallments.value);
- const installments = buildInstallments(total, installmentsCount, els.saleFirstDueDate.value, els.saleInterval.value, Number(els.saleCustomDays.value));
+ const entryAmount = roundCurrency(Number(els.saleEntryAmount.value || 0));
+ if (entryAmount >= total) {
+  toast("O valor da entrada precisa ser menor que o valor total.");
+  return;
+ }
+ let installments = getEditedSaleInstallments();
+ if (!installments.length) {
+  renderInstallmentPreview();
+  installments = getEditedSaleInstallments();
+ }
+ const expectedRows = installmentsCount + (entryAmount > 0 ? 1 : 0);
+ if (installments.length !== expectedRows) {
+  toast("Preencha o valor e o vencimento de todas as parcelas.");
+  return;
+ }
+ const installmentsTotal = roundCurrency(sum(installments.map((item) => item.amount)));
+ if (Math.abs(roundCurrency(total - installmentsTotal)) >= 0.01) {
+  toast("A soma da entrada e das parcelas precisa ser igual ao valor total da venda.");
+  return;
+ }
  const saleId = crypto.randomUUID();
  const sale = {
   id: saleId,
@@ -5602,7 +5623,9 @@ function saveSale() {
   category: els.saleCategory.value.trim(),
   projectId: els.saleProject.value,
   total,
-  installments: installmentsCount,
+  installments: installments.length,
+  entryAmount: installments.find((item) => item.label === "Entrada")?.amount || 0,
+  balanceInstallments: installmentsCount,
   dreGroup: els.saleDreGroup.value,
   notes: els.saleNotes.value.trim(),
   createdAt: new Date().toISOString(),
@@ -5614,7 +5637,9 @@ function saveSale() {
    id: crypto.randomUUID(),
    type: "receber",
    personId: sale.personId,
-   description: `${sale.description} - Parcela ${installment.number}/${installmentsCount}`,
+   description: installment.label === "Entrada"
+    ? `${sale.description} - Entrada`
+    : `${sale.description} - Parcela ${installment.number}/${installmentsCount}`,
    category: sale.category,
    dreGroup: sale.dreGroup,
    dueDate: installment.dueDate,
@@ -5623,7 +5648,7 @@ function saveSale() {
    paidDate: "",
    notes: sale.notes,
    saleId,
-   installmentNumber: installment.number,
+   installmentNumber: installment.label === "Entrada" ? "entrada" : installment.number,
    installmentTotal: installmentsCount,
    projectId: sale.projectId,
    allocations: sale.projectId ? [{ projectId: sale.projectId, amount: installment.amount }] : [],
@@ -5642,18 +5667,81 @@ function renderInstallmentPreview() {
  const total = Number(els.saleTotal.value);
  const installmentsCount = Number(els.saleInstallments.value);
  const firstDue = els.saleFirstDueDate.value;
+ const entryAmount = roundCurrency(Number(els.saleEntryAmount.value || 0));
 
  if (!total || !installmentsCount || !firstDue) {
   els.installmentPreview.innerHTML = emptyMessage("Informe valor, parcelas e primeiro vencimento para visualizar as parcelas.");
   return;
  }
+ if (entryAmount >= total) {
+  els.installmentPreview.innerHTML = emptyMessage("O valor da entrada precisa ser menor que o valor total.");
+  return;
+ }
 
- const installments = buildInstallments(total, installmentsCount, firstDue, els.saleInterval.value, Number(els.saleCustomDays.value));
+ const installments = buildSaleInstallmentPlan(
+  total,
+  installmentsCount,
+  firstDue,
+  entryAmount,
+  els.saleInterval.value,
+  Number(els.saleCustomDays.value)
+ );
+ const rowsTotal = roundCurrency(sum(installments.map((item) => item.amount)));
  els.installmentPreview.innerHTML = `
-  <strong>Pr?via das parcelas</strong>
-  <div class="preview-grid">
-   ${installments.map((item) => `<span>${item.number}/${installmentsCount}</span><span>${formatDate(item.dueDate)}</span><strong>${money(item.amount)}</strong>`).join("")}
-  </div>`;
+  <strong>Prévia das parcelas</strong>
+  <small class="muted">Edite os valores e vencimentos. A soma precisa ser igual ao valor total da venda.</small>
+  <div class="editable-installments">
+   ${installments.map((item) => `
+    <div class="editable-installment-row">
+     <span>${escapeHtml(item.label)}</span>
+     <input data-sale-installment-date type="date" value="${item.dueDate}" />
+     <input data-sale-installment-amount type="number" min="0.01" step="0.01" value="${item.amount.toFixed(2)}" />
+    </div>`).join("")}
+  </div>
+  <small class="allocation-total ${Math.abs(total - rowsTotal) >= 0.01 ? "invalid" : ""}">Total das parcelas: ${money(rowsTotal)} - Diferença: ${money(roundCurrency(total - rowsTotal))}</small>`;
+ els.installmentPreview.querySelectorAll("[data-sale-installment-amount]").forEach((input) => {
+  input.addEventListener("input", updateEditedSaleInstallmentTotal);
+ });
+}
+
+function buildSaleInstallmentPlan(total, count, firstDue, entryAmount, interval, customDays) {
+ const plan = [];
+ if (entryAmount > 0) {
+  plan.push({ label: "Entrada", number: 0, amount: entryAmount, dueDate: firstDue });
+ }
+ const remaining = roundCurrency(total - entryAmount);
+ const firstInstallmentDue = entryAmount > 0
+  ? toIso(nextInstallmentDate(parseDate(firstDue), 1, interval, customDays))
+  : firstDue;
+ buildInstallments(remaining, count, firstInstallmentDue, interval, customDays).forEach((installment) => {
+  plan.push({ ...installment, label: `${installment.number}/${count}` });
+ });
+ return plan;
+}
+
+function getEditedSaleInstallments() {
+ return [...els.installmentPreview.querySelectorAll(".editable-installment-row")]
+  .map((row, index) => {
+   const label = row.querySelector("span").textContent || `${index + 1}`;
+   const match = label.match(/^(\d+)\/(\d+)/);
+   return {
+    label,
+    number: match ? Number(match[1]) : 0,
+    dueDate: row.querySelector("[data-sale-installment-date]").value,
+    amount: roundCurrency(Number(row.querySelector("[data-sale-installment-amount]").value || 0)),
+   };
+  })
+  .filter((item) => item.dueDate && item.amount > 0);
+}
+
+function updateEditedSaleInstallmentTotal() {
+ const total = roundCurrency(Number(els.saleTotal.value || 0));
+ const rowsTotal = roundCurrency(sum(getEditedSaleInstallments().map((item) => item.amount)));
+ const diff = roundCurrency(total - rowsTotal);
+ const totalEl = els.installmentPreview.querySelector(".allocation-total");
+ if (!totalEl) return;
+ totalEl.textContent = `Total das parcelas: ${money(rowsTotal)} - Diferença: ${money(diff)}`;
+ totalEl.classList.toggle("invalid", Math.abs(diff) >= 0.01);
 }
 
 function buildInstallments(total, count, firstDue, interval, customDays) {
@@ -13823,6 +13911,7 @@ function statusLabel(status) {
 }
 
 function installmentLabel(item) {
+ if (item.installmentNumber === "entrada") return "Entrada";
  return item.installmentNumber ? `${item.installmentNumber}/${item.installmentTotal}` : "-";
 }
 
