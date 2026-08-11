@@ -4052,6 +4052,36 @@ function handleOpportunityAttachmentAction(event) {
   renderOpportunityAttachmentRows();
   return;
  }
+ const deleteButton = event.target.closest("[data-delete-opportunity-attachment]");
+ if (deleteButton) {
+  const attachmentId = deleteButton.dataset.deleteOpportunityAttachment;
+  const item = opportunityAttachmentsDraft.find((entry) => entry.id === attachmentId);
+  if (!item) return;
+  const attachmentName = item.name || "Arquivo anexado";
+  if (!window.confirm(`Excluir "${attachmentName}" desta oportunidade?`)) return;
+
+  const opportunity = state.opportunities.find((entry) => entry.id === els.opportunityId.value);
+  const previousAttachments = opportunity ? normalizeOpportunityAttachments(opportunity.attachments) : [];
+  const previousUpdatedAt = opportunity?.updatedAt || "";
+  opportunityAttachmentsDraft = opportunityAttachmentsDraft.filter((entry) => entry.id !== attachmentId);
+
+  if (opportunity) {
+   opportunity.attachments = readOpportunityAttachmentsFromForm();
+   opportunity.updatedAt = new Date().toISOString();
+   if (!persist("crm")) {
+    opportunity.attachments = previousAttachments;
+    opportunity.updatedAt = previousUpdatedAt;
+    opportunityAttachmentsDraft = normalizeOpportunityAttachments(previousAttachments);
+    renderOpportunityAttachmentRows();
+    return;
+   }
+  }
+
+  renderOpportunityAttachmentRows();
+  setOpportunityAttachmentStatus("Arquivo excluído da oportunidade.", "ok");
+  toast("Arquivo excluído da oportunidade.");
+  return;
+ }
  const removeButton = event.target.closest("[data-remove-opportunity-attachment]");
  if (!removeButton) return;
  opportunityAttachmentsDraft = opportunityAttachmentsDraft.filter((item) => item.id !== removeButton.dataset.removeOpportunityAttachment);
@@ -4100,6 +4130,7 @@ function renderOpportunityAttachmentRows() {
        <div class="attachment-file-actions">
         ${openUrl ? `<a class="secondary-btn" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer">Abrir</a>` : `<span class="muted">Link indisponível</span>`}
         ${downloadUrl ? `<a class="secondary-btn" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noopener noreferrer" download>Baixar</a>` : ""}
+        <button class="secondary-btn danger-btn" data-delete-opportunity-attachment="${item.id}" type="button">Excluir</button>
        </div>
       </article>
      `;
