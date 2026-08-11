@@ -1501,7 +1501,7 @@ button.project-chip {
 
 .attachment-row {
   display: grid;
-  grid-template-columns: 120px minmax(160px, 1fr) minmax(220px, 1.4fr) minmax(160px, 1fr) auto;
+  grid-template-columns: 110px minmax(150px, 1fr) minmax(210px, 1.4fr) minmax(150px, 1fr) auto auto;
   gap: 10px;
   align-items: end;
   padding: 10px;
@@ -1513,6 +1513,59 @@ button.project-chip {
 .attachment-row label,
 .map-lead-item {
   min-width: 0;
+}
+
+.attachment-file-row {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.attachment-file-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #e4f2ed;
+  color: var(--primary);
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.attachment-file-info {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.attachment-file-info strong,
+.attachment-file-info small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-file-info small {
+  color: var(--muted);
+}
+
+.attachment-file-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.attachment-file-actions .secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .map-actions {
@@ -3775,8 +3828,17 @@ dialog::backdrop {
   .installation-efficiency-preview,
   .technical-photo-grid,
   .attachment-row,
+  .attachment-file-row,
   .map-lead-item {
     grid-template-columns: 1fr;
+  }
+
+  .attachment-file-icon {
+    display: none;
+  }
+
+  .attachment-file-actions {
+    justify-content: flex-start;
   }
 
   .installation-labor-row {

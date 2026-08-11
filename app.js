@@ -3775,15 +3775,45 @@ function normalizeOpportunityAttachments(value) {
 }
 
 function addOpportunityAttachmentRow(entry = null) {
- opportunityAttachmentsDraft.push(entry || {
+ opportunityAttachmentsDraft.push(entry ? { ...entry, _editing: true } : {
   id: crypto.randomUUID(),
   type: "foto",
   name: "",
   url: "",
   notes: "",
   createdAt: new Date().toISOString(),
+  _editing: true,
  });
  renderOpportunityAttachmentRows();
+}
+
+function opportunityAttachmentTypeLabel(type) {
+ return ({
+  foto: "Foto",
+  conta_energia: "Conta de energia",
+  documento: "Documento",
+  pdf: "PDF",
+  planilha: "Planilha Excel",
+  midia: "Mídia",
+  outro: "Arquivo",
+ })[type] || "Arquivo";
+}
+
+function safeAttachmentUrl(value) {
+ try {
+  const parsed = new URL(String(value || "").trim());
+  return ["http:", "https:"].includes(parsed.protocol) ? parsed.toString() : "";
+ } catch (error) {
+  return "";
+ }
+}
+
+function opportunityAttachmentDownloadUrl(value) {
+ const url = safeAttachmentUrl(value);
+ if (!url) return "";
+ const driveId = url.match(/drive\.google\.com\/file\/d\/([^/?#]+)/i)?.[1]
+  || url.match(/[?&]id=([^&#]+)/i)?.[1];
+ return driveId ? `https://drive.google.com/uc?export=download&id=${encodeURIComponent(driveId)}` : url;
 }
 
 function setOpportunityAttachmentStatus(message, tone = "neutral") {
@@ -3979,6 +4009,23 @@ function handleOpportunityAttachmentPaste(event) {
 }
 
 function handleOpportunityAttachmentAction(event) {
+ const finishButton = event.target.closest("[data-finish-opportunity-attachment]");
+ if (finishButton) {
+  const item = opportunityAttachmentsDraft.find((entry) => entry.id === finishButton.dataset.finishOpportunityAttachment);
+  const row = finishButton.closest("[data-attachment-row]");
+  if (!item || !row) return;
+  item.type = row.querySelector("[data-attachment-type]").value || "outro";
+  item.name = row.querySelector("[data-attachment-name]").value.trim();
+  item.url = row.querySelector("[data-attachment-url]").value.trim();
+  item.notes = row.querySelector("[data-attachment-notes]").value.trim();
+  if (!item.name && !item.url) {
+   toast("Informe o nome ou o link do arquivo.");
+   return;
+  }
+  item._editing = false;
+  renderOpportunityAttachmentRows();
+  return;
+ }
  const removeButton = event.target.closest("[data-remove-opportunity-attachment]");
  if (!removeButton) return;
  opportunityAttachmentsDraft = opportunityAttachmentsDraft.filter((item) => item.id !== removeButton.dataset.removeOpportunityAttachment);
@@ -3987,21 +4034,52 @@ function handleOpportunityAttachmentAction(event) {
 
 function readOpportunityAttachmentsFromForm() {
  if (!els.opportunityAttachmentRows) return [];
- return [...els.opportunityAttachmentRows.querySelectorAll("[data-attachment-row]")].map((row) => ({
-  id: row.dataset.attachmentRow,
-  type: row.querySelector("[data-attachment-type]").value || "outro",
-  name: row.querySelector("[data-attachment-name]").value.trim() || "",
-  url: row.querySelector("[data-attachment-url]").value.trim() || "",
-  notes: row.querySelector("[data-attachment-notes]").value.trim() || "",
-  createdAt: opportunityAttachmentsDraft.find((item) => item.id === row.dataset.attachmentRow).createdAt || new Date().toISOString(),
- })).filter((item) => item.name || item.url || item.notes);
+ return opportunityAttachmentsDraft.map((item) => {
+  const row = els.opportunityAttachmentRows.querySelector(`[data-attachment-row="${item.id}"]`);
+  if (item._editing && row) {
+   return {
+    id: item.id,
+    type: row.querySelector("[data-attachment-type]").value || "outro",
+    name: row.querySelector("[data-attachment-name]").value.trim(),
+    url: row.querySelector("[data-attachment-url]").value.trim(),
+    notes: row.querySelector("[data-attachment-notes]").value.trim(),
+    createdAt: item.createdAt || new Date().toISOString(),
+   };
+  }
+  return {
+   id: item.id,
+   type: item.type || "outro",
+   name: item.name || "",
+   url: item.url || "",
+   notes: item.notes || "",
+   createdAt: item.createdAt || new Date().toISOString(),
+  };
+ }).filter((item) => item.name || item.url || item.notes);
 }
 
 function renderOpportunityAttachmentRows() {
  if (!els.opportunityAttachmentRows) return;
  els.opportunityAttachmentRows.innerHTML = opportunityAttachmentsDraft.length ?
-   opportunityAttachmentsDraft.map((item) => `
-   <article class="attachment-row" data-attachment-row="${item.id}">
+   opportunityAttachmentsDraft.map((item) => {
+    if (!item._editing) {
+     const openUrl = safeAttachmentUrl(item.url);
+     const downloadUrl = opportunityAttachmentDownloadUrl(item.url);
+     return `
+      <article class="attachment-file-row" data-attachment-row="${item.id}">
+       <div class="attachment-file-icon" aria-hidden="true">↗</div>
+       <div class="attachment-file-info">
+        <strong>${escapeHtml(item.name || "Arquivo anexado")}</strong>
+        <small>${escapeHtml(opportunityAttachmentTypeLabel(item.type))}${item.notes ? ` · ${escapeHtml(item.notes)}` : ""}</small>
+       </div>
+       <div class="attachment-file-actions">
+        ${openUrl ? `<a class="secondary-btn" href="${escapeHtml(openUrl)}" target="_blank" rel="noopener noreferrer">Abrir</a>` : `<span class="muted">Link indisponível</span>`}
+        ${downloadUrl ? `<a class="secondary-btn" href="${escapeHtml(downloadUrl)}" target="_blank" rel="noopener noreferrer" download>Baixar</a>` : ""}
+       </div>
+      </article>
+     `;
+    }
+    return `
+   <article class="attachment-row attachment-editor-row" data-attachment-row="${item.id}">
     <label>Tipo
      <select data-attachment-type>
       ${[
@@ -4024,9 +4102,11 @@ function renderOpportunityAttachmentRows() {
     <label class="attachment-notes">Observações
      <input data-attachment-notes maxlength="180" value="${escapeHtml(item.notes)}" />
     </label>
+    <button class="primary-btn" data-finish-opportunity-attachment="${item.id}" type="button">Concluir</button>
     <button class="secondary-btn" data-remove-opportunity-attachment="${item.id}" type="button">Remover</button>
    </article>
-  `).join("")
+  `;
+   }).join("")
   : emptyMessage("Nenhum anexo registrado. Crie a pasta da oportunidade no Drive e adicione os arquivos ou links aqui.");
 }
 
