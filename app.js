@@ -76,6 +76,7 @@ const BANK_PROVIDERS = {
 const MANUAL_BANK_BALANCE_OVERRIDES = [
  { bankId: "077", accountId: "200652028", balance: 88136.42, balanceDate: "2026-07-23", source: "manual" },
 ];
+const MANUAL_BANK_RECONCILIATION_VALUE = "__manual_reconcile__";
 
 const MOCK_DESCRIPTIONS = {
  "077": {
@@ -1981,6 +1982,9 @@ normalized.salesTargets = normalized.salesTargets
   notes: "",
   transactionId: "",
   invoiceId: "",
+  manualReconciled: false,
+  reconciledAt: "",
+  reconciledBy: "",
   reconciliationHistory: [],
   ...item,
  }));
@@ -9102,7 +9106,7 @@ function renderBank() {
  const movements = filteredBankMovements();
  const totalIn = sum(movements.filter((item) => item.type === "entrada"));
  const totalOut = sum(movements.filter((item) => item.type === "saida"));
- const pending = movements.filter((item) => bankStatus(item) === "pendente").length;
+ const pending = movements.filter((item) => bankStatus(item) !== "conciliado").length;
 
  document.querySelector("#bankInTotal").textContent = money(totalIn);
  document.querySelector("#bankOutTotal").textContent = money(totalOut);
@@ -9230,7 +9234,7 @@ function bankRow(item) {
 }
 
 function bankStatus(item) {
- if (item.transactionId || item.invoiceId) return "conciliado";
+ if (item.manualReconciled || item.transactionId || item.invoiceId) return "conciliado";
  if (item.category) return "classificado";
  return "pendente";
 }
@@ -9274,7 +9278,7 @@ function openBankDialog(movement) {
   <strong>${movement.type === "entrada" ? "Entrada" : "Saída"} de ${money(movement.amount)}</strong>
   <span>${formatDate(movement.date)} - ${escapeHtml(movement.description)}</span>`;
  hydrateBankMatches(movement);
- els.bankMatchTransaction.value = movement.transactionId || "";
+ els.bankMatchTransaction.value = movement.transactionId || (movement.manualReconciled ? MANUAL_BANK_RECONCILIATION_VALUE : "");
  els.bankMatchTransaction.onchange = () => {
   if (!els.bankProject.value) {
    const transaction = state.transactions.find((item) => item.id === els.bankMatchTransaction.value);
@@ -9422,6 +9426,7 @@ function hydrateBankMatches(movement) {
 
  els.bankMatchTransaction.innerHTML = [
   `<option value="">Somente classificar, sem conciliar</option>`,
+  `<option value="${MANUAL_BANK_RECONCILIATION_VALUE}">Classificar e conciliar</option>`,
   ...matches.map(({ item }) => `<option value="${item.id}">${formatDate(item.dueDate)} - ${personName(item.personId)} - ${escapeHtml(item.description)} - ${escapeHtml(transactionProjectLabel(item))} - ${money(item.amount)}</option>`),
  ].join("");
 }
@@ -9441,7 +9446,9 @@ function saveBankClassification() {
 
  movement.category = els.bankCategory.value.trim();
  movement.dreGroup = els.bankDreGroup.value;
- const matchedTransaction = state.transactions.find((item) => item.id === els.bankMatchTransaction.value);
+ const selectedMatch = els.bankMatchTransaction.value;
+ const manualReconcile = selectedMatch === MANUAL_BANK_RECONCILIATION_VALUE;
+ const matchedTransaction = state.transactions.find((item) => item.id === selectedMatch);
  const validationMessage = validateBankReconciliation(movement, matchedTransaction);
  if (validationMessage) {
   toast(validationMessage);
@@ -9461,7 +9468,10 @@ function saveBankClassification() {
    : matchedAllocations;
  movement.projectId = movement.allocations.length === 1 ? movement.allocations[0].projectId : "";
  movement.notes = els.bankNotes.value.trim();
- movement.transactionId = els.bankMatchTransaction.value;
+ movement.transactionId = matchedTransaction?.id || "";
+ movement.manualReconciled = manualReconcile;
+ movement.reconciledAt = "";
+ movement.reconciledBy = "";
  movement.updatedAt = new Date().toISOString();
 
  if (movement.transactionId) {
@@ -9480,8 +9490,6 @@ function saveBankClassification() {
    transaction.updatedAt = movement.updatedAt;
   }
  }
- registerBankReconciliationHistory(movement, matchedTransaction, "conciliado");
-
  movement.invoiceId = els.bankMatchInvoice.value;
  if (movement.invoiceId) {
   const invoice = state.invoices.find((item) => item.id === movement.invoiceId);
@@ -9490,6 +9498,13 @@ function saveBankClassification() {
    invoice.updatedAt = movement.updatedAt;
   }
  }
+
+ const reconciled = Boolean(movement.manualReconciled || movement.transactionId || movement.invoiceId);
+ if (reconciled) {
+  movement.reconciledAt = movement.updatedAt;
+  movement.reconciledBy = currentCrmUser();
+ }
+ registerBankReconciliationHistory(movement, matchedTransaction, reconciled ? "conciliado" : "classificado");
 
  persist("financeiro");
  renderAll();
@@ -9526,24 +9541,31 @@ function registerBankReconciliationHistory(movement, transaction, action) {
   user: currentCrmUser(),
   bankId: movement.bankId || "",
   accountId: movement.accountId || "",
-  projectId: movement.projectId || transaction.projectId || "",
-  transactionId: transaction.id || "",
+  projectId: movement.projectId || transaction?.projectId || "",
+  transactionId: transaction?.id || "",
+  invoiceId: movement.invoiceId || "",
+  manual: Boolean(movement.manualReconciled),
   amount: Number(movement.amount || 0),
  });
 }
 
 function unlinkBankMovement(movement) {
- movement.invoiceId = "";
- if (!movement.transactionId) return;
- const transaction = state.transactions.find((item) => item.id === movement.transactionId);
- if (transaction.bankMovementId === movement.id) {
+ const hadReconciliation = Boolean(movement.manualReconciled || movement.transactionId || movement.invoiceId);
+ const transaction = movement.transactionId
+  ? state.transactions.find((item) => item.id === movement.transactionId)
+  : null;
+ if (transaction?.bankMovementId === movement.id) {
   transaction.status = "aberto";
   transaction.paidDate = "";
   transaction.bankMovementId = "";
   transaction.updatedAt = new Date().toISOString();
  }
- registerBankReconciliationHistory(movement, transaction, "desfeito");
+ if (hadReconciliation) registerBankReconciliationHistory(movement, transaction, "desfeito");
+ movement.invoiceId = "";
  movement.transactionId = "";
+ movement.manualReconciled = false;
+ movement.reconciledAt = "";
+ movement.reconciledBy = "";
 }
 
 function suggestCategory(movement) {
@@ -9569,7 +9591,7 @@ function exportBankCsv() {
   dreGroupLabel(item.dreGroup),
   bankStatus(item),
   item.amount,
-  item.transactionId ? "sim" : "nao",
+  bankStatus(item) === "conciliado" ? "sim" : "nao",
   item.notes,
  ]);
  downloadCsv(`movimentos-bancarios-${todayIso}.csv`, [["ID_MOVIMENTO", "data", "tipo", "historico", "banco", "conta", "documento", "categoria", "projeto", "grupo_dre", "status", "valor", "conciliado", "observacoes"], ...rows]);
