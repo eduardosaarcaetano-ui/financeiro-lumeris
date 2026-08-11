@@ -1664,6 +1664,7 @@ normalized.salesTargets = normalized.salesTargets
   lastPurchaseCost: 0,
   active: true,
   notes: "",
+  inventorySnapshotAt: "",
   createdAt: "",
   updatedAt: "",
   ...item,
@@ -9923,7 +9924,12 @@ function reconcileStockBalancesFromMovements(targetState = state) {
  });
 
  targetState.stockItems.forEach((item) => {
-  const movements = movementsByItem.get(item.id);
+  const snapshotTime = Date.parse(item.inventorySnapshotAt || "") || 0;
+  const movements = (movementsByItem.get(item.id) || []).filter((movement) => {
+   if (!snapshotTime) return true;
+   const movementTime = Date.parse(stockMovementStamp(movement) || "") || 0;
+   return movementTime > snapshotTime;
+  });
   if (!movements?.length) return;
   const latest = movements
    .filter((movement) => Number.isFinite(Number(movement.balanceAfter)))
@@ -10079,7 +10085,6 @@ function applyIluminarStockBaseline() {
  const baselineVersion = payload.baselineVersion || payload.generatedAt || "";
  if (!baselineVersion || state.stockBaselineVersion === baselineVersion) return false;
  applyLatestStockCatalog(payload);
- state.stockMovements = [];
  state.stockBaselineVersion = baselineVersion;
  return true;
 }
@@ -10088,40 +10093,96 @@ function stockCatalogSourceItems(payload = stockImportPayload()) {
  return [...(payload.items || []), ...(payload.uncatalogedItems || [])];
 }
 
+function normalizeStockCatalogText(value) {
+ return String(value || "")
+  .normalize("NFD")
+  .replace(/[\u0300-\u036f]/g, "")
+  .toUpperCase()
+  .replace(/[^A-Z0-9]+/g, " ")
+  .trim()
+  .replace(/\s+/g, " ");
+}
+
 function stockCatalogKey(item) {
  return [
-  String(item.internalCode || "").trim().toUpperCase(),
-  String(item.name || "").trim().toUpperCase(),
-  String(item.sourceRow || "").trim(),
+  normalizeStockCatalogText(item.internalCode),
+  normalizeStockCatalogText(item.name || item.description),
  ].join("::");
 }
 
 function stockCatalogNeedsLatestBaseline(payload = stockImportPayload()) {
  const sourceItems = stockCatalogSourceItems(payload);
  if (!sourceItems.length) return false;
- if (state.stockItems.length !== sourceItems.length) return true;
- const expectedKeys = new Set(sourceItems.map(stockCatalogKey));
- const seenKeys = new Set();
- return state.stockItems.some((item) => {
-  const key = stockCatalogKey(item);
-  if (!expectedKeys.has(key) || seenKeys.has(key)) return true;
-  seenKeys.add(key);
-  return false;
- }) || seenKeys.size !== expectedKeys.size;
+ const baselineVersion = payload.baselineVersion || payload.generatedAt || "";
+ if (baselineVersion && state.stockBaselineVersion === baselineVersion) return false;
+ const activeKeys = new Set(state.stockItems.filter(isStockItemActive).map(stockCatalogKey));
+ return sourceItems.some((item) => !activeKeys.has(stockCatalogKey(item)));
 }
 
 function applyLatestStockCatalog(payload = stockImportPayload()) {
  const sourceItems = stockCatalogSourceItems(payload);
  if (!sourceItems.length) return false;
- const existingItems = state.stockItems || [];
- const inactiveKeys = new Set(existingItems.filter((item) => !isStockItemActive(item)).map(stockCatalogKey));
+ const existingItems = (state.stockItems || []).map((item) => ({ ...item }));
  const mainLocationId = ensureStockLocation("Estoque principal");
- state.stockItems = sourceItems.map((sourceItem) => {
-  const existing = findImportedStockItem(sourceItem) || {};
-  const item = buildStockItemFromImport(sourceItem, mainLocationId, existing, payload.sourceFile);
-  if (inactiveKeys.has(stockCatalogKey(sourceItem))) item.active = false;
-  return item;
+ const snapshotAt = new Date().toISOString();
+ const buckets = new Map();
+ existingItems.forEach((item, index) => {
+  const key = stockCatalogKey(item);
+  if (!buckets.has(key)) buckets.set(key, []);
+  buckets.get(key).push({ item, index });
  });
+ const usedIndexes = new Set();
+ const sourceKeys = new Set(sourceItems.map(stockCatalogKey));
+ const sourceCodes = new Map();
+ sourceItems.forEach((item) => {
+  const code = normalizeStockCatalogText(item.internalCode);
+  if (!code) return;
+  if (!sourceCodes.has(code)) sourceCodes.set(code, []);
+  sourceCodes.get(code).push(item);
+ });
+
+ sourceItems.forEach((sourceItem) => {
+  const candidates = (buckets.get(stockCatalogKey(sourceItem)) || [])
+   .filter((entry) => !usedIndexes.has(entry.index))
+   .sort((a, b) => {
+    const activeDifference = Number(isStockItemActive(b.item)) - Number(isStockItemActive(a.item));
+    if (activeDifference) return activeDifference;
+    const aExactId = a.item.id === sourceItem.id ? 1 : 0;
+    const bExactId = b.item.id === sourceItem.id ? 1 : 0;
+    return bExactId - aExactId;
+   });
+  const match = candidates[0];
+  if (match) {
+   usedIndexes.add(match.index);
+   existingItems[match.index] = {
+    ...existingItems[match.index],
+    quantity: Number(sourceItem.quantity || 0),
+    minQuantity: Number(sourceItem.minQuantity || 0),
+    maxQuantity: Number(sourceItem.maxQuantity || 0),
+    averageCost: Number(sourceItem.averageCost || 0),
+    lastPurchaseCost: Number(sourceItem.lastPurchaseCost || sourceItem.averageCost || 0),
+    inventorySnapshotAt: snapshotAt,
+    updatedAt: snapshotAt,
+   };
+   return;
+  }
+
+  const newItem = buildStockItemFromImport({ ...sourceItem, id: crypto.randomUUID() }, mainLocationId, {}, payload.sourceFile);
+  existingItems.push({ ...newItem, inventorySnapshotAt: snapshotAt });
+  usedIndexes.add(existingItems.length - 1);
+ });
+
+ existingItems.forEach((item, index) => {
+  if (usedIndexes.has(index) || !isStockItemActive(item)) return;
+  const key = stockCatalogKey(item);
+  const code = normalizeStockCatalogText(item.internalCode);
+  const importedFromCatalog = item.source === payload.sourceFile || String(item.notes || "").includes("Controle Estoque Iluminar");
+  const staleSameCode = importedFromCatalog && code && sourceCodes.get(code)?.length === 1;
+  if (!sourceKeys.has(key) && !staleSameCode) return;
+  existingItems[index] = { ...item, active: false, updatedAt: snapshotAt };
+ });
+
+ state.stockItems = existingItems;
  const baselineVersion = payload.baselineVersion || payload.generatedAt || "";
  if (baselineVersion) state.stockBaselineVersion = baselineVersion;
  return true;
@@ -10130,8 +10191,7 @@ function applyLatestStockCatalog(payload = stockImportPayload()) {
 function findImportedStockItem(sourceItem) {
  return state.stockItems.find((item) =>
   item.id === sourceItem.id ||
-  (sourceItem.internalCode && item.internalCode === sourceItem.internalCode && item.name === sourceItem.name) ||
-  (!sourceItem.internalCode && item.name.toLowerCase() === String(sourceItem.name || "").toLowerCase())
+  stockCatalogKey(item) === stockCatalogKey(sourceItem)
  );
 }
 
