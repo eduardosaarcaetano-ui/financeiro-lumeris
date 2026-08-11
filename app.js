@@ -31,7 +31,9 @@ let maintenancePollInFlight = false;
 
 const AUTH_STORAGE_KEY = "financeiro-lumeris-session";
 const MASTER_USERNAME = "adm";
+const MASTER_USER_ID = "master-adm";
 const MASTER_INITIAL_PASSWORD = "7695988";
+const DEFAULT_USER_PASSWORD = "Lumeris-2026";
 
 const SEARCH_ICON_SVG = '<svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>';
 
@@ -222,7 +224,7 @@ const STOCK_EXIT_TYPE_LABELS = {
  outro: "Outro",
 };
 
-let currentCrmTab = "funil";
+let currentCrmTab = "followup";
 let currentCrmView = "kanban";
 let pendingOpportunityConversion = null;
 let pendingWonOpportunity = null;
@@ -230,6 +232,7 @@ let technicalReportDraftPhotos = [];
 let opportunityAttachmentsDraft = [];
 let driveAutomationCapability = null;
 let showLostOpportunities = false;
+let rankingTvRefreshInFlight = false;
 
 // Ordem do funil é usada tanto para renderizar as colunas quanto para calcular
 // taxa de conversão por estágio nos relatórios. "ganho"/"perdido" são estágios
@@ -308,6 +311,8 @@ const els = {
  userName: document.querySelector("#userName"),
  userUsername: document.querySelector("#userUsername"),
  userPassword: document.querySelector("#userPassword"),
+ userPasswordLabel: document.querySelector("#userPasswordLabel"),
+ toggleUserPasswordBtn: document.querySelector("#toggleUserPasswordBtn"),
  userRole: document.querySelector("#userRole"),
  userSectorFields: Array.from(document.querySelectorAll("[data-user-sector]")),
  userActive: document.querySelector("#userActive"),
@@ -499,9 +504,12 @@ const els = {
  salesRankClient: document.querySelector("#salesRankClient"),
  salesRankCity: document.querySelector("#salesRankCity"),
  salesRankAmount: document.querySelector("#salesRankAmount"),
+ salesRankDate: document.querySelector("#salesRankDate"),
  salesRankPeriod: document.querySelector("#salesRankPeriod"),
  salesRankFilterPeriod: document.querySelector("#salesRankFilterPeriod"),
- salesRankSellerSuggestions: document.querySelector("#salesRankSellerSuggestions"),
+ salesRankMonthlyGoal: document.querySelector("#salesRankMonthlyGoal"),
+ saveSalesRankGoalBtn: document.querySelector("#saveSalesRankGoalBtn"),
+ salesRankGoalProgress: document.querySelector("#salesRankGoalProgress"),
  salesRankEntries: document.querySelector("#salesRankEntries"),
  salesRankList: document.querySelector("#salesRankList"),
  salesRankSummary: document.querySelector("#salesRankSummary"),
@@ -549,8 +557,6 @@ const els = {
  opportunityPendingActivity: document.querySelector("#opportunityPendingActivity"),
  opportunityNotes: document.querySelector("#opportunityNotes"),
  opportunityAddress: document.querySelector("#opportunityAddress"),
- opportunityLatitude: document.querySelector("#opportunityLatitude"),
- opportunityLongitude: document.querySelector("#opportunityLongitude"),
  opportunityDriveFolder: document.querySelector("#opportunityDriveFolder"),
  opportunityFileInput: document.querySelector("#opportunityFileInput"),
  opportunityAttachmentDropzone: document.querySelector("#opportunityAttachmentDropzone"),
@@ -882,12 +888,17 @@ boot().catch((error) => {
 async function boot() {
  try {
   bindEvents();
+  if (ensureSalesTargetCompatibilityEntries()) persist("crm");
   setDefaultReportPeriod();
   renderAll();
   if (isSalesRankingTvMode()) {
-   await initRemoteSync();
+   if (window.location.protocol === "file:") {
+    Object.assign(state, loadState());
+   } else {
+    await initRemoteSync();
+   }
    renderSalesRankingTvMode();
-   window.setInterval(renderSalesRankingTvMode, 60000);
+   window.setInterval(refreshSalesRankingTvMode, 30000);
    return;
   }
   await ensureMasterUser({ save: false });
@@ -895,7 +906,7 @@ async function boot() {
   restoreSessionOrShowLogin();
   initRemoteSync()
    .then(async () => {
-    await ensureMasterUser({ save: false });
+    await ensureMasterUser({ save: true });
     renderUsers();
     if (!currentSessionUser()) {
      restoreSessionOrShowLogin();
@@ -935,6 +946,8 @@ function bindEvents() {
  els.maintenanceControlForm.addEventListener("submit", saveMaintenanceControl);
  els.userForm.addEventListener("submit", saveUser);
  els.userRole.addEventListener("change", updateUserSectorUi);
+ els.toggleUserPasswordBtn.addEventListener("click", toggleUserPasswordVisibility);
+ els.userPassword.value = DEFAULT_USER_PASSWORD;
  enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente" });
  enhanceSearchableSelect(els.bankProject, { placeholder: "Buscar projeto" });
  enhanceSearchableSelect(els.protocolCustomer, { placeholder: "Buscar cliente" });
@@ -942,6 +955,9 @@ function bindEvents() {
  enhanceSearchableSelect(els.protocolResponsible, { placeholder: "Buscar responsável" });
  enhanceSearchableSelect(els.installationProject, { placeholder: "Buscar projeto" });
  enhanceSearchableSelect(els.installationCustomer, { placeholder: "Buscar cliente" });
+ enhanceSearchableSelect(els.taskSeller, { placeholder: "Digite o nome do vendedor" });
+ enhanceSearchableSelect(els.taskOpportunity, { placeholder: "Digite o cliente ou a oportunidade" });
+ enhanceSearchableSelect(els.salesRankSeller, { placeholder: "Digite o nome do vendedor" });
 
  document.querySelectorAll("[data-invoice-kind]").forEach((button) => {
   button.addEventListener("click", () => setInvoiceKind(button.dataset.invoiceKind));
@@ -976,7 +992,10 @@ function bindEvents() {
  els.salesRankFilterPeriod.addEventListener("change", renderManualSalesRanking);
  els.salesRankEntries.addEventListener("click", handleManualSalesRankAction);
  els.salesRankPeriod.value = todayIso.slice(0, 7);
+ els.salesRankDate.value = todayIso;
  els.salesRankFilterPeriod.value = todayIso.slice(0, 7);
+ els.salesRankPeriod.addEventListener("change", syncSalesRankDateToPeriod);
+ els.saveSalesRankGoalBtn.addEventListener("click", saveSalesRankMonthlyGoal);
  els.openManualSalesRankMonthTvBtn?.addEventListener("click", () => openSalesRankingTv("month", "manual"));
  els.openManualSalesRankYearTvBtn?.addEventListener("click", () => openSalesRankingTv("year", "manual"));
 
@@ -1025,6 +1044,7 @@ function bindEvents() {
  document.querySelectorAll("[data-crm-tab]").forEach((button) => {
   button.addEventListener("click", () => setCrmTab(button.dataset.crmTab));
  });
+ els.opportunityPerson?.addEventListener("change", () => fillOpportunityPhoneFromSelectedPerson(true));
  bindClickOnce("#newOpportunityBtn", "Opportunity", () => openOpportunityDialog(null));
  document.querySelector("#manageSellersBtn").addEventListener("click", openSellerDialog);
  document.querySelector("#newTaskBtn").addEventListener("click", openTaskDialog);
@@ -1433,6 +1453,7 @@ function loadState() {
   ],
   sales: [],
   salesRankingEntries: [],
+  salesTargets: [],
   crmUnits: [],
   crmPipelines: [],
   opportunityStages: [],
@@ -1470,6 +1491,7 @@ function normalizeState(data) {
   people: Array.isArray(data.people) ? data.people : [],
   sales: Array.isArray(data.sales) ? data.sales : [],
   salesRankingEntries: Array.isArray(data.salesRankingEntries) ? data.salesRankingEntries : [],
+  salesTargets: Array.isArray(data.salesTargets) ? data.salesTargets : [],
   crmUnits: Array.isArray(data.crmUnits) ? data.crmUnits : [],
   crmPipelines: Array.isArray(data.crmPipelines) ? data.crmPipelines : [],
   opportunityStages: Array.isArray(data.opportunityStages) ? data.opportunityStages : [],
@@ -1506,6 +1528,42 @@ function normalizeState(data) {
     }
    : { enabled: false, message: "", startedAt: "", startedBy: "" },
  };
+
+ normalized.salesRankingEntries = normalized.salesRankingEntries.map((item) => {
+  const period = String(item.period || "").slice(0, 7);
+  const explicitDate = String(item.saleDate || "").slice(0, 10);
+  const createdDate = String(item.createdAt || "").slice(0, 10);
+  const saleDate = explicitDate.startsWith(period) ? explicitDate
+   : createdDate.startsWith(period) ? createdDate
+    : period ? `${period}-01` : "";
+  return { ...item, period, saleDate };
+ });
+
+normalized.salesTargets = normalized.salesTargets
+  .map((item) => ({
+   id: item.id || `sales-target-${String(item.period || "").slice(0, 7)}`,
+   period: String(item.period || "").slice(0, 7),
+   amount: roundCurrency(Number(item.amount || 0)),
+   updatedAt: item.updatedAt || "",
+ }))
+ .filter((item) => item.period && item.amount >= 0);
+
+ const targetsByPeriod = new Map(normalized.salesTargets.map((target) => [target.period, target]));
+ normalized.salesRankingEntries.filter(isSalesTargetCompatibilityEntry).forEach((entry) => {
+  const period = String(entry.period || "").slice(0, 7);
+  const amount = roundCurrency(Number(entry.amount || 0));
+  if (!period || amount <= 0) return;
+  const existing = targetsByPeriod.get(period);
+  if (!existing || String(entry.updatedAt || "") >= String(existing.updatedAt || "")) {
+   targetsByPeriod.set(period, {
+    id: existing?.id || `sales-target-${period}`,
+    period,
+    amount,
+    updatedAt: entry.updatedAt || existing?.updatedAt || "",
+   });
+  }
+ });
+ normalized.salesTargets = [...targetsByPeriod.values()].sort((a, b) => a.period.localeCompare(b.period));
 
  normalized.sellers = normalized.sellers.map((item) => ({
   id: item.id,
@@ -1567,9 +1625,11 @@ function normalizeState(data) {
   dueDate: "",
   status: "pendente",
   opportunityId: "",
-  personId: "",
-  sellerId: "",
-  createdAt: item.createdAt || item.dueDate || "",
+ personId: "",
+ sellerId: "",
+ createdAt: item.createdAt || item.dueDate || "",
+  updatedAt: item.updatedAt || item.createdAt || item.dueDate || "",
+  completedAt: item.completedAt || "",
   ...item,
  }));
 
@@ -2340,11 +2400,11 @@ function normalizePersistScopes(scopes) {
 function inferPersistScopes() {
  const view = document.body.dataset.view || "";
  if (["crm", "vendas"].includes(view)) return ["crm"];
- if (["receber", "pagar", "banco", "apisbancarias", "notasfiscais", "relatorios"].includes(view)) return ["financeiro"];
+ if (["receber", "pagar", "pessoas", "banco", "apisbancarias", "notasfiscais", "relatorios"].includes(view)) return ["financeiro"];
  if (view === "protocolos") return ["protocolo"];
  if (view === "estoque") return ["estoque"];
  if (["projetos", "instalacoes"].includes(view)) return ["projetos"];
- if (["usuarios", "pessoas"].includes(view)) return ["config"];
+ if (view === "usuarios") return ["config"];
  return ["all"];
 }
 
@@ -2690,18 +2750,28 @@ function normalizeLoginText(value) {
 }
 
 async function ensureMasterUser({ save = true } = {}) {
- let master = state.users.find((user) => user.username.toLowerCase() === MASTER_USERNAME);
+ const duplicateMasters = state.users.filter((user) => normalizeLoginText(user.username) === MASTER_USERNAME);
+ let master = duplicateMasters.find((user) => user.id === MASTER_USER_ID) || duplicateMasters[0];
  let changed = false;
 
  if (!master) {
   master = {
-   id: crypto.randomUUID(),
+   id: MASTER_USER_ID,
    name: "Administrador",
    username: MASTER_USERNAME,
    createdAt: new Date().toISOString(),
   };
   state.users.push(master);
   changed = true;
+ } else {
+  if (master.id !== MASTER_USER_ID) {
+   master.id = MASTER_USER_ID;
+   changed = true;
+  }
+  if (duplicateMasters.length > 1) {
+   state.users = state.users.filter((user) => user === master || normalizeLoginText(user.username) !== MASTER_USERNAME);
+   changed = true;
+  }
  }
 
  const storedPasswordHash = master.salt ? await hashPassword(MASTER_INITIAL_PASSWORD, master.salt) : "";
@@ -2729,7 +2799,11 @@ async function ensureMasterUser({ save = true } = {}) {
   changed = true;
  }
 
- if (changed && save) persist("config");
+ if (normalizeLoginText(getSession()?.username) === MASTER_USERNAME) setSession(master);
+ if (changed) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if (save) persist("config");
+ }
 }
 
 function getSession() {
@@ -3000,6 +3074,11 @@ function showApp() {
  hideMaintenance();
  els.appShell.classList.remove("hidden");
  updateSessionUi();
+ [els.crmUnitFilter, els.crmPipelineFilter, els.crmOwnerFilter, els.crmStageFilter, els.crmProjectFilter]
+  .filter(Boolean)
+  .forEach((filter) => {
+   if ([...filter.options].some((option) => option.value === "todos")) filter.value = "todos";
+  });
  setView(defaultViewForRole());
 }
 
@@ -3104,6 +3183,16 @@ function updateUserSectorUi() {
  });
 }
 
+function setUserPasswordVisibility(visible) {
+ els.userPassword.type = visible ? "text" : "password";
+ els.toggleUserPasswordBtn.textContent = visible ? "Ocultar" : "Mostrar";
+ els.toggleUserPasswordBtn.setAttribute("aria-pressed", String(visible));
+}
+
+function toggleUserPasswordVisibility() {
+ setUserPasswordVisibility(els.userPassword.type === "password");
+}
+
 function renderUsers() {
  const users = [...state.users].sort((a, b) => a.username.localeCompare(b.username));
  els.usersList.innerHTML = users.length ?
@@ -3113,6 +3202,7 @@ function renderUsers() {
     <span class="muted">@${escapeHtml(user.username)} - ${roleLabel(user.role)} - ${user.active ? "Ativo" : "Inativo"}</span>
     <div class="row-actions">
      <button type="button" data-user-action="edit" data-id="${user.id}">Editar</button>
+     ${normalizeLoginText(user.username) === MASTER_USERNAME ? "" : `<button type="button" data-user-action="reset-password" data-id="${user.id}">Resetar senha</button>`}
      <button type="button" data-user-action="delete" data-id="${user.id}">Excluir</button>
     </div>
    </article>`).join("")
@@ -3131,8 +3221,8 @@ async function saveUser(event) {
  }
  const id = els.userId.value || crypto.randomUUID();
  const username = els.userUsername.value.trim();
- const password = els.userPassword.value.trim();
  const existing = state.users.find((item) => item.id === id);
+ const password = els.userPassword.value.trim() || (!existing ? DEFAULT_USER_PASSWORD : "");
 
  const usernameTaken = state.users.some((item) => item.id !== id && normalizeLoginText(item.username) === normalizeLoginText(username));
  if (usernameTaken) {
@@ -3177,6 +3267,9 @@ async function saveUser(event) {
 
  els.userForm.reset();
  els.userId.value = "";
+ els.userPasswordLabel.textContent = "Senha";
+ els.userPassword.value = DEFAULT_USER_PASSWORD;
+ setUserPasswordVisibility(false);
  els.userActive.checked = true;
  setUserSectorFields(DEFAULT_USER_SECTORS);
  updateUserSectorUi();
@@ -3186,7 +3279,7 @@ async function saveUser(event) {
 toast("Usuário salvo.");
 }
 
-function handleUserAction(action, id) {
+async function handleUserAction(action, id) {
  if (!isAdmin()) {
   toast("Apenas administradores podem gerenciar usuários.");
   return;
@@ -3194,11 +3287,25 @@ function handleUserAction(action, id) {
  const user = state.users.find((item) => item.id === id);
  if (!user) return;
 
+ if (action === "reset-password") {
+  const confirmed = window.confirm(`Redefinir a senha de ${user.name || user.username} para ${DEFAULT_USER_PASSWORD}?`);
+  if (!confirmed) return;
+  user.salt = randomSalt();
+  user.passwordHash = await hashPassword(DEFAULT_USER_PASSWORD, user.salt);
+  user.updatedAt = new Date().toISOString();
+  persist("config");
+  renderUsers();
+  toast(`Senha redefinida para ${DEFAULT_USER_PASSWORD}.`);
+  return;
+ }
+
  if (action === "edit") {
   els.userId.value = user.id;
   els.userName.value = user.name;
   els.userUsername.value = user.username;
   els.userPassword.value = "";
+  els.userPasswordLabel.textContent = "Nova senha";
+  setUserPasswordVisibility(false);
   els.userRole.value = user.role;
   setUserSectorFields(normalizeUserSectors(user));
   updateUserSectorUi();
@@ -3206,7 +3313,7 @@ function handleUserAction(action, id) {
   return;
  }
 
- if (user.username === MASTER_USERNAME) {
+ if (normalizeLoginText(user.username) === MASTER_USERNAME) {
   toast("O usuário master não pode ser excluído.");
   return;
  }
@@ -3277,7 +3384,15 @@ function enhanceSearchableSelect(selectEl, { placeholder = "Buscar" } = {}) {
 
  input.addEventListener("focus", () => {
   input.select();
-  openOptions();
+  renderOptions("");
+  optionsBox.classList.remove("hidden");
+ });
+
+ inputWrap.addEventListener("click", () => {
+  input.focus();
+  input.select();
+  renderOptions("");
+  optionsBox.classList.remove("hidden");
  });
 
  input.addEventListener("input", () => {
@@ -3385,7 +3500,7 @@ function setView(view) {
  const activeView = canonicalView(view);
  document.body.dataset.view = activeView;
  els.navItems.forEach((item) => item.classList.toggle("active", item.dataset.view === view));
- els.views.forEach((section) => section.classList.toggle("active", section.id === activeView));
+ els.views.forEach((section) => section.classList.toggle("active", section.id === activeView || section.dataset.parentView === activeView));
  els.viewTitle.textContent = displayText(viewNames[view]);
  if (activeView === "vendas") {
   setSalesTab(view === "rankvendas" ? "ranking" : "vendas");
@@ -3435,6 +3550,7 @@ function renderAll() {
 }
 
 function hydrateCrmOptions() {
+ const initializeFilterDefaults = els.crmPipelineFilter?.dataset.defaultsInitialized !== "true";
  const unitOptions = state.crmUnits.map((unit) => `<option value="${unit.id}">${escapeHtml(unit.name)}</option>`).join("");
  const pipelineOptions = state.crmPipelines.map((pipeline) => `<option value="${pipeline.id}">${escapeHtml(pipeline.name)}</option>`).join("");
  const stageOptions = state.opportunityStages
@@ -3455,7 +3571,7 @@ function hydrateCrmOptions() {
   .join("");
 
  setSelectOptions(els.crmUnitFilter, `<option value="todos">Todas</option>${unitOptions}`);
- setSelectOptions(els.crmPipelineFilter, pipelineOptions);
+ setSelectOptions(els.crmPipelineFilter, `<option value="todos">Todos</option>${pipelineOptions}`);
  setSelectOptions(els.crmOwnerFilter, `<option value="todos">Todos</option>${ownerOptions}`);
  setSelectOptions(els.crmStageFilter, `<option value="todos">Todas</option>${stageOptions}`);
  setSelectOptions(els.crmProjectFilter, `<option value="todos">Todos</option><option value="">Sem projeto</option>${projectOptions}`);
@@ -3465,6 +3581,12 @@ function hydrateCrmOptions() {
  setSelectOptions(els.opportunityProject, `<option value="">Sem projeto</option>${projectOptions}`);
  setSelectOptions(els.opportunityPerson, peopleOptions || `<option value="">Cadastre um cliente primeiro</option>`);
  if (els.opportunityOwner) els.opportunityOwner.innerHTML = opportunityOwnerSelectOptions();
+ if (initializeFilterDefaults) {
+  [els.crmUnitFilter, els.crmPipelineFilter, els.crmOwnerFilter, els.crmStageFilter, els.crmProjectFilter]
+   .filter(Boolean)
+   .forEach((filter) => { filter.value = "todos"; });
+  els.crmPipelineFilter.dataset.defaultsInitialized = "true";
+ }
 }
 
 function setSelectOptions(select, html) {
@@ -3472,6 +3594,25 @@ function setSelectOptions(select, html) {
  const current = select.value;
  select.innerHTML = html;
  if ([...select.options].some((option) => option.value === current)) select.value = current;
+}
+
+function personPhoneForOpportunity(person) {
+ if (!person) return "";
+ const explicitPhone = String(person.phone || person.telefone || person.whatsapp || "").trim();
+ if (explicitPhone) return explicitPhone;
+ const contact = String(person.contact || "").trim();
+ if (!contact) return "";
+ if (!contact.includes("@") && onlyDigits(contact).length >= 8) return contact;
+ const phoneMatch = contact.match(/(?:\+\d{1,3}\s*)?(?:\(\d{2,3}\)\s*)?\d[\d\s.-]{6,}\d/);
+ if (phoneMatch) return phoneMatch[0].trim();
+ return contact.includes("@") ? "" : contact;
+}
+
+function fillOpportunityPhoneFromSelectedPerson(overwrite = false) {
+ if (!els.opportunityPerson || !els.opportunityPhone) return;
+ if (!overwrite && els.opportunityPhone.value.trim()) return;
+ const person = state.people.find((item) => item.id === els.opportunityPerson.value);
+ els.opportunityPhone.value = personPhoneForOpportunity(person);
 }
 
 function renderCrm() {
@@ -3503,7 +3644,7 @@ function filteredOpportunities() {
   const wonDate = opportunityWonDate(item);
   return canViewOpportunity(item)
    && (els.crmUnitFilter.value === "todos" || !els.crmUnitFilter.value || item.unitId === els.crmUnitFilter.value)
-   && (!els.crmPipelineFilter.value || item.pipelineId === els.crmPipelineFilter.value)
+   && (els.crmPipelineFilter.value === "todos" || !els.crmPipelineFilter.value || item.pipelineId === els.crmPipelineFilter.value)
    && (els.crmOwnerFilter.value === "todos" || !els.crmOwnerFilter.value || ownerName === els.crmOwnerFilter.value)
    && (els.crmStageFilter.value === "todos" || !els.crmStageFilter.value || item.stageId === els.crmStageFilter.value)
    && (els.crmProjectFilter.value === "todos" || item.projectId === els.crmProjectFilter.value)
@@ -4299,8 +4440,6 @@ function currentOpportunityDraftFromForm() {
   value: Number(els.opportunityValue.value || 0),
   location: {
    address: els.opportunityAddress.value.trim() || "",
-   latitude: els.opportunityLatitude.value.trim() || "",
-   longitude: els.opportunityLongitude.value.trim() || "",
   },
  };
 }
@@ -4320,7 +4459,7 @@ function generateOpportunityProposalPdf() {
 function openCurrentOpportunityMap() {
  const locationText = opportunityLocationText(currentOpportunityDraftFromForm());
  if (!locationText) {
-  toast("Informe endereço ou latitude/longitude para abrir o mapa.");
+  toast("Informe o link da localização para abrir o mapa.");
   return;
  }
  window.open(googleMapsUrlFromLocation(locationText), "_blank");
@@ -4345,7 +4484,7 @@ function renderCrmMapList() {
      <a class="secondary-btn" href="${googleMapsUrlFromLocation(location)}" target="_blank" rel="noopener">Abrir no Google Maps</a>
     </article>`;
   }).join("")
-  : emptyMessage("Nenhum lead visível possui endereço ou coordenadas.");
+  : emptyMessage("Nenhum lead visível possui localização cadastrada.");
 }
 
 function openVisibleCrmRoute() {
@@ -4367,11 +4506,12 @@ function openOpportunityDialog(item = null) {
  els.opportunityNumber.value = item.number || nextOpportunityNumber();
  els.opportunityValue.value = item.value || 0;
  els.opportunityUnit.value = item.unitId || state.crmUnits[0].id || "";
- els.opportunityPipeline.value = item.pipelineId || els.crmPipelineFilter.value || state.crmPipelines[0].id || "";
+ els.opportunityPipeline.value = item.pipelineId || (els.crmPipelineFilter.value !== "todos" ? els.crmPipelineFilter.value : "") || state.crmPipelines[0].id || "";
  els.opportunityStage.value = item.stageId || state.opportunityStages[0].id || "";
  if (els.opportunityClosedDate) els.opportunityClosedDate.value = item.closedDate || (isOpportunityWon(item || {}) ? opportunityWonDate(item) : "");
  setOpportunityOwnerValue(item);
  els.opportunityPhone.value = item.phone || "";
+ if (!item) fillOpportunityPhoneFromSelectedPerson();
  els.opportunityEmail.value = item.email || "";
  els.opportunityProject.value = item.projectId || "";
  els.opportunityTags.value = normalizeTags(item.tags).join(", ");
@@ -4448,16 +4588,92 @@ function moveOpportunity(id, newStageId) {
 
 function renderOpportunityHistory(opportunityId) {
  if (!els.opportunityHistory) return;
- const rows = state.opportunityHistory
-  .filter((item) => item.opportunityId === opportunityId)
-  .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+ const rows = opportunityTimelineRows(opportunityId);
  els.opportunityHistory.innerHTML = rows.length ?
    rows.map((row) => `
-   <article class="report-item">
-    <strong><span>${escapeHtml(row.action)}</span><span>${formatDate(row.createdAt.slice(0, 10))}</span></strong>
-    <span class="muted">${escapeHtml(stageName(row.fromStageId) || "-")} - ${escapeHtml(stageName(row.toStageId) || "-")} - ${escapeHtml(row.user)}</span>
+   <article class="report-item opportunity-history-item" data-history-kind="${row.kind}">
+    <strong><span>${escapeHtml(row.title)}</span><span>${escapeHtml(row.dateLabel)}</span></strong>
+    <span class="muted">${escapeHtml(row.detail)}</span>
    </article>`).join("")
   : emptyMessage("Sem histórico registrado.");
+}
+
+function opportunityTimelineDate(value, includeTime = false) {
+ if (!value) return "Sem data";
+ const day = formatDate(String(value).slice(0, 10));
+ if (!includeTime || !String(value).includes("T")) return day;
+ const date = new Date(value);
+ if (Number.isNaN(date.getTime())) return day;
+ return `${day} ${date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
+function opportunityTimelineRows(opportunityId) {
+ if (!opportunityId) return [];
+ const rows = state.opportunityHistory
+  .filter((item) => item.opportunityId === opportunityId)
+  .map((item) => {
+   const stages = [stageName(item.fromStageId), stageName(item.toStageId)].filter(Boolean).join(" → ");
+   const detail = [stages, item.user, item.notes].filter(Boolean).join(" • ") || "Registro da oportunidade";
+   return {
+    kind: "opportunity",
+    title: item.action || "Atualização da oportunidade",
+    detail,
+    sortAt: item.createdAt || "",
+    dateLabel: opportunityTimelineDate(item.createdAt, true),
+   };
+  });
+
+ state.interactions
+  .filter((item) => item.opportunityId === opportunityId)
+  .forEach((item) => {
+   const contactDate = item.date || String(item.createdAt || "").slice(0, 10);
+   const detail = [
+    item.notes,
+    item.nextFollowUpDate ? `Próximo follow-up: ${formatDate(item.nextFollowUpDate)}` : "Sem novo follow-up",
+    sellerName(item.sellerId),
+   ].filter(Boolean).join(" • ");
+   rows.push({
+    kind: "interaction",
+    title: `Contato: ${INTERACTION_TYPE_LABELS[item.type] || item.type || "Outro"}`,
+    detail,
+    sortAt: contactDate ? `${contactDate}T12:00:00` : item.createdAt || "",
+    dateLabel: opportunityTimelineDate(contactDate),
+   });
+  });
+
+ state.tasks
+  .filter((item) => item.opportunityId === opportunityId)
+  .forEach((item) => {
+   const computedStatus = taskComputedStatus(item);
+   rows.push({
+    kind: "task-scheduled",
+    title: `Tarefa agendada: ${item.title || "Sem título"}`,
+    detail: [
+     item.dueDate ? `Prazo: ${formatDate(item.dueDate)}` : "Sem prazo",
+     `Status: ${taskStatusLabel(computedStatus)}`,
+     sellerName(item.sellerId),
+     item.description,
+    ].filter(Boolean).join(" • "),
+    sortAt: item.createdAt || item.dueDate || "",
+    dateLabel: opportunityTimelineDate(item.createdAt || item.dueDate, true),
+   });
+   if (item.status === "concluida") {
+    const completedAt = item.completedAt || item.updatedAt || item.createdAt || item.dueDate || "";
+    rows.push({
+     kind: "task-completed",
+     title: `Tarefa concluída: ${item.title || "Sem título"}`,
+     detail: [
+      item.dueDate ? `Prazo original: ${formatDate(item.dueDate)}` : "",
+      sellerName(item.sellerId),
+      item.description,
+     ].filter(Boolean).join(" • ") || "Tarefa concluída",
+     sortAt: completedAt,
+     dateLabel: opportunityTimelineDate(completedAt, true),
+    });
+   }
+  });
+
+ return rows.sort((a, b) => String(b.sortAt || "").localeCompare(String(a.sortAt || "")));
 }
 
 function addOpportunityHistory(opportunityId, action, fromStageId, toStageId, notes = "") {
@@ -4475,6 +4691,7 @@ function addOpportunityHistory(opportunityId, action, fromStageId, toStageId, no
 
 function clearCrmFilters() {
  els.crmUnitFilter.value = "todos";
+ els.crmPipelineFilter.value = "todos";
  els.crmOwnerFilter.value = "todos";
  els.crmStageFilter.value = "todos";
  els.crmProjectFilter.value = "todos";
@@ -4912,15 +5129,146 @@ function setSalesTab(tab) {
  if (tab === "ranking") renderManualSalesRanking();
 }
 
+function syncSalesRankDateToPeriod() {
+ const period = els.salesRankPeriod.value || todayIso.slice(0, 7);
+ if (!els.salesRankDate.value.startsWith(period)) {
+  els.salesRankDate.value = period === todayIso.slice(0, 7) ? todayIso : `${period}-01`;
+ }
+}
+
+function salesRankTargetForPeriod(period) {
+ return Number(state.salesTargets.find((item) => item.period === period)?.amount || 0);
+}
+
+function isSalesTargetCompatibilityEntry(item) {
+ return item?.recordType === "sales_target" || String(item?.id || "").startsWith("sales-target-entry-");
+}
+
+function ensureSalesTargetCompatibilityEntries() {
+ let changed = false;
+ state.salesTargets.forEach((target) => {
+  const period = String(target.period || "").slice(0, 7);
+  const amount = roundCurrency(Number(target.amount || 0));
+  if (!period || amount <= 0) return;
+  const id = `sales-target-entry-${period}`;
+  const marker = state.salesRankingEntries.find((entry) => entry.id === id || (isSalesTargetCompatibilityEntry(entry) && entry.period === period));
+  const updatedAt = target.updatedAt || new Date().toISOString();
+  const nextMarker = {
+   ...(marker || {}),
+   id,
+   recordType: "sales_target",
+   source: "system",
+   seller: "",
+   client: "Meta mensal",
+   city: "",
+   period,
+   saleDate: `${period}-01`,
+   amount,
+   createdAt: marker?.createdAt || updatedAt,
+   updatedAt,
+  };
+  if (marker && syncCanonical(marker) === syncCanonical(nextMarker)) return;
+  if (marker) state.salesRankingEntries = state.salesRankingEntries.map((entry) => entry === marker ? nextMarker : entry);
+  else state.salesRankingEntries.push(nextMarker);
+  changed = true;
+ });
+ return changed;
+}
+
+function saveSalesRankMonthlyGoal() {
+ const period = els.salesRankFilterPeriod.value || todayIso.slice(0, 7);
+ const amount = roundCurrency(Number(els.salesRankMonthlyGoal.value || 0));
+ if (!period || amount <= 0) {
+  toast("Informe uma meta mensal maior que zero.");
+  return;
+ }
+ const index = state.salesTargets.findIndex((item) => item.period === period);
+ const target = {
+  id: index >= 0 ? state.salesTargets[index].id : `sales-target-${period}`,
+  period,
+  amount,
+  updatedAt: new Date().toISOString(),
+ };
+ if (index >= 0) state.salesTargets[index] = target;
+ else state.salesTargets.push(target);
+ ensureSalesTargetCompatibilityEntries();
+ if (!persist("crm")) return;
+ renderManualSalesRanking();
+ toast(`Meta de ${monthLabel(period)} salva.`);
+}
+
+function salesRankDecadeForPeriod(period) {
+ const currentPeriod = todayIso.slice(0, 7);
+ const [year, month] = period.split("-").map(Number);
+ const lastDay = new Date(year, month, 0).getDate();
+ const referenceDay = period === currentPeriod ? today.getDate() : period < currentPeriod ? lastDay : 1;
+ if (referenceDay <= 10) return { number: 1, start: 1, end: 10, label: "1ª dezena" };
+ if (referenceDay <= 20) return { number: 2, start: 11, end: 20, label: "2ª dezena" };
+ return { number: 3, start: 21, end: lastDay, label: "3ª dezena" };
+}
+
+function salesRankEntryDate(item) {
+ const period = String(item.period || "").slice(0, 7);
+ const saleDate = String(item.saleDate || "").slice(0, 10);
+ if (saleDate.startsWith(period)) return saleDate;
+ const createdDate = String(item.createdAt || "").slice(0, 10);
+ return createdDate.startsWith(period) ? createdDate : period ? `${period}-01` : "";
+}
+
+function salesRankGoalCard(title, target, sold, detail, current = false) {
+ const percentage = target > 0 ? (sold / target) * 100 : 0;
+ const barWidth = Math.max(0, Math.min(percentage, 100));
+ return `
+  <article class="sales-rank-goal-card${current ? " current" : ""}">
+   <span>${escapeHtml(title)}</span>
+   <strong>${percentage.toFixed(1).replace(".", ",")}%</strong>
+   <small>${escapeHtml(detail)}</small>
+   <div class="sales-rank-goal-values"><b>${money(sold)}</b><span>de ${money(target)}</span></div>
+   <div class="sales-rank-goal-bar" aria-label="${percentage.toFixed(1)}% da meta"><i style="width:${barWidth}%"></i></div>
+  </article>`;
+}
+
+function renderSalesRankGoalProgress(period, entries, total) {
+ if (!els.salesRankGoalProgress || !els.salesRankMonthlyGoal) return;
+ const monthlyTarget = salesRankTargetForPeriod(period);
+ els.salesRankMonthlyGoal.value = monthlyTarget > 0 ? monthlyTarget.toFixed(2) : "";
+ if (monthlyTarget <= 0) {
+  els.salesRankGoalProgress.innerHTML = `<div class="sales-rank-goal-empty">Defina a meta mensal para acompanhar o mês e cada dezena.</div>`;
+  return;
+ }
+ const decade = salesRankDecadeForPeriod(period);
+ const decadeEntries = entries.filter((item) => {
+  const day = Number(salesRankEntryDate(item).slice(8, 10));
+  return day >= decade.start && day <= decade.end;
+ });
+ const decadeSold = sum(decadeEntries.map((item) => Number(item.amount || 0)));
+ const decadeTarget = monthlyTarget / 3;
+ els.salesRankGoalProgress.innerHTML = [
+  salesRankGoalCard("Meta mensal", monthlyTarget, total, monthLabel(period)),
+  salesRankGoalCard(
+   `${decade.label} — dias ${decade.start} a ${decade.end}`,
+   decadeTarget,
+   decadeSold,
+   `${decadeEntries.length} venda${decadeEntries.length === 1 ? "" : "s"} na dezena atual`,
+   true,
+  ),
+ ].join("");
+}
+
 function saveManualSalesRankEntry(event) {
  event.preventDefault();
  const entryId = els.salesRankEntryId.value;
  const seller = els.salesRankSeller.value.trim();
  const client = els.salesRankClient.value.trim();
  const amount = Number(els.salesRankAmount.value);
+ const saleDate = els.salesRankDate.value;
  const period = els.salesRankPeriod.value;
- if (!seller || !client || !period || amount <= 0) {
-  toast("Preencha vendedor, cliente, valor e período.");
+ if (!seller || !client || !period || !saleDate || amount <= 0) {
+  toast("Preencha vendedor, cliente, valor, data da venda e período.");
+  return;
+ }
+ if (!saleDate.startsWith(period)) {
+  toast("A data da venda precisa pertencer ao período selecionado.");
   return;
  }
  const existingEntry = entryId ? state.salesRankingEntries.find((item) => item.id === entryId) : null;
@@ -4931,6 +5279,7 @@ function saveManualSalesRankEntry(event) {
   client,
   city: els.salesRankCity.value.trim(),
   amount: roundCurrency(amount),
+  saleDate,
   period,
   source: existingEntry?.source || "manual",
   createdAt: existingEntry?.createdAt || new Date().toISOString(),
@@ -4953,8 +5302,10 @@ function resetManualSalesRankForm(period = "") {
  els.salesRankForm.reset();
  els.salesRankEntryId.value = "";
  els.salesRankPeriod.value = selectedPeriod;
+ els.salesRankDate.value = selectedPeriod === todayIso.slice(0, 7) ? todayIso : `${selectedPeriod}-01`;
  els.salesRankSubmitBtn.textContent = "Adicionar ao ranking";
  els.cancelSalesRankEditBtn.classList.add("hidden");
+ refreshSearchableSelect(els.salesRankSeller);
 }
 
 function editManualSalesRankEntry(entry) {
@@ -4964,17 +5315,41 @@ function editManualSalesRankEntry(entry) {
  els.salesRankCity.value = entry.city || "";
  els.salesRankAmount.value = Number(entry.amount || 0).toFixed(2);
  els.salesRankPeriod.value = entry.period || todayIso.slice(0, 7);
+ els.salesRankDate.value = salesRankEntryDate(entry);
  els.salesRankSubmitBtn.textContent = "Salvar alterações";
  els.cancelSalesRankEditBtn.classList.remove("hidden");
+ refreshSearchableSelect(els.salesRankSeller);
  els.salesRankForm.scrollIntoView({ behavior: "smooth", block: "start" });
- els.salesRankSeller.focus();
+ els.salesRankSeller.closest(".searchable-select")?.querySelector(".searchable-select-input")?.focus();
+}
+
+function hydrateSalesRankSellerOptions() {
+ const selectedSeller = els.salesRankSeller.value;
+ const sellersByName = new Map();
+ const addSeller = (name) => {
+  const cleanName = String(name || "").trim();
+  if (!cleanName) return;
+  const key = normalizeText(cleanName);
+  if (!sellersByName.has(key)) sellersByName.set(key, cleanName);
+ };
+ state.users.filter(isCommercialUser).forEach((user) => addSeller(user.name || user.username));
+ state.sellers.filter((seller) => seller.active !== false).forEach((seller) => addSeller(seller.name));
+ state.salesRankingEntries.filter((entry) => !isSalesTargetCompatibilityEntry(entry)).forEach((entry) => addSeller(entry.seller));
+ addSeller(selectedSeller);
+ const names = [...sellersByName.values()].sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+ els.salesRankSeller.innerHTML = `<option value="">Selecione o vendedor</option>${names
+  .map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+  .join("")}`;
+ els.salesRankSeller.value = selectedSeller;
+ refreshSearchableSelect(els.salesRankSeller);
 }
 
 function renderManualSalesRanking() {
  if (!els.salesRankList) return;
+ hydrateSalesRankSellerOptions();
  const period = els.salesRankFilterPeriod.value || todayIso.slice(0, 7);
  const entries = state.salesRankingEntries
-  .filter((item) => item.period === period)
+  .filter((item) => !isSalesTargetCompatibilityEntry(item) && item.period === period)
   .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
  const grouped = new Map();
  entries.forEach((item) => {
@@ -4987,6 +5362,7 @@ function renderManualSalesRanking() {
  const ranking = [...grouped.values()].sort((a, b) => b.total - a.total || b.count - a.count || a.seller.localeCompare(b.seller));
  const total = sum(entries.map((item) => Number(item.amount || 0)));
  els.salesRankSummary.textContent = `${entries.length} venda${entries.length === 1 ? "" : "s"} - ${money(total)}`;
+ renderSalesRankGoalProgress(period, entries, total);
  els.salesRankList.innerHTML = ranking.length ? ranking.map((row, index) => `
   <article class="sales-rank-card ${index < 3 ? `place-${index + 1}` : ""}">
    <span class="sales-rank-position">${index + 1}º</span>
@@ -5000,18 +5376,13 @@ function renderManualSalesRanking() {
   </article>`).join("") : emptyMessage("Nenhuma venda lançada neste período.");
  els.salesRankEntries.innerHTML = entries.length ? entries.map((item) => `
   <article class="sales-rank-entry">
-   <div><strong>${escapeHtml(item.client)}</strong><span>${escapeHtml(item.seller)}${item.city ? ` - ${escapeHtml(item.city)}` : ""}</span></div>
+   <div><strong>${escapeHtml(item.client)}</strong><span>${formatDate(salesRankEntryDate(item))} - ${escapeHtml(item.seller)}${item.city ? ` - ${escapeHtml(item.city)}` : ""}</span></div>
    <strong>${money(item.amount)}</strong>
    <div class="sales-rank-entry-actions">
     <button type="button" data-action="edit-rank-entry" data-id="${item.id}" aria-label="Editar lançamento">Editar</button>
     <button type="button" data-action="delete-rank-entry" data-id="${item.id}" aria-label="Excluir lançamento">Excluir</button>
    </div>
   </article>`).join("") : emptyMessage("Nenhum lançamento manual neste período.");
- const names = [...new Set([
-  ...state.sellers.filter((item) => item.active !== false).map((item) => item.name),
-  ...state.salesRankingEntries.map((item) => item.seller),
- ].filter(Boolean))].sort((a, b) => a.localeCompare(b));
- els.salesRankSellerSuggestions.innerHTML = names.map((name) => `<option value="${escapeHtml(name)}"></option>`).join("");
 }
 
 function handleManualSalesRankAction(event) {
@@ -10524,11 +10895,19 @@ function ensureIluminarStockLoaded() {
 // ---- CRM ----
 
 function sellerName(id) {
- return state.sellers.find((seller) => seller.id === id)?.name || "Sem vendedor";
+ if (!id) return "Sem vendedor";
+ if (String(id).startsWith("legacy:")) return String(id).replace("legacy:", "") || "Sem vendedor";
+ const seller = state.sellers.find((item) => item.id === id);
+ if (seller) return seller.name;
+ const user = state.users.find((item) => item.id === id);
+ return user ? (user.name || user.username) : "Sem vendedor";
 }
 
 function opportunityLabel(opportunity) {
- return `${opportunity.title} - ${personName(opportunity.personId)}`;
+ const number = opportunity.number || opportunity.title || "Sem número";
+ const client = personName(opportunity.personId);
+ const company = opportunity.company && opportunity.company !== client ? ` - ${opportunity.company}` : "";
+ return `${number} - ${client}${company}`;
 }
 
 function daysSince(isoDateOrDateTime) {
@@ -10557,11 +10936,29 @@ function setCrmView(view) {
 }
 
 function hydrateSellerOptions() {
- const activeSellers = state.sellers.filter((seller) => seller.active);
- const options = activeSellers.map((seller) => `<option value="${seller.id}">${escapeHtml(seller.name)}</option>`).join("");
+ const sellersByName = new Map();
+ const addSeller = (id, name) => {
+  const cleanName = String(name || "").trim();
+  if (!id || !cleanName) return;
+  const key = normalizeText(cleanName);
+  if (!sellersByName.has(key)) sellersByName.set(key, { id, name: cleanName });
+ };
+ const commercialUsers = isAdmin() ? state.users.filter(isCommercialUser) : [currentSessionUser()].filter(Boolean);
+ commercialUsers.forEach((user) => addSeller(user.id, user.name || user.username));
+ state.sellers.filter((seller) => seller.active).forEach((seller) => addSeller(seller.id, seller.name));
+ opportunitiesVisibleToCurrentUser().forEach((opportunity) => {
+  const ownerName = opportunityOwnerDisplay(opportunity);
+  if (ownerName && ownerName !== "Sem responsável") {
+   addSeller(opportunity.ownerUserId || `legacy:${ownerName}`, ownerName);
+  }
+  if (opportunity.sellerId) addSeller(opportunity.sellerId, sellerName(opportunity.sellerId));
+ });
+ const sellerChoices = [...sellersByName.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" }));
+ const options = sellerChoices.map((seller) => `<option value="${escapeHtml(seller.id)}">${escapeHtml(seller.name)}</option>`).join("");
  els.opportunitySeller.innerHTML = `<option value="">Sem vendedor</option>${options}`;
  els.taskSeller.innerHTML = `<option value="">Sem vendedor</option>${options}`;
  els.taskSellerFilter.innerHTML = `<option value="todos">Todos os vendedores</option>${options}`;
+ refreshSearchableSelect(els.taskSeller);
 }
 
 function openSellerDialog() {
@@ -10636,11 +11033,12 @@ function openOpportunityDialog(item = null) {
  els.opportunityNumber.value = opportunity.number || opportunity.title || nextOpportunityNumber();
  els.opportunityValue.value = opportunity.value || 0;
  els.opportunityUnit.value = opportunity.unitId || state.crmUnits[0]?.id || "";
- els.opportunityPipeline.value = opportunity.pipelineId || els.crmPipelineFilter.value || state.crmPipelines[0]?.id || "";
+ els.opportunityPipeline.value = opportunity.pipelineId || (els.crmPipelineFilter.value !== "todos" ? els.crmPipelineFilter.value : "") || state.crmPipelines[0]?.id || "";
  els.opportunityStage.value = opportunity.stageId || state.opportunityStages[0]?.id || "";
  if (els.opportunityClosedDate) els.opportunityClosedDate.value = opportunity.closedDate || (isOpportunityWon(opportunity) ? opportunityWonDate(opportunity) : "");
  setOpportunityOwnerValue(opportunity);
  els.opportunityPhone.value = opportunity.phone || "";
+ if (!item) fillOpportunityPhoneFromSelectedPerson();
  els.opportunityEmail.value = opportunity.email || "";
  els.opportunityProject.value = opportunity.projectId || "";
  els.opportunityTags.value = normalizeTags(opportunity.tags).join(", ");
@@ -10648,8 +11046,6 @@ function openOpportunityDialog(item = null) {
  els.opportunityPendingActivity.checked = Boolean(opportunity.pendingActivity);
  els.opportunityNotes.value = opportunity.notes || "";
  els.opportunityAddress.value = opportunity.location?.address || "";
- els.opportunityLatitude.value = opportunity.location?.latitude || "";
- els.opportunityLongitude.value = opportunity.location?.longitude || "";
  els.opportunityDriveFolder.value = opportunity.driveFolderUrl || "";
  opportunityAttachmentsDraft = normalizeOpportunityAttachments(opportunity.attachments);
  renderOpportunityAttachmentRows();
@@ -10702,9 +11098,8 @@ function saveOpportunity() {
   nextActivityDate: els.opportunityNextActivity.value,
   notes: els.opportunityNotes.value.trim(),
   location: {
+   ...(previous.location || {}),
    address: els.opportunityAddress.value.trim(),
-   latitude: els.opportunityLatitude.value.trim(),
-   longitude: els.opportunityLongitude.value.trim(),
   },
   driveFolderUrl: els.opportunityDriveFolder.value.trim(),
   attachments: readOpportunityAttachmentsFromForm(),
@@ -11312,12 +11707,14 @@ function hydrateTaskOptions() {
   `<option value="">Nenhum</option>`,
   ...clients.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`),
  ].join("");
+ refreshSearchableSelect(els.taskOpportunity);
 }
 
 function openTaskDialog() {
  els.taskForm.reset();
  els.taskId.value = "";
  els.taskDueDate.value = todayIso;
+ hydrateSellerOptions();
  hydrateTaskOptions();
  els.taskDialog.showModal();
 }
@@ -11325,16 +11722,19 @@ function openTaskDialog() {
 function saveTask() {
  const id = els.taskId.value || crypto.randomUUID();
  const existing = state.tasks.find((item) => item.id === id);
+ const now = new Date().toISOString();
  const task = {
   id,
   title: els.taskTitle.value.trim(),
   description: els.taskDescription.value.trim(),
   dueDate: els.taskDueDate.value,
-  status: existing.status || "pendente",
+  status: existing?.status || "pendente",
   opportunityId: els.taskOpportunity.value,
   personId: els.taskPerson.value,
   sellerId: els.taskSeller.value,
-  createdAt: existing.createdAt || new Date().toISOString(),
+  createdAt: existing?.createdAt || now,
+  updatedAt: now,
+  completedAt: existing?.completedAt || "",
  };
 
  const index = state.tasks.findIndex((item) => item.id === id);
@@ -11360,7 +11760,10 @@ function taskStatusLabel(status) {
 function completeTask(id) {
  const task = state.tasks.find((item) => item.id === id);
  if (!task) return;
+ const now = new Date().toISOString();
  task.status = "concluida";
+ task.completedAt = now;
+ task.updatedAt = now;
  persist("crm");
  renderAll();
  toast("Tarefa concluída.");
@@ -11572,6 +11975,7 @@ function manualSalesRankingRowsForPeriod(mode) {
   ? { label: `Ano ${selectedYear}`, start: `${selectedYear}-01`, end: `${selectedYear}-12` }
   : { label: monthLabel(selectedMonth), start: selectedMonth, end: selectedMonth };
  const entries = state.salesRankingEntries.filter((item) => {
+  if (isSalesTargetCompatibilityEntry(item)) return false;
   const entryPeriod = String(item.period || "").slice(0, 7);
   if (mode === "year" || mode === "ano") return entryPeriod.slice(0, 4) === selectedYear;
   return entryPeriod === selectedMonth;
@@ -11614,11 +12018,101 @@ function isSalesRankingTvMode() {
  return params.get("tv") === "ranking";
 }
 
+async function refreshSalesRankingTvMode() {
+ if (rankingTvRefreshInFlight) return;
+ rankingTvRefreshInFlight = true;
+ try {
+  if (window.location.protocol === "file:") {
+   Object.assign(state, loadState());
+  } else if (SHEETS_ENDPOINT) {
+   await initRemoteSync();
+  }
+  renderSalesRankingTvMode();
+ } catch (error) {
+  console.warn("Não foi possível atualizar o ranking da TV:", error);
+ } finally {
+  rankingTvRefreshInFlight = false;
+ }
+}
+
+function salesRankingTvGoalData(entries, month) {
+ const monthlyTarget = salesRankTargetForPeriod(month);
+ if (monthlyTarget <= 0) return null;
+ const decadeTarget = monthlyTarget / 3;
+ const soldByDecade = [
+  { number: 1, start: 1, end: 10, label: "1ª dezena" },
+  { number: 2, start: 11, end: 20, label: "2ª dezena" },
+  { number: 3, start: 21, end: new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate(), label: "3ª dezena" },
+ ].map((decade) => ({
+  ...decade,
+  sold: sum(entries.filter((item) => {
+   const day = Number(salesRankEntryDate(item).slice(8, 10));
+   return day >= decade.start && day <= decade.end;
+  }).map((item) => Number(item.amount || 0))),
+ }));
+ let carry = 0;
+ const decades = soldByDecade.map((decade) => {
+  const effectiveSold = decade.sold + carry;
+  const percentage = decadeTarget > 0 ? (effectiveSold / decadeTarget) * 100 : 0;
+  const incomingCarry = carry;
+  carry = Math.max(0, effectiveSold - decadeTarget);
+  return { ...decade, target: decadeTarget, effectiveSold, incomingCarry, carry, percentage };
+ });
+ const monthlySold = sum(entries.map((item) => Number(item.amount || 0)));
+ return {
+  monthlyTarget,
+  monthlySold,
+  monthlyPercentage: monthlyTarget > 0 ? (monthlySold / monthlyTarget) * 100 : 0,
+  decades,
+ };
+}
+
+function rankingTvMonthlyGoalHtml(goal) {
+ if (!goal) {
+  return `<div class="ranking-tv-month-goal missing"><strong>Meta mensal não definida</strong><span>Cadastre a meta no Rank de Vendas</span></div>`;
+ }
+ const visualPercentage = Math.max(0, Math.min(goal.monthlyPercentage, 100));
+ return `
+  <div class="ranking-tv-month-goal${goal.monthlyPercentage >= 100 ? " achieved" : ""}">
+   <div><span>Meta mensal atingida</span><strong>${goal.monthlyPercentage.toFixed(1).replace(".", ",")}%</strong></div>
+   <div class="ranking-tv-month-values"><b>${money(goal.monthlySold)}</b><span>de ${money(goal.monthlyTarget)}</span></div>
+   <div class="ranking-tv-month-bar"><i style="--goal-width:${visualPercentage}%"></i></div>
+   ${goal.monthlyPercentage > 100 ? `<em>Meta superada em ${(goal.monthlyPercentage - 100).toFixed(1).replace(".", ",")}%</em>` : ""}
+  </div>`;
+}
+
+function rankingTvDecadesHtml(goal) {
+ if (!goal) return "";
+ return `
+  <section class="ranking-tv-decades" aria-label="Atingimento das metas por dezena">
+   ${goal.decades.map((decade) => {
+    const visualPercentage = Math.max(0, Math.min(decade.percentage, 100));
+    const carryText = decade.incomingCarry > 0 ? `Inclui ${money(decade.incomingCarry)} excedentes da dezena anterior` : "Sem excedente anterior";
+    return `
+     <article class="ranking-tv-decade${decade.percentage >= 100 ? " achieved" : ""}">
+      <div class="ranking-tv-decade-ring" style="--ring-progress:${visualPercentage}%">
+       <div><strong>${decade.percentage.toFixed(1).replace(".", ",")}%</strong><span>${escapeHtml(decade.label)}</span></div>
+      </div>
+      <h3>Dias ${decade.start} a ${decade.end}</h3>
+      <p><b>${money(decade.effectiveSold)}</b> de ${money(decade.target)}</p>
+      <small>${escapeHtml(carryText)}</small>
+     </article>`;
+   }).join("")}
+  </section>`;
+}
+
 function renderSalesRankingTvMode() {
  const params = new URLSearchParams(window.location.search);
  const mode = params.get("period") === "year" ? "year" : "month";
  const source = params.get("source") === "manual" ? "manual" : "crm";
  const { period, rows, won } = source === "manual" ? manualSalesRankingRowsForPeriod(mode) : salesRankingRowsForPeriod(mode);
+ const selectedMonth = params.get("month") || period.start || todayIso.slice(0, 7);
+ const tvGoal = source === "manual" && mode === "month" ? salesRankingTvGoalData(won, selectedMonth.slice(0, 7)) : null;
+ const showMonthlyGoal = source === "manual" && mode === "month";
+ const tvNow = new Date();
+ const tvWeekdayText = tvNow.toLocaleDateString("pt-BR", { weekday: "long" });
+ const tvWeekday = tvWeekdayText.charAt(0).toUpperCase() + tvWeekdayText.slice(1);
+ const tvFullDate = tvNow.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
  document.title = `Ranking de vendas - ${period.label}`;
  els.loginScreen.classList.add("hidden");
  els.appShell.classList.add("hidden");
@@ -11637,10 +12131,17 @@ function renderSalesRankingTvMode() {
  screen.innerHTML = `
   <section class="ranking-tv-hero">
    <div>
-    <span>Lumeris Engenharia</span>
+    <img class="ranking-tv-logo" src="assets/logo-lumeris-wide.jpeg" alt="Lumeris Engenharia" />
     <h1>Ranking de vendas</h1>
-    <p>${escapeHtml(period.label)} - ${won.length} venda${won.length === 1 ? "" : "s"} registrada${won.length === 1 ? "" : "s"}</p>
+    <div class="ranking-tv-date-card">
+     <span class="ranking-tv-weekday">${escapeHtml(tvWeekday)}</span>
+     <div>
+      <strong>${escapeHtml(tvFullDate)}</strong>
+      <small>${escapeHtml(period.label)} • ${won.length} venda${won.length === 1 ? "" : "s"} registrada${won.length === 1 ? "" : "s"}</small>
+     </div>
+    </div>
    </div>
+   ${showMonthlyGoal ? rankingTvMonthlyGoalHtml(tvGoal) : ""}
    <div class="ranking-tv-clock">${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
   </section>
   <section class="ranking-podium">
@@ -11678,6 +12179,7 @@ function renderSalesRankingTvMode() {
     </article>
    `).join("") || `<article><strong>Aguardando 4º e 5º colocados</strong><em>${money(0)}</em><small>Cadastre mais vendas no ranking</small></article>`}
   </section>
+  ${showMonthlyGoal ? rankingTvDecadesHtml(tvGoal) : ""}
  `;
 }
 
@@ -12200,7 +12702,7 @@ function savePerson() {
 
  els.personForm.reset();
  els.personId.value = "";
- persist("config");
+ persist("financeiro");
  renderAll();
  toast("Cadastro salvo.");
 }
@@ -12225,7 +12727,7 @@ function handlePersonAction(action, id) {
  }
 
  state.people = state.people.filter((item) => item.id !== id);
- persist("config");
+ persist("financeiro");
  renderAll();
  toast("Cadastro excluído.");
 }
@@ -12458,6 +12960,7 @@ function saveQuickPersonFromTransaction() {
  } else if (quickPersonTarget === "opportunity") {
   hydrateCrmOptions();
   els.opportunityPerson.value = person.id;
+  fillOpportunityPhoneFromSelectedPerson(true);
  } else if (quickPersonTarget === "stockEntrySupplier") {
   els.stockEntrySupplier.value = person.id;
  } else if (quickPersonTarget === "protocol") {

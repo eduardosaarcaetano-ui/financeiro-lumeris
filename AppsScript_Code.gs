@@ -14,7 +14,7 @@ var SYNC_BACKUP_INTERVAL_MS = 5 * 60 * 1000;
 var SYNC_BACKUP_RETENTION = 576;
 
 var SYNC_SCOPE_FIELDS = {
-  crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "sellers", "interactions", "tasks"],
+  crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "salesTargets", "sellers", "interactions", "tasks"],
   financeiro: ["transactions", "bankAccounts", "bankMovements", "bankApiConfigs", "invoices"],
   protocolo: ["protocols", "protocolHistory", "utilityCompanies", "protocolActivityTypes"],
   estoque: ["stockItems", "stockMovements", "stockLocations", "stockBaselineVersion"],

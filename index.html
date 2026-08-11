@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260810-responsive-sidebar" />
+    <link rel="stylesheet" href="styles.css?v=20260810-local-fixes25" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -69,6 +69,7 @@
             <span class="nav-group-title">Financeiro</span>
             <button class="nav-item" data-view="receber" type="button">A Receber</button>
             <button class="nav-item" data-view="pagar" type="button">A Pagar</button>
+            <button class="nav-item" data-view="pessoas" type="button">Clientes e fornecedores</button>
             <button class="nav-item" data-view="banco" type="button">Bancos</button>
             <button class="nav-item" data-view="apisbancarias" type="button">APIs Bancárias</button>
             <button class="nav-item" data-view="notasfiscais" type="button">Notas Fiscais</button>
@@ -83,7 +84,6 @@
           </div>
           <div class="nav-group">
             <span class="nav-group-title">Configurações</span>
-            <button class="nav-item" data-view="pessoas" type="button">Cadastros</button>
             <button class="nav-item hidden" data-view="usuarios" id="navUsuarios" type="button">Usuários</button>
           </div>
         </nav>
@@ -437,7 +437,9 @@
                 <form class="form-grid" id="salesRankForm">
                   <input id="salesRankEntryId" type="hidden" />
                   <label class="full">Vendedor
-                    <input id="salesRankSeller" required maxlength="100" list="salesRankSellerSuggestions" placeholder="Nome do vendedor" />
+                    <select id="salesRankSeller" required>
+                      <option value="">Selecione o vendedor</option>
+                    </select>
                   </label>
                   <label>Cliente
                     <input id="salesRankClient" required maxlength="140" placeholder="Nome do cliente" />
@@ -448,6 +450,9 @@
                   <label>Valor (R$)
                     <input id="salesRankAmount" required type="number" min="0.01" step="0.01" placeholder="0,00" />
                   </label>
+                  <label>Data da venda
+                    <input id="salesRankDate" required type="date" />
+                  </label>
                   <label>Período
                     <input id="salesRankPeriod" required type="month" />
                   </label>
@@ -456,7 +461,6 @@
                     <button class="secondary-btn hidden" id="cancelSalesRankEditBtn" type="button">Cancelar edição</button>
                   </div>
                 </form>
-                <datalist id="salesRankSellerSuggestions"></datalist>
                 <div class="sales-rank-recent">
                   <h3>Lançamentos do período</h3>
                   <div id="salesRankEntries"></div>
@@ -477,6 +481,13 @@
                     <input id="salesRankFilterPeriod" type="month" />
                   </label>
                 </div>
+                <div class="sales-rank-goal-toolbar">
+                  <label>Meta mensal (R$)
+                    <input id="salesRankMonthlyGoal" type="number" min="0" step="0.01" placeholder="500.000,00" />
+                  </label>
+                  <button class="primary-btn" id="saveSalesRankGoalBtn" type="button">Salvar meta</button>
+                </div>
+                <div class="sales-rank-goal-progress" id="salesRankGoalProgress"></div>
                 <div class="sales-rank-list" id="salesRankList"></div>
               </section>
             </div>
@@ -1700,15 +1711,14 @@
           </div>
         </section>
 
-        <section class="view" id="crm">
+        <section class="view" id="crm-support" data-parent-view="crm">
           <div class="toolbar invoice-kind-tabs" id="crmTabs">
-            <button type="button" class="chip-tab active" data-crm-tab="funil">Funil</button>
-            <button type="button" class="chip-tab" data-crm-tab="followup">Follow-up</button>
+            <button type="button" class="chip-tab active" data-crm-tab="followup">Follow-up</button>
             <button type="button" class="chip-tab" data-crm-tab="agenda">Agenda/Tarefas</button>
             <button type="button" class="chip-tab" data-crm-tab="relatorios">Relatórios</button>
           </div>
 
-          <div class="crm-panel" data-crm-panel="funil">
+          <div class="crm-panel hidden" data-crm-panel="funil" aria-hidden="true">
             <div class="toolbar">
               <button class="primary-btn" id="newOpportunityBtn" type="button">Nova oportunidade</button>
               <button class="secondary-btn" id="toggleLostOpportunitiesBtn" type="button">Mostrar perdidos</button>
@@ -1747,7 +1757,7 @@
             </section>
           </div>
 
-          <div class="crm-panel hidden" data-crm-panel="followup">
+          <div class="crm-panel" data-crm-panel="followup">
             <section class="panel">
               <div class="panel-head">
                 <h2>Follow-up</h2>
@@ -1900,8 +1910,12 @@
               <label>Usuário/login
                 <input id="userUsername" required maxlength="40" autocomplete="off" />
               </label>
-              <label>Senha
-                <input id="userPassword" type="password" maxlength="120" autocomplete="new-password" placeholder="Deixe em branco para manter a atual" />
+              <label><span id="userPasswordLabel">Senha</span>
+                <div class="password-edit-field">
+                  <input id="userPassword" type="password" maxlength="120" autocomplete="new-password" placeholder="Deixe em branco para manter a atual" />
+                  <button class="secondary-btn" id="toggleUserPasswordBtn" type="button" aria-pressed="false">Mostrar</button>
+                </div>
+                <small class="password-security-note">Novos usuários recebem a senha padrão Lumeris-2026. A senha atual é protegida; o master pode redefini-la pelo botão na lista.</small>
               </label>
               <label>Perfil
                 <select id="userRole">
@@ -2400,19 +2414,13 @@
           <div class="panel-head">
             <div>
               <h2>Localização</h2>
-              <small>Use endereço completo ou coordenadas para visualizar no Google Maps.</small>
+              <small>Cole o link da localização compartilhada pelo Google Maps.</small>
             </div>
             <button class="secondary-btn" id="openOpportunityMapBtn" type="button">Visualizar no mapa</button>
           </div>
           <div class="form-grid">
-            <label class="full">Endereço
-              <input id="opportunityAddress" maxlength="220" placeholder="Rua, número, bairro, cidade - UF" />
-            </label>
-            <label>Latitude
-              <input id="opportunityLatitude" maxlength="40" placeholder="-23.5010" />
-            </label>
-            <label>Longitude
-              <input id="opportunityLongitude" maxlength="40" placeholder="-47.4526" />
+            <label class="full">Link da localização
+              <input id="opportunityAddress" type="url" maxlength="500" placeholder="https://maps.app.goo.gl/..." />
             </label>
           </div>
         </section>
@@ -2555,7 +2563,7 @@
               <input id="proposalAcceptanceData" maxlength="240" placeholder="Nome, CPF/CNPJ, endereço ou responsável pela assinatura" />
             </label>
             <label class="full">Observações da proposta
-              <textarea id="proposalNotes" rows="3" maxlength="800"></textarea>
+              <textarea id="proposalNotes" rows="3" maxlength="2400"></textarea>
             </label>
           </div>
         </section>
@@ -3114,6 +3122,6 @@
     <script src="assets/estoque-iluminar-data.js?v=20260728-stock-baseline-reset1"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260810-responsive-sidebar"></script>
+    <script src="app.js?v=20260810-local-fixes25"></script>
   </body>
 </html>

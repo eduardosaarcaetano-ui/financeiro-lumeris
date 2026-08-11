@@ -1283,7 +1283,7 @@ button.project-chip {
 
 .kanban-column {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto minmax(0, 1fr);
   width: 300px;
   min-height: 0;
   height: 100%;
@@ -1294,6 +1294,7 @@ button.project-chip {
 }
 
 .kanban-head {
+  grid-row: 1;
   display: grid;
   gap: 3px;
   padding: 8px 10px;
@@ -1317,6 +1318,7 @@ button.project-chip {
 }
 
 .kanban-cards {
+  grid-row: 3;
   display: grid;
   align-content: start;
   gap: 6px;
@@ -1326,6 +1328,12 @@ button.project-chip {
 }
 
 .kanban-column-alert {
+  grid-row: 2;
+  box-sizing: border-box;
+  height: 26px;
+  min-height: 26px;
+  max-height: 26px;
+  overflow: hidden;
   margin: 8px 8px 0;
   padding: 5px 8px;
   border: 1px solid #f1b0b0;
@@ -1334,6 +1342,8 @@ button.project-chip {
   background: #fff5f5;
   font-size: 11px;
   font-weight: 700;
+  line-height: 14px;
+  white-space: nowrap;
 }
 
 .kanban-empty {
@@ -1652,6 +1662,90 @@ button.project-chip {
   min-width: 180px;
 }
 
+.sales-rank-goal-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.sales-rank-goal-toolbar label {
+  flex: 1;
+  min-width: 180px;
+}
+
+.sales-rank-goal-progress {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.sales-rank-goal-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8faf8;
+}
+
+.sales-rank-goal-card.current {
+  border-color: var(--primary);
+  background: #eef8f4;
+}
+
+.sales-rank-goal-card > span,
+.sales-rank-goal-card > small {
+  color: var(--muted);
+}
+
+.sales-rank-goal-card > strong {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  color: var(--primary);
+  font-size: 22px;
+}
+
+.sales-rank-goal-values {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  grid-column: 1 / -1;
+}
+
+.sales-rank-goal-values span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sales-rank-goal-bar {
+  grid-column: 1 / -1;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dce6e1;
+}
+
+.sales-rank-goal-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+
+.sales-rank-goal-empty {
+  grid-column: 1 / -1;
+  padding: 14px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: #f8faf8;
+}
+
 .sales-rank-list {
   display: grid;
   gap: 10px;
@@ -1766,23 +1860,26 @@ button.project-chip {
   .sales-rank-head label { width: 100%; margin-left: 0; }
   .sales-rank-entry { grid-template-columns: minmax(0, 1fr) auto; }
   .sales-rank-entry-actions { grid-column: 1 / -1; justify-content: flex-start; }
+  .sales-rank-goal-toolbar { align-items: stretch; flex-direction: column; }
+  .sales-rank-goal-progress { grid-template-columns: 1fr; }
 }
 
 .ranking-tv-screen {
   min-height: 100vh;
-  padding: 48px;
+  padding: clamp(20px, 4vh, 48px);
   background: linear-gradient(135deg, #020403 0%, #06110d 48%, #000 100%);
   color: #f6fff9;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .ranking-tv-hero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(420px, 1.15fr) minmax(380px, 0.85fr) auto;
+  align-items: center;
   gap: 24px;
-  margin-bottom: 34px;
-  padding-bottom: 22px;
+  margin-bottom: clamp(10px, 2vh, 24px);
+  padding-bottom: clamp(12px, 2vh, 22px);
   border-bottom: 1px solid rgba(245, 196, 81, 0.35);
 }
 
@@ -1805,6 +1902,76 @@ button.project-chip {
   font-size: clamp(18px, 2vw, 30px);
 }
 
+.ranking-tv-logo {
+  display: block;
+  width: auto;
+  height: clamp(32px, 4vh, 48px);
+  max-width: min(240px, 52vw);
+  object-fit: contain;
+  object-position: left center;
+  filter: drop-shadow(0 0 12px rgba(245, 196, 81, 0.16));
+  animation: tvLogoEnter 0.8s ease both, tvLogoGlow 4s ease-in-out 1s infinite;
+}
+
+.ranking-tv-date-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 12px;
+  padding: 10px 16px 10px 10px;
+  overflow: hidden;
+  border: 1px solid rgba(245, 196, 81, 0.38);
+  border-radius: 14px;
+  background: linear-gradient(110deg, rgba(245, 196, 81, 0.16), rgba(255, 255, 255, 0.035));
+  box-shadow: 0 0 28px rgba(245, 196, 81, 0.1);
+  animation: tvDateEnter 0.9s ease both, tvDateGlow 3.4s ease-in-out 1s infinite;
+}
+
+.ranking-tv-date-card::after {
+  content: "";
+  position: absolute;
+  inset: -60% auto -60% -25%;
+  width: 18%;
+  transform: rotate(18deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  animation: tvDateShine 4.6s ease-in-out 1.2s infinite;
+}
+
+.ranking-tv-date-card .ranking-tv-weekday {
+  position: relative;
+  z-index: 1;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #f5c451;
+  color: #10231d;
+  font-size: clamp(16px, 1.3vw, 22px);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ranking-tv-date-card > div {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.ranking-tv-date-card strong {
+  color: #f6fff9;
+  font-size: clamp(25px, 2.4vw, 40px);
+  line-height: 1.05;
+}
+
+.ranking-tv-date-card small {
+  color: #b9d1c5;
+  font-size: clamp(14px, 1.1vw, 18px);
+  font-weight: 700;
+}
+
 .ranking-tv-clock {
   min-width: 150px;
   padding: 16px 22px;
@@ -1816,12 +1983,103 @@ button.project-chip {
   text-align: center;
 }
 
+.ranking-tv-month-goal {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  padding: 16px 20px;
+  overflow: hidden;
+  border: 1px solid rgba(245, 196, 81, 0.5);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(245, 196, 81, 0.18), rgba(255, 255, 255, 0.05));
+  box-shadow: 0 0 34px rgba(245, 196, 81, 0.12);
+  animation: tvGoalPulse 3s ease-in-out infinite;
+}
+
+.ranking-tv-month-goal::after {
+  content: "";
+  position: absolute;
+  inset: -80% auto -80% -28%;
+  width: 24%;
+  transform: rotate(18deg);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
+  animation: tvGoalShine 4s ease-in-out infinite;
+}
+
+.ranking-tv-month-goal > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 18px;
+}
+
+.ranking-tv-month-goal > div:first-child span,
+.ranking-tv-month-values span,
+.ranking-tv-month-goal.missing span {
+  color: #cfe4da;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: none;
+}
+
+.ranking-tv-month-goal > div:first-child strong {
+  color: #f5c451;
+  font-size: clamp(30px, 3vw, 50px);
+  line-height: 1;
+}
+
+.ranking-tv-month-values {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.ranking-tv-month-values b {
+  font-size: 18px;
+}
+
+.ranking-tv-month-bar {
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.ranking-tv-month-bar i {
+  display: block;
+  width: var(--goal-width);
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #d4971b, #ffe68a);
+  box-shadow: 0 0 22px rgba(245, 196, 81, 0.7);
+  transform-origin: left;
+  animation: tvGoalFill 1.5s ease both;
+}
+
+.ranking-tv-month-goal em {
+  color: #8ff0bf;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.ranking-tv-month-goal.achieved {
+  border-color: #62dfa1;
+  box-shadow: 0 0 42px rgba(64, 219, 143, 0.25);
+}
+
+.ranking-tv-month-goal.missing {
+  align-content: center;
+  min-height: 100px;
+  border-style: dashed;
+  animation: none;
+}
+
 .ranking-podium {
   display: grid;
   grid-template-columns: 0.9fr 1.08fr 0.9fr;
   gap: 22px;
   align-items: end;
-  min-height: 420px;
+  min-height: clamp(210px, 25vh, 310px);
 }
 
 .podium-card {
@@ -1829,8 +2087,8 @@ button.project-chip {
   display: grid;
   align-content: end;
   gap: 14px;
-  min-height: 300px;
-  padding: 30px;
+  min-height: clamp(180px, 23vh, 270px);
+  padding: clamp(18px, 3vh, 30px);
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04));
@@ -1840,7 +2098,7 @@ button.project-chip {
 }
 
 .podium-card.first {
-  min-height: 390px;
+  min-height: clamp(205px, 24vh, 300px);
   border-color: rgba(245, 196, 81, 0.8);
   background: linear-gradient(180deg, rgba(245, 196, 81, 0.28), rgba(255, 255, 255, 0.06));
   animation: podiumRise 0.9s ease both, winnerGlow 3.2s ease-in-out infinite;
@@ -1858,13 +2116,13 @@ button.project-chip {
 }
 
 .podium-card.second {
-  min-height: 330px;
+  min-height: clamp(195px, 23vh, 280px);
   border-color: rgba(214, 223, 219, 0.45);
   animation-delay: 0.35s;
 }
 
 .podium-card.third {
-  min-height: 290px;
+  min-height: clamp(180px, 21vh, 250px);
   border-color: rgba(196, 111, 64, 0.5);
   animation-delay: 0.5s;
 }
@@ -1989,7 +2247,7 @@ button.project-chip {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 28px;
+  margin-top: clamp(12px, 2.5vh, 28px);
 }
 
 .ranking-tv-list article {
@@ -1997,8 +2255,8 @@ button.project-chip {
   grid-template-columns: 70px minmax(0, 1fr) auto auto;
   gap: 18px;
   align-items: center;
-  min-height: 84px;
-  padding: 18px 22px;
+  min-height: clamp(60px, 8vh, 84px);
+  padding: clamp(10px, 2vh, 18px) 22px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.07);
@@ -2015,14 +2273,158 @@ button.project-chip {
   color: #cfe4da;
 }
 
+.ranking-tv-decades {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(14px, 2vw, 28px);
+  margin-top: clamp(14px, 2.7vh, 30px);
+}
+
+.ranking-tv-decade {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  text-align: center;
+  animation: decadeRise 0.9s ease both;
+}
+
+.ranking-tv-decade:nth-child(2) { animation-delay: 0.18s; }
+.ranking-tv-decade:nth-child(3) { animation-delay: 0.36s; }
+
+.ranking-tv-decade-ring {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(120px, 16vh, 190px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: conic-gradient(#f5c451 var(--ring-progress), rgba(255, 255, 255, 0.12) 0);
+  box-shadow: 0 0 34px rgba(245, 196, 81, 0.2);
+  animation: decadeGlow 3s ease-in-out infinite;
+}
+
+.ranking-tv-decade-ring::before {
+  content: "";
+  position: absolute;
+  inset: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #10231d, #030806 72%);
+}
+
+.ranking-tv-decade-ring > div {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 3px;
+}
+
+.ranking-tv-decade-ring strong {
+  color: #f5c451;
+  font-size: clamp(28px, 3vw, 48px);
+  line-height: 1;
+}
+
+.ranking-tv-decade-ring span {
+  color: #cfe4da;
+  font-weight: 800;
+}
+
+.ranking-tv-decade.achieved .ranking-tv-decade-ring {
+  background: conic-gradient(#63e0a2 var(--ring-progress), rgba(255, 255, 255, 0.12) 0);
+  box-shadow: 0 0 42px rgba(64, 219, 143, 0.32);
+}
+
+.ranking-tv-decade.achieved .ranking-tv-decade-ring strong {
+  color: #8ff0bf;
+}
+
+.ranking-tv-decade h3,
+.ranking-tv-decade p {
+  margin: 0;
+}
+
+.ranking-tv-decade h3 {
+  color: #f6fff9;
+  font-size: 17px;
+}
+
+.ranking-tv-decade p {
+  color: #cfe4da;
+}
+
+.ranking-tv-decade p b {
+  color: #fff;
+}
+
+.ranking-tv-decade small {
+  min-height: 32px;
+  color: #90afa0;
+}
+
 @media (max-width: 980px) {
   .ranking-tv-screen { padding: 28px; overflow: auto; }
+  .ranking-tv-hero { grid-template-columns: 1fr; }
+  .ranking-tv-clock { justify-self: start; }
   .ranking-podium { grid-template-columns: 1fr; min-height: 0; }
   .podium-card,
   .podium-card.first,
   .podium-card.second,
   .podium-card.third { min-height: 220px; }
   .ranking-tv-list { grid-template-columns: 1fr; }
+  .ranking-tv-decades { grid-template-columns: 1fr; }
+}
+
+@keyframes tvGoalFill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+@keyframes tvDateEnter {
+  from { transform: translateX(-32px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes tvLogoEnter {
+  from { transform: translateY(-12px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes tvLogoGlow {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(245, 196, 81, 0.1)); }
+  50% { filter: drop-shadow(0 0 18px rgba(245, 196, 81, 0.3)); }
+}
+
+@keyframes tvDateGlow {
+  0%, 100% { box-shadow: 0 0 22px rgba(245, 196, 81, 0.08); }
+  50% { box-shadow: 0 0 38px rgba(245, 196, 81, 0.24); }
+}
+
+@keyframes tvDateShine {
+  0%, 50% { left: -25%; opacity: 0; }
+  62% { opacity: 1; }
+  82%, 100% { left: 115%; opacity: 0; }
+}
+
+@keyframes tvGoalPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.015); }
+}
+
+@keyframes tvGoalShine {
+  0%, 38% { transform: translateX(0) rotate(18deg); opacity: 0; }
+  52% { opacity: 1; }
+  76%, 100% { transform: translateX(650%) rotate(18deg); opacity: 0; }
+}
+
+@keyframes decadeRise {
+  from { opacity: 0; transform: translateY(34px) scale(0.94); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes decadeGlow {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.035); }
 }
 
 @keyframes podiumRise {
@@ -2106,8 +2508,27 @@ textarea {
   position: relative;
 }
 
+.password-edit-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.password-edit-field .secondary-btn {
+  min-width: 82px;
+}
+
+.password-security-note {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
 .searchable-select-input-wrap {
   position: relative;
+  cursor: text;
 }
 
 .searchable-select-input-wrap .search-icon {
@@ -3029,10 +3450,14 @@ dialog::backdrop {
 }
 
 .pipeline-column-alert {
-  flex: 0 0 auto;
+  display: block;
+  flex: 0 0 26px !important;
   align-self: stretch;
-  height: auto;
-  min-height: 0;
+  box-sizing: border-box;
+  height: 26px !important;
+  min-height: 26px !important;
+  max-height: 26px !important;
+  overflow: hidden;
   margin: 8px 8px 0;
   padding: 5px 8px;
   border: 1px solid #f3b0b0;
@@ -3041,6 +3466,8 @@ dialog::backdrop {
   background: #fff5f5;
   font-size: 11px;
   font-weight: 700;
+  line-height: 14px;
+  white-space: nowrap;
 }
 
 .pipeline-card-list {
@@ -3509,8 +3936,8 @@ dialog::backdrop {
     font-size: 9px !important;
   }
 
-  .report-item strong,
-  .dre-row strong {
+.report-item strong,
+.dre-row strong {
     font-size: 9px !important;
   }
 
@@ -3543,4 +3970,17 @@ dialog::backdrop {
   #relatorios .dre-total {
     font-size: 10px !important;
   }
+}
+
+.opportunity-history-item[data-history-kind="interaction"] {
+  border-left: 3px solid var(--primary);
+}
+
+.opportunity-history-item[data-history-kind="task-scheduled"] {
+  border-left: 3px solid var(--warn);
+}
+
+.opportunity-history-item[data-history-kind="task-completed"] {
+  border-left: 3px solid var(--ok);
+  background: #f3faf6;
 }
