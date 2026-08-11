@@ -2339,6 +2339,15 @@ button.project-chip {
   color: #8ff0bf;
 }
 
+.ranking-tv-decade.missed .ranking-tv-decade-ring {
+  background: conic-gradient(#f45b62 var(--ring-progress), rgba(255, 255, 255, 0.12) 0);
+  box-shadow: 0 0 42px rgba(244, 91, 98, 0.34);
+}
+
+.ranking-tv-decade.missed .ranking-tv-decade-ring strong {
+  color: #ff858a;
+}
+
 .ranking-tv-decade h3,
 .ranking-tv-decade p {
   margin: 0;

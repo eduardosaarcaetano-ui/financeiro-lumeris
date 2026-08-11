@@ -12039,6 +12039,8 @@ function salesRankingTvGoalData(entries, month) {
  const monthlyTarget = salesRankTargetForPeriod(month);
  if (monthlyTarget <= 0) return null;
  const decadeTarget = monthlyTarget / 3;
+ const referenceMonth = todayIso.slice(0, 7);
+ const referenceDay = Number(todayIso.slice(8, 10));
  const soldByDecade = [
   { number: 1, start: 1, end: 10, label: "1ª dezena" },
   { number: 2, start: 11, end: 20, label: "2ª dezena" },
@@ -12056,7 +12058,9 @@ function salesRankingTvGoalData(entries, month) {
   const percentage = decadeTarget > 0 ? (effectiveSold / decadeTarget) * 100 : 0;
   const incomingCarry = carry;
   carry = Math.max(0, effectiveSold - decadeTarget);
-  return { ...decade, target: decadeTarget, effectiveSold, incomingCarry, carry, percentage };
+  const periodEnded = month < referenceMonth || (month === referenceMonth && referenceDay > decade.end);
+  const status = percentage >= 100 ? "achieved" : periodEnded ? "missed" : "pending";
+  return { ...decade, target: decadeTarget, effectiveSold, incomingCarry, carry, percentage, status };
  });
  const monthlySold = sum(entries.map((item) => Number(item.amount || 0)));
  return {
@@ -12089,7 +12093,7 @@ function rankingTvDecadesHtml(goal) {
     const visualPercentage = Math.max(0, Math.min(decade.percentage, 100));
     const carryText = decade.incomingCarry > 0 ? `Inclui ${money(decade.incomingCarry)} excedentes da dezena anterior` : "Sem excedente anterior";
     return `
-     <article class="ranking-tv-decade${decade.percentage >= 100 ? " achieved" : ""}">
+     <article class="ranking-tv-decade ${decade.status}" data-status="${decade.status}">
       <div class="ranking-tv-decade-ring" style="--ring-progress:${visualPercentage}%">
        <div><strong>${decade.percentage.toFixed(1).replace(".", ",")}%</strong><span>${escapeHtml(decade.label)}</span></div>
       </div>
