@@ -6,7 +6,7 @@
 
 var DATA_FILE_NAME = "financeiro-lumeris-data.json";
 var PREVIOUS_DATA_FILE_NAME = "financeiro-lumeris-last-good.json";
-var CRM_ATTACHMENTS_ROOT_NAME = "CRM - Anexos Lumeris";
+var CRM_ATTACHMENTS_ROOT_NAME = "Dados Oportunidades";
 var SYNC_PROTOCOL_VERSION = 2;
 var MAX_RECENT_MUTATIONS = 2000;
 var SYNC_BACKUP_FOLDER_NAME = "ERP - Backups automaticos";
@@ -29,7 +29,7 @@ function doGet(e) {
       ok: true,
       capabilities: {
         driveUploads: true,
-        version: "crm-drive-attachments-20260715",
+        version: "crm-drive-opportunities-20260811",
       },
     });
   }
@@ -411,7 +411,7 @@ function trimAutomaticBackups(folder) {
 
 function createLeadFolder(body) {
   var root = getCrmAttachmentsRootFolder();
-  var folderName = sanitizeDriveName(body.folderName || body.clientName || "Lead sem nome");
+  var folderName = getOpportunityDriveFolderName(body);
   var folders = root.getFoldersByName(folderName);
   var folder = folders.hasNext() ? folders.next() : root.createFolder(folderName);
   return {
@@ -420,6 +420,15 @@ function createLeadFolder(body) {
     folderUrl: folder.getUrl(),
     folderName: folder.getName(),
   };
+}
+
+function getOpportunityDriveFolderName(body) {
+  var clientName = String(body.clientName || "").trim();
+  var opportunityNumber = String(body.opportunityNumber || "").trim();
+  if (clientName && opportunityNumber) {
+    return sanitizeDriveName(clientName + " - " + opportunityNumber);
+  }
+  return sanitizeDriveName(body.folderName || clientName || opportunityNumber || "Oportunidade sem nome");
 }
 
 function uploadLeadFile(body) {

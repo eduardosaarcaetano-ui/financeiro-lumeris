@@ -3794,12 +3794,14 @@ function setOpportunityAttachmentStatus(message, tone = "neutral") {
 
 function currentOpportunityClientName() {
  const selected = els.opportunityPerson.selectedOptions?.[0].textContent.trim();
- return selected && !selected.toLowerCase().includes("cadastre") ? selected : "Lead sem cadastro";
+ if (selected && !selected.toLowerCase().includes("cadastre")) return selected;
+ const company = els.opportunityCompany?.value.trim();
+ return company || "Oportunidade sem cliente";
 }
 
 function currentOpportunityFolderName() {
  const number = els.opportunityNumber.value.trim() || nextOpportunityNumber();
- return `${number} - ${currentOpportunityClientName()}`.slice(0, 140);
+ return `${currentOpportunityClientName()} - ${number}`.slice(0, 140);
 }
 
 function extractFirstUrl(text) {
@@ -3824,7 +3826,9 @@ async function checkDriveAutomationAvailable() {
   return false;
  }
  try {
-  const response = await fetchWithTimeout(`${SHEETS_ENDPOINT}capabilities=drive`, {}, 8000);
+  const capabilitiesUrl = new URL(SHEETS_ENDPOINT);
+  capabilitiesUrl.searchParams.set("capabilities", "drive");
+  const response = await fetchWithTimeout(capabilitiesUrl.toString(), {}, 8000);
   const result = await response.json();
   driveAutomationCapability = Boolean(result.capabilities.driveUploads);
  } catch (error) {
@@ -3854,15 +3858,15 @@ async function postDriveAutomation(action, payload, timeoutMs = 60000) {
 
 async function createOpportunityDriveFolderForCurrentLead() {
  try {
-  setOpportunityAttachmentStatus("Criando pasta do lead no Google Drive...", "syncing");
+  setOpportunityAttachmentStatus("Criando pasta da oportunidade em Financeiro/Dados Oportunidades...", "syncing");
   const result = await postDriveAutomation("crm.createLeadFolder", {
    folderName: currentOpportunityFolderName(),
    clientName: currentOpportunityClientName(),
    opportunityNumber: els.opportunityNumber.value.trim(),
   });
   els.opportunityDriveFolder.value = result.folderUrl || "";
-  setOpportunityAttachmentStatus("Pasta criada. Agora arraste arquivos para enviar direto ao Drive.", "ok");
-  toast("Pasta do lead criada no Google Drive.");
+  setOpportunityAttachmentStatus("Pasta da oportunidade criada. Agora arraste arquivos para enviar direto ao Drive.", "ok");
+  toast("Pasta da oportunidade criada no Google Drive.");
  } catch (error) {
   console.error(error);
   setOpportunityAttachmentStatus(error.message, "error");
@@ -3892,6 +3896,8 @@ async function uploadOpportunityFile(file) {
  const result = await postDriveAutomation("crm.uploadLeadFile", {
   folderUrl,
   folderName: currentOpportunityFolderName(),
+  clientName: currentOpportunityClientName(),
+  opportunityNumber: els.opportunityNumber.value.trim(),
   fileName: file.name,
   mimeType: file.type || "application/octet-stream",
   base64,
@@ -4021,7 +4027,7 @@ function renderOpportunityAttachmentRows() {
     <button class="secondary-btn" data-remove-opportunity-attachment="${item.id}" type="button">Remover</button>
    </article>
   `).join("")
-  : emptyMessage("Nenhum anexo registrado. Crie uma pasta no Drive para o lead e cole os links dos arquivos aqui.");
+  : emptyMessage("Nenhum anexo registrado. Crie a pasta da oportunidade no Drive e adicione os arquivos ou links aqui.");
 }
 
 function defaultProposalMaterialCost(moduleQuantity) {
