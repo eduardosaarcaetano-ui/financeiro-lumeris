@@ -7,11 +7,11 @@ const SHEETS_ENDPOINT = new URLSearchParams(window.location.search).get("localte
  ? ""
  : "https://script.google.com/macros/s/AKfycbwvq0ov-i-Zdk3T5G-jm5WGPYLPnvZTvxxM53lTy4yAqd9XWQL4I2UKVeGAOdWCzQ83/exec";
 const SYNC_DEBOUNCE_MS = 800;
-const SYNC_TIMEOUT_MS = 45000;
+const SYNC_TIMEOUT_MS = 90000;
 const SYNC_RETRY_DELAY_MS = 12000;
 const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
-const MAINTENANCE_POLL_MS = 10000;
+const MAINTENANCE_POLL_MS = 60000;
 const SYNC_PROTOCOL_VERSION = 2;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
@@ -2421,7 +2421,7 @@ async function pollRemoteMaintenanceStatus() {
  if (!SHEETS_ENDPOINT || maintenancePollInFlight) return;
  maintenancePollInFlight = true;
  try {
-  const response = await fetchWithTimeout(maintenanceStatusUrl(), { cache: "no-store" }, 8000);
+  const response = await fetchWithTimeout(maintenanceStatusUrl(), { cache: "no-store" }, SYNC_TIMEOUT_MS);
   const result = await response.json();
   if (!result.ok) throw new Error(result.error || "Falha ao consultar manutenção");
   const wasBlocking = shouldBlockForMaintenance();
@@ -2445,7 +2445,7 @@ async function pollRemoteMaintenanceStatus() {
 function startMaintenancePolling() {
  window.clearInterval(maintenancePollTimer);
  if (!SHEETS_ENDPOINT || isSalesRankingTvMode()) return;
- pollRemoteMaintenanceStatus();
+ if (remoteSyncBaseState) pollRemoteMaintenanceStatus();
  maintenancePollTimer = window.setInterval(pollRemoteMaintenanceStatus, MAINTENANCE_POLL_MS);
 }
 
