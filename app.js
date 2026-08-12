@@ -9,6 +9,8 @@ const SHEETS_ENDPOINT = new URLSearchParams(window.location.search).get("localte
 const SYNC_DEBOUNCE_MS = 800;
 const SYNC_TIMEOUT_MS = 45000;
 const SYNC_RETRY_DELAY_MS = 12000;
+const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
+const SYNC_INIT_RETRY_DELAY_MS = 15000;
 const MAINTENANCE_POLL_MS = 10000;
 const SYNC_PROTOCOL_VERSION = 2;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
@@ -26,6 +28,8 @@ let remoteSyncBaseState = null;
 let remoteProtocolVersion = 1;
 let localStateRevision = 0;
 let syncConflictBlocked = false;
+let remoteInitInFlight = false;
+let remoteInitRetryTimer = null;
 let maintenancePollTimer = null;
 let maintenancePollInFlight = false;
 
@@ -2327,17 +2331,27 @@ function persist(scopes) {
  return true;
 }
 
-async function initRemoteSync() {
+async function initRemoteSync(options = {}) {
  if (!SHEETS_ENDPOINT) {
   setSyncStatus("Somente neste navegador (Sheets não configurado)", "offline");
   return;
  }
+ if (remoteInitInFlight) return;
 
+ remoteInitInFlight = true;
  restorePendingSyncScopes();
  const storedBase = loadStoredSyncBase();
- setSyncStatus("Carregando dados compartilhados...", "syncing");
+ const backgroundRetry = options.background === true;
+ if (!backgroundRetry) setSyncStatus("Carregando dados compartilhados...", "syncing");
+ const slowLoadNotice = window.setTimeout(() => {
+  if (!backgroundRetry && remoteInitInFlight) {
+   setSyncStatus("Dados locais disponíveis. Google Sheets está respondendo lentamente...", "syncing");
+  }
+ }, SYNC_SLOW_LOAD_NOTICE_MS);
  try {
   const result = await fetchRemoteState();
+  window.clearTimeout(remoteInitRetryTimer);
+  remoteInitRetryTimer = null;
   remoteUpdatedAt = result.updatedAt || "";
   remoteProtocolVersion = Number(result.protocolVersion || 1);
   if (result.data) {
@@ -2363,8 +2377,20 @@ async function initRemoteSync() {
   }
  } catch (error) {
   console.error(error);
-  setSyncStatus("Sem conexão com o Sheets - alterações ficam na fila local", "error");
+  setSyncStatus("Dados locais disponíveis. Nova tentativa automática com o Google Sheets...", "error");
+  scheduleRemoteInitializationRetry();
+ } finally {
+  window.clearTimeout(slowLoadNotice);
+  remoteInitInFlight = false;
  }
+}
+
+function scheduleRemoteInitializationRetry() {
+ if (!SHEETS_ENDPOINT || remoteInitRetryTimer) return;
+ remoteInitRetryTimer = window.setTimeout(() => {
+  remoteInitRetryTimer = null;
+  initRemoteSync({ background: true });
+ }, SYNC_INIT_RETRY_DELAY_MS);
 }
 
 function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
