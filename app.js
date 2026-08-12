@@ -16,18 +16,25 @@ const SYNC_PROTOCOL_VERSION = 2;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
 const SYNC_BASE_STORAGE_KEY = "financeiro-lumeris-sync-base-v2";
+const SYNC_BASE_METADATA_STORAGE_KEY = "financeiro-lumeris-sync-base-metadata-v1";
+const SYNC_BATCH_STORAGE_KEY = "financeiro-lumeris-sync-batch-v1";
+const EMBEDDED_SYNC_STATE_KEY = "__lumerisSyncState";
 const FORCE_MAINTENANCE_MODE = false;
 const FORCE_MAINTENANCE_MESSAGE = "Sistema em manutencao para ajustes. Por favor, aguarde a liberacao.";
 let remoteUpdatedAt = "";
+let remoteVersion = "";
+let remoteRevision = 0;
 let syncTimer = null;
 let syncRetryTimer = null;
 let syncInFlight = false;
 let syncQueued = false;
 let pendingSyncScopes = new Set();
 let remoteSyncBaseState = null;
+let activeSyncBatch = null;
 let remoteProtocolVersion = 1;
 let localStateRevision = 0;
 let syncConflictBlocked = false;
+let activeSyncConflict = null;
 let remoteInitInFlight = false;
 let remoteInitRetryTimer = null;
 let maintenancePollTimer = null;
@@ -903,7 +910,7 @@ boot().catch((error) => {
 async function boot() {
  try {
   bindEvents();
-  if (ensureSalesTargetCompatibilityEntries()) persist("crm");
+  if (ensureSalesTargetCompatibilityEntries()) persist("crm", { resolveConflict: false });
   setDefaultReportPeriod();
   renderAll();
   if (isSalesRankingTvMode()) {
@@ -1474,7 +1481,20 @@ function bindEvents() {
 function loadState() {
  const saved = localStorage.getItem(STORAGE_KEY) || LEGACY_STORAGE_KEYS.map((key) => localStorage.getItem(key)).find(Boolean);
  if (saved) {
-  return normalizeState(JSON.parse(saved));
+  const parsed = JSON.parse(saved);
+  const embeddedSync = parsed?.[EMBEDDED_SYNC_STATE_KEY];
+  (embeddedSync?.pendingScopes || []).forEach((scope) => {
+   if (scope === "all" || SAVE_SCOPE_FIELDS[scope]) pendingSyncScopes.add(scope);
+  });
+  if (embeddedSync?.conflict && typeof embeddedSync.conflict === "object") {
+   activeSyncConflict = {
+    scopes: (embeddedSync.conflict.scopes || []).filter((scope) => scope === "all" || SAVE_SCOPE_FIELDS[scope]),
+    detail: String(embeddedSync.conflict.detail || "um registro"),
+    createdAt: String(embeddedSync.conflict.createdAt || ""),
+   };
+   syncConflictBlocked = true;
+  }
+  return normalizeState(parsed);
  }
 
  return normalizeState({
@@ -2319,15 +2339,31 @@ function seedInstallationBacklog(normalized) {
  });
 }
 
-function persist(scopes) {
+function persist(scopes, options = {}) {
  if (isMaintenanceActive() && !isMaintenanceController()) {
   setSyncStatus("Sistema em manutenção - salvamento bloqueado", "error");
   toast("Sistema em manutenção. Alterações não foram salvas.");
   return false;
  }
+ const normalizedScopes = normalizePersistScopes(scopes);
+ normalizedScopes.forEach((scope) => pendingSyncScopes.add(scope));
+ if (options.resolveConflict !== false && activeSyncConflict) {
+  const conflictScopes = activeSyncConflict.scopes || [];
+  const resolvesConflict = normalizedScopes.includes("all") || conflictScopes.includes("all") ||
+   normalizedScopes.some((scope) => conflictScopes.includes(scope));
+  if (resolvesConflict) {
+   activeSyncConflict = null;
+   syncConflictBlocked = false;
+  }
+ }
  localStateRevision += 1;
- localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
- scheduleRemoteSync(scopes);
+ if (!saveLocalState()) {
+  syncConflictBlocked = true;
+  setSyncStatus("Sem espaço local para salvar com segurança.", "error");
+  toast("Não foi possível salvar neste computador. Libere espaço do navegador e tente novamente.");
+  return false;
+ }
+ scheduleRemoteSync(normalizedScopes);
  return true;
 }
 
@@ -2341,18 +2377,56 @@ async function initRemoteSync(options = {}) {
  remoteInitInFlight = true;
  restorePendingSyncScopes();
  const storedBase = loadStoredSyncBase();
+ const storedBaseMetadata = loadStoredSyncBaseMetadata();
  const backgroundRetry = options.background === true;
- if (!backgroundRetry) setSyncStatus("Carregando dados compartilhados...", "syncing");
+ if (!backgroundRetry) setSyncStatus("Verificando atualizações compartilhadas...", "syncing");
  const slowLoadNotice = window.setTimeout(() => {
   if (!backgroundRetry && remoteInitInFlight) {
    setSyncStatus("Dados locais disponíveis. Google Sheets está respondendo lentamente...", "syncing");
   }
  }, SYNC_SLOW_LOAD_NOTICE_MS);
  try {
-  const result = await fetchRemoteState();
+  let result = await fetchRemoteState(storedBaseMetadata?.version);
+  if (result.notModified) {
+   const syncMetadata = normalizeRemoteSyncMetadata({ ...result, initialized: true });
+   if (!canReuseStoredSyncBase(syncMetadata, storedBaseMetadata, storedBase)) {
+    // A versao coincide, mas a base local foi removida/corrompida. Esse e o unico
+    // caso em que uma segunda leitura integral e necessaria.
+    result = await fetchRemoteState();
+   } else {
+   window.clearTimeout(remoteInitRetryTimer);
+   remoteInitRetryTimer = null;
+   applyRemoteSyncMetadata(syncMetadata);
+   remoteProtocolVersion = Number(
+     result.protocolVersion || storedBaseMetadata?.protocolVersion || remoteProtocolVersion || 1
+   );
+   remoteSyncBaseState = storedBase;
+   const localState = loadState();
+   const pendingScopesDuringLoad = Array.from(pendingSyncScopes);
+   const pendingOperations = pendingScopesDuringLoad.length
+    ? buildSyncOperations(storedBase, localState, pendingScopesDuringLoad)
+    : [];
+    const syncedState = pendingOperations.length
+     ? normalizeState(rebaseSyncOperationsLocally(storedBase, pendingOperations))
+    : storedBase;
+   Object.assign(state, cloneStateValue(syncedState));
+   if (!saveLocalState()) throw localSyncPersistenceError();
+   renderAll();
+   updateMaintenanceControlUi();
+   if (pendingScopesDuringLoad.length && !syncConflictBlocked) scheduleRemoteSync(pendingScopesDuringLoad);
+   if (syncConflictBlocked && activeSyncConflict) {
+    setSyncStatus(`Conflito aguardando revisão: ${activeSyncConflict.detail}. Dados locais preservados.`, "error");
+   }
+   if (!enforceMaintenanceMode() && !pendingSyncScopes.size) {
+    setSyncStatus("Sincronizado com o Google Sheets", "ok");
+   }
+   return;
+   }
+  }
+
   window.clearTimeout(remoteInitRetryTimer);
   remoteInitRetryTimer = null;
-  remoteUpdatedAt = result.updatedAt || "";
+  applyRemoteSyncMetadata(result);
   remoteProtocolVersion = Number(result.protocolVersion || 1);
   if (result.data) {
    const remoteState = normalizeState(result.data);
@@ -2362,15 +2436,18 @@ async function initRemoteSync(options = {}) {
    const pendingOperations = pendingScopesDuringLoad.length
     ? buildSyncOperations(pendingBase, localState, pendingScopesDuringLoad)
     : [];
-   const syncedState = pendingOperations.length
-    ? normalizeState(applySyncOperationsLocally(remoteState, pendingOperations))
-    : remoteState;
-   remoteSyncBaseState = remoteState;
-   storeSyncBase(remoteState);
-   Object.assign(state, cloneStateValue(syncedState));
-   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+     const syncedState = pendingOperations.length
+      ? normalizeState(rebaseSyncOperationsLocally(remoteState, pendingOperations))
+     : remoteState;
+    remoteSyncBaseState = remoteState;
+    Object.assign(state, cloneStateValue(syncedState));
+    if (!saveLocalState()) throw localSyncPersistenceError();
+    if (!storeSyncBase(remoteState)) throw localSyncPersistenceError();
    renderAll();
-   if (pendingScopesDuringLoad.length) scheduleRemoteSync(pendingScopesDuringLoad);
+    if (pendingScopesDuringLoad.length && !syncConflictBlocked) scheduleRemoteSync(pendingScopesDuringLoad);
+    if (syncConflictBlocked && activeSyncConflict) {
+     setSyncStatus(`Conflito aguardando revisão: ${activeSyncConflict.detail}. Dados locais preservados.`, "error");
+    }
   }
   if (!enforceMaintenanceMode()) {
    if (!pendingSyncScopes.size) setSyncStatus("Sincronizado com o Google Sheets", "ok");
@@ -2383,6 +2460,33 @@ async function initRemoteSync(options = {}) {
   window.clearTimeout(slowLoadNotice);
   remoteInitInFlight = false;
  }
+}
+
+function normalizeRemoteSyncMetadata(value) {
+ const source = value && typeof value === "object" ? value : {};
+ return {
+  initialized: Boolean(source.initialized && source.version),
+  version: String(source.version || ""),
+  revision: Number(source.revision || 0),
+  updatedAt: String(source.updatedAt || ""),
+  maintenance: normalizeMaintenanceState(source.maintenance),
+ };
+}
+
+function applyRemoteSyncMetadata(value) {
+ const source = value && typeof value === "object" ? value : {};
+ remoteUpdatedAt = String(source.updatedAt || remoteUpdatedAt || "");
+ remoteVersion = String(source.version || (source.updatedAt ? `legacy:${source.updatedAt}` : remoteVersion || ""));
+ remoteRevision = Number(source.revision || remoteRevision || 0);
+}
+
+function canReuseStoredSyncBase(remoteMetadata, storedMetadata, storedBase) {
+ if (!remoteMetadata?.initialized || !storedBase || !storedMetadata) return false;
+ return Boolean(
+  remoteMetadata.version &&
+  storedMetadata.version &&
+  remoteMetadata.version === storedMetadata.version
+ );
 }
 
 function scheduleRemoteInitializationRetry() {
@@ -2426,14 +2530,14 @@ async function pollRemoteMaintenanceStatus() {
   if (!result.ok) throw new Error(result.error || "Falha ao consultar manutenção");
   const wasBlocking = shouldBlockForMaintenance();
   state.maintenance = normalizeMaintenanceState(result.maintenance);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  saveLocalState();
   updateMaintenanceControlUi();
   const nowBlocking = shouldBlockForMaintenance();
   if (nowBlocking) {
    showMaintenance();
   } else if (wasBlocking && currentSessionUser()) {
    showApp();
-   if (pendingSyncScopes.size) scheduleRemoteSync(Array.from(pendingSyncScopes));
+   if (pendingSyncScopes.size && !syncConflictBlocked) scheduleRemoteSync(Array.from(pendingSyncScopes));
   }
  } catch (error) {
   console.warn("Não foi possível consultar o modo de manutenção:", error);
@@ -2564,6 +2668,53 @@ function applySyncOperationsLocally(baseState, operations) {
  return next;
 }
 
+function mergeSyncRecordForLocalRebase(baseValue, localValue, remoteValue) {
+ const isPlainObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+ if (!isPlainObject(localValue)) return cloneStateValue(localValue);
+
+ const baseRecord = isPlainObject(baseValue) ? baseValue : {};
+ const remoteRecord = isPlainObject(remoteValue) ? remoteValue : {};
+ const merged = cloneStateValue(remoteRecord);
+ const keys = new Set([...Object.keys(baseRecord), ...Object.keys(localValue)]);
+ keys.forEach((key) => {
+  const baseHasKey = Object.prototype.hasOwnProperty.call(baseRecord, key);
+  const localHasKey = Object.prototype.hasOwnProperty.call(localValue, key);
+  const localChanged = baseHasKey !== localHasKey || (
+   localHasKey && syncCanonical(baseRecord[key]) !== syncCanonical(localValue[key])
+  );
+  if (!localChanged) return;
+  if (localHasKey) merged[key] = cloneStateValue(localValue[key]);
+  else delete merged[key];
+ });
+ return merged;
+}
+
+function rebaseSyncOperationsLocally(remoteState, operations) {
+ const next = cloneStateValue(remoteState || {});
+ operations.forEach((operation) => {
+  if (operation.type === "replace") {
+   next[operation.field] = cloneStateValue(operation.value);
+   return;
+  }
+  if (!Array.isArray(next[operation.field])) next[operation.field] = [];
+  const index = next[operation.field].findIndex((item) => String(item?.id || "") === String(operation.id));
+  if (operation.type === "delete") {
+   if (index >= 0) next[operation.field].splice(index, 1);
+   return;
+  }
+  if (index >= 0) {
+   next[operation.field][index] = mergeSyncRecordForLocalRebase(
+    operation.baseValue,
+    operation.value,
+    next[operation.field][index]
+   );
+  } else {
+   next[operation.field].push(cloneStateValue(operation.value));
+  }
+ });
+ return next;
+}
+
 function isInactiveDuplicateStockConflict(remoteState, conflict) {
  if (conflict?.field !== "stockItems" || !conflict.id) return false;
  const items = Array.isArray(remoteState?.stockItems) ? remoteState.stockItems : [];
@@ -2591,7 +2742,8 @@ async function resolveInactiveDuplicateStockConflicts(conflicts, scopes) {
  // Reaplica sobre a versao remota somente as alteracoes locais que nao pertencem
  // as copias inativas em conflito. Assim os demais dados locais e remotos sao preservados.
  const currentLocalState = normalizeState(cloneStateValue(state));
- const pendingOperations = buildSyncOperations(remoteSyncBaseState || {}, currentLocalState, scopes);
+ const rebaseScopes = normalizePersistScopes([...scopes, ...Array.from(pendingSyncScopes)]);
+ const pendingOperations = buildSyncOperations(remoteSyncBaseState || {}, currentLocalState, rebaseScopes);
  const remoteStockItems = Array.isArray(latestRemoteState.stockItems) ? latestRemoteState.stockItems : [];
  const catalogKeysToUseRemote = new Set(conflictList.map((conflict) => {
   const item = remoteStockItems.find((entry) => String(entry?.id || "") === String(conflict.id || ""));
@@ -2613,20 +2765,51 @@ async function resolveInactiveDuplicateStockConflicts(conflicts, scopes) {
   if (operation.field !== "stockItems") return true;
   return !stockItemIdsToUseRemote.has(String(operation.id || ""));
  });
- const rebasedLocalState = normalizeState(applySyncOperationsLocally(latestRemoteState, operationsToKeep));
+ const rebasedLocalState = normalizeState(rebaseSyncOperationsLocally(latestRemoteState, operationsToKeep));
 
- remoteUpdatedAt = latest.updatedAt || remoteUpdatedAt;
+ applyRemoteSyncMetadata(latest);
  remoteProtocolVersion = Number(latest.protocolVersion || remoteProtocolVersion || 1);
- remoteSyncBaseState = latestRemoteState;
- storeSyncBase(latestRemoteState);
  Object.assign(state, rebasedLocalState);
- localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+ if (!saveLocalState()) throw localSyncPersistenceError();
  renderAll();
+ remoteSyncBaseState = latestRemoteState;
+ if (!storeSyncBase(latestRemoteState)) throw localSyncPersistenceError();
  return true;
 }
 
-async function fetchRemoteState() {
- const response = await fetchWithTimeout(SHEETS_ENDPOINT, {}, SYNC_TIMEOUT_MS);
+async function rebaseAfterRecordConflict(scopes, detail) {
+ const previousBase = remoteSyncBaseState || loadStoredSyncBase() || {};
+ const latest = await fetchRemoteState();
+ const latestRemoteState = normalizeState(latest.data || {});
+ const currentLocalState = normalizeState(cloneStateValue(state));
+ const rebaseScopes = normalizePersistScopes([...scopes, ...Array.from(pendingSyncScopes)]);
+ const localOperations = buildSyncOperations(previousBase, currentLocalState, rebaseScopes);
+ const rebasedLocalState = normalizeState(
+  rebaseSyncOperationsLocally(latestRemoteState, localOperations)
+ );
+
+ applyRemoteSyncMetadata(latest);
+ remoteProtocolVersion = Number(latest.protocolVersion || remoteProtocolVersion || 1);
+ activeSyncConflict = {
+  scopes: normalizePersistScopes(scopes),
+  detail: String(detail || "um registro"),
+  createdAt: new Date().toISOString(),
+ };
+ syncConflictBlocked = true;
+ Object.assign(state, rebasedLocalState);
+ if (!saveLocalState()) throw localSyncPersistenceError();
+ renderAll();
+ remoteSyncBaseState = latestRemoteState;
+ if (!storeSyncBase(latestRemoteState)) throw localSyncPersistenceError();
+ if (!clearSyncBatch()) throw localSyncPersistenceError();
+ return true;
+}
+
+async function fetchRemoteState(knownVersion) {
+ const url = new URL(SHEETS_ENDPOINT);
+ if (knownVersion !== undefined) url.searchParams.set("knownVersion", String(knownVersion || ""));
+ url.searchParams.set("_", String(Date.now()));
+ const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, SYNC_TIMEOUT_MS);
  const result = await response.json();
  if (!result.ok) throw new Error(result.error || "Falha ao carregar versao atual");
  return result;
@@ -2642,14 +2825,26 @@ function syncClientId() {
 }
 
 function saveSyncOutbox() {
- if (!pendingSyncScopes.size) {
-  localStorage.removeItem(SYNC_OUTBOX_STORAGE_KEY);
-  return;
+ try {
+  if (!pendingSyncScopes.size) {
+   localStorage.removeItem(SYNC_OUTBOX_STORAGE_KEY);
+   return true;
+  }
+  localStorage.setItem(SYNC_OUTBOX_STORAGE_KEY, JSON.stringify({
+   scopes: Array.from(pendingSyncScopes),
+   savedAt: new Date().toISOString(),
+  }));
+  return true;
+ } catch (error) {
+  console.error("Nao foi possivel persistir a fila local de sincronizacao", error);
+  return false;
  }
- localStorage.setItem(SYNC_OUTBOX_STORAGE_KEY, JSON.stringify({
-  scopes: Array.from(pendingSyncScopes),
-  savedAt: new Date().toISOString(),
- }));
+}
+
+function localSyncPersistenceError() {
+ const error = new Error("Sem espaço local para preparar uma sincronização segura");
+ error.code = "local_batch_persist_failed";
+ return error;
 }
 
 function restorePendingSyncScopes() {
@@ -2661,13 +2856,89 @@ function restorePendingSyncScopes() {
  } catch (error) {
   console.error("Fila local de sincronizacao invalida", error);
  }
+ const batch = loadSyncBatch();
+ (batch?.scopes || []).forEach((scope) => {
+  if (scope === "all" || SAVE_SCOPE_FIELDS[scope]) pendingSyncScopes.add(scope);
+ });
+}
+
+function saveLocalState() {
+ try {
+  const payload = cloneStateValue(state);
+  payload[EMBEDDED_SYNC_STATE_KEY] = {
+   pendingScopes: Array.from(pendingSyncScopes),
+   conflict: activeSyncConflict ? cloneStateValue(activeSyncConflict) : null,
+  };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+  return true;
+ } catch (error) {
+  console.error("Nao foi possivel guardar os dados locais do ERP", error);
+  return false;
+ }
+}
+
+function loadSyncBatch() {
+ if (activeSyncBatch) return activeSyncBatch;
+ try {
+  const stored = JSON.parse(localStorage.getItem(SYNC_BATCH_STORAGE_KEY) || "null");
+  if (!stored || !stored.mutationId || !Array.isArray(stored.operations) || !stored.operations.length) return null;
+  activeSyncBatch = {
+   mutationId: String(stored.mutationId),
+   scopes: normalizePersistScopes(stored.scopes),
+   operations: stored.operations,
+   baseVersion: String(stored.baseVersion || ""),
+   createdAt: String(stored.createdAt || ""),
+  };
+  return activeSyncBatch;
+ } catch (error) {
+  console.error("Lote local de sincronizacao invalido", error);
+  return null;
+ }
+}
+
+function createSyncBatch(scopes, operations) {
+ try {
+  const nextBatch = {
+   mutationId: `${syncClientId()}-${Date.now()}-${crypto.randomUUID()}`,
+   scopes: normalizePersistScopes(scopes),
+   operations: cloneStateValue(operations),
+   baseVersion: remoteVersion || "",
+   createdAt: new Date().toISOString(),
+  };
+  localStorage.setItem(SYNC_BATCH_STORAGE_KEY, JSON.stringify(nextBatch));
+  activeSyncBatch = nextBatch;
+  return activeSyncBatch;
+ } catch (error) {
+  console.error("Nao foi possivel persistir o lote exato de sincronizacao", error);
+  activeSyncBatch = null;
+  throw localSyncPersistenceError();
+ }
+}
+
+function clearSyncBatch() {
+ try {
+  localStorage.removeItem(SYNC_BATCH_STORAGE_KEY);
+  activeSyncBatch = null;
+  return true;
+ } catch (error) {
+  console.warn("Nao foi possivel remover o lote confirmado de sincronizacao", error);
+  return false;
+ }
 }
 
 function storeSyncBase(baseState) {
  try {
   localStorage.setItem(SYNC_BASE_STORAGE_KEY, JSON.stringify(baseState));
+  localStorage.setItem(SYNC_BASE_METADATA_STORAGE_KEY, JSON.stringify({
+   version: remoteVersion || (remoteUpdatedAt ? `legacy:${remoteUpdatedAt}` : ""),
+   revision: Number(remoteRevision || 0),
+   updatedAt: remoteUpdatedAt || "",
+   protocolVersion: Number(remoteProtocolVersion || 1),
+  }));
+  return true;
  } catch (error) {
   console.warn("Nao foi possivel guardar a base local de sincronizacao", error);
+  return false;
  }
 }
 
@@ -2681,19 +2952,46 @@ function loadStoredSyncBase() {
  }
 }
 
+function loadStoredSyncBaseMetadata() {
+ try {
+  const stored = JSON.parse(localStorage.getItem(SYNC_BASE_METADATA_STORAGE_KEY) || "null");
+  if (!stored || typeof stored !== "object") return null;
+  return {
+   version: String(stored.version || ""),
+   revision: Number(stored.revision || 0),
+   updatedAt: String(stored.updatedAt || ""),
+   protocolVersion: Number(stored.protocolVersion || 1),
+  };
+ } catch (error) {
+  console.error("Metadados da base local de sincronizacao invalidos", error);
+  return null;
+ }
+}
+
 function scheduleRemoteSync(scopes) {
- if (!SHEETS_ENDPOINT) return;
+ if (!SHEETS_ENDPOINT) return false;
  window.clearTimeout(syncRetryTimer);
  normalizePersistScopes(scopes).forEach((scope) => pendingSyncScopes.add(scope));
- saveSyncOutbox();
+ if (!saveLocalState() || !saveSyncOutbox()) {
+  syncConflictBlocked = true;
+  setSyncStatus("Sem espaço local para sincronização segura. Dados preservados neste computador.", "error");
+  toast("Libere espaço do navegador e salve novamente. Nenhum dado foi enviado ou perdido.");
+  return false;
+ }
+ if (activeSyncConflict) {
+  syncConflictBlocked = true;
+  setSyncStatus(`Conflito aguardando revisão: ${activeSyncConflict.detail}. Dados locais preservados.`, "error");
+  return false;
+ }
  if (syncInFlight) {
   syncQueued = true;
   setSyncStatus("Salvo localmente. Aguardando sincronizacao...", "syncing");
-  return;
+  return true;
  }
  window.clearTimeout(syncTimer);
  setSyncStatus("Salvo localmente. Sincronizando...", "syncing");
  syncTimer = window.setTimeout(pushToSheets, SYNC_DEBOUNCE_MS);
+ return true;
 }
 
 function scheduleRemoteSyncRetry() {
@@ -2708,6 +3006,11 @@ function scheduleRemoteSyncRetry() {
 }
 
 async function pushToSheets() {
+ if (activeSyncConflict) {
+  syncConflictBlocked = true;
+  setSyncStatus(`Conflito aguardando revisão: ${activeSyncConflict.detail}. Dados locais preservados.`, "error");
+  return;
+ }
  if (syncInFlight) {
   syncQueued = true;
   return;
@@ -2716,77 +3019,125 @@ async function pushToSheets() {
  syncInFlight = true;
  syncQueued = false;
  syncConflictBlocked = false;
- const scopes = pendingSyncScopes.size ? Array.from(pendingSyncScopes) : inferPersistScopes();
- pendingSyncScopes.clear();
- saveSyncOutbox();
- const localState = normalizeState(cloneStateValue(state));
- const capturedRevision = localStateRevision;
- window.clearTimeout(syncTimer);
- setSyncStatus(`Sincronizando ${syncScopeLabel(scopes)} com o Google Sheets...`, "syncing");
+ let scopes = [];
+ let localState = null;
+ let capturedRevision = localStateRevision;
 
  try {
+   const storedBatch = loadSyncBatch();
+   scopes = storedBatch?.scopes?.length
+    ? storedBatch.scopes
+    : (pendingSyncScopes.size ? Array.from(pendingSyncScopes) : inferPersistScopes());
+   // A fila permanece persistida ate o servidor confirmar a gravacao. Assim, fechar
+   // a aba durante uma requisicao nao perde a indicacao das alteracoes pendentes.
+   if (!saveSyncOutbox()) throw localSyncPersistenceError();
+   localState = normalizeState(cloneStateValue(state));
+   capturedRevision = localStateRevision;
+   window.clearTimeout(syncTimer);
+   setSyncStatus(`Sincronizando ${syncScopeLabel(scopes)} com o Google Sheets...`, "syncing");
    if (remoteProtocolVersion < SYNC_PROTOCOL_VERSION) {
     const error = new Error("Backend desatualizado para sincronizacao segura");
     error.code = "backend_update_required";
     throw error;
    }
    const result = await pushAtomicPatch(scopes, localState);
-  remoteUpdatedAt = result.updatedAt || remoteUpdatedAt;
-  if (result.data) {
-   const confirmedRemoteState = normalizeState(result.data);
-   const changesMadeDuringRequest = capturedRevision === localStateRevision
-    ? []
-    : buildSyncOperations(localState, normalizeState(cloneStateValue(state)), Array.from(pendingSyncScopes));
-   remoteSyncBaseState = confirmedRemoteState;
-   if (changesMadeDuringRequest.length) {
-    Object.assign(state, normalizeState(applySyncOperationsLocally(confirmedRemoteState, changesMadeDuringRequest)));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+   const confirmedScopes = normalizePersistScopes(result.syncedScopes || scopes);
+   applyRemoteSyncMetadata(result);
+   let stateWasRebased = false;
+   let hasUnsyncedChanges = Boolean(result.localOperationsAfterBatch?.length);
+   if (result.data) {
+    const confirmedRemoteState = normalizeState(result.data);
+    const changesMadeDuringRequest = capturedRevision === localStateRevision
+     ? []
+     : buildSyncOperations(localState, normalizeState(cloneStateValue(state)), Array.from(pendingSyncScopes));
+    const remainingLocalOperations = [
+     ...(result.localOperationsAfterBatch || []),
+     ...changesMadeDuringRequest,
+    ];
+    hasUnsyncedChanges = remainingLocalOperations.length > 0;
+    remoteSyncBaseState = confirmedRemoteState;
+    if (remainingLocalOperations.length) {
+     Object.assign(state, normalizeState(rebaseSyncOperationsLocally(confirmedRemoteState, remainingLocalOperations)));
+     if (!saveLocalState()) throw localSyncPersistenceError();
+     renderAll();
+     stateWasRebased = true;
+    }
+   } else if (result.appliedOperations) {
+    remoteSyncBaseState = normalizeState(applySyncOperationsLocally(remoteSyncBaseState || {}, result.appliedOperations));
+   }
+   if (!stateWasRebased && capturedRevision === localStateRevision && remoteSyncBaseState) {
+    Object.assign(state, cloneStateValue(remoteSyncBaseState));
+    if (!saveLocalState()) throw localSyncPersistenceError();
     renderAll();
    }
-  } else if (result.appliedOperations) {
-   remoteSyncBaseState = normalizeState(applySyncOperationsLocally(remoteSyncBaseState || {}, result.appliedOperations));
-  }
-  if (remoteSyncBaseState) storeSyncBase(remoteSyncBaseState);
-  if (capturedRevision === localStateRevision && !pendingSyncScopes.size && remoteSyncBaseState) {
-   Object.assign(state, remoteSyncBaseState);
-   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-   renderAll();
-  }
+   if (remoteSyncBaseState && !storeSyncBase(remoteSyncBaseState)) throw localSyncPersistenceError();
+   if (capturedRevision === localStateRevision && !hasUnsyncedChanges) {
+    confirmedScopes.forEach((scope) => pendingSyncScopes.delete(scope));
+   }
+   if (hasUnsyncedChanges) syncQueued = true;
+   if (!saveLocalState()) throw localSyncPersistenceError();
+   saveSyncOutbox();
+   if (!clearSyncBatch()) throw localSyncPersistenceError();
   window.clearTimeout(syncRetryTimer);
   if (!pendingSyncScopes.size) setSyncStatus("Sincronizado com o Google Sheets", "ok");
  } catch (error) {
   console.error(error);
   scopes.forEach((scope) => pendingSyncScopes.add(scope));
+  saveLocalState();
   saveSyncOutbox();
   if (error.code === "maintenance_active") {
    syncConflictBlocked = true;
    if (error.maintenance) {
     state.maintenance = normalizeMaintenanceState(error.maintenance);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    saveLocalState();
    }
    setSyncStatus("Sistema em manutenção - dados preservados neste computador", "error");
    toast(error.userMessage || "O administrador ativou a manutenção. Seus dados locais foram preservados.");
    showMaintenance();
   } else if (error.code === "record_conflict") {
    let resolvedInactiveDuplicate = false;
+   let duplicateResolutionError = null;
    try {
     resolvedInactiveDuplicate = await resolveInactiveDuplicateStockConflicts(error.conflicts, scopes);
    } catch (resolutionError) {
     console.error("Falha ao reconciliar copia inativa do estoque", resolutionError);
+    duplicateResolutionError = resolutionError;
    }
    if (resolvedInactiveDuplicate) {
-    syncConflictBlocked = false;
-    setSyncStatus("Cópia inativa do estoque conciliada. Finalizando sincronização...", "syncing");
-    toast("Uma cópia antiga e inativa do estoque foi conciliada sem alterar o item ativo.");
-    scheduleRemoteSync(Array.from(pendingSyncScopes));
-   } else {
+     syncConflictBlocked = false;
+     if (!clearSyncBatch()) {
+      syncConflictBlocked = true;
+      setSyncStatus("Sem espaço local para concluir a conciliação. Lote preservado.", "error");
+      toast("Libere espaço do navegador e tente novamente.");
+     } else {
+      setSyncStatus("Cópia inativa do estoque conciliada. Finalizando sincronização...", "syncing");
+      toast("Uma cópia antiga e inativa do estoque foi conciliada sem alterar o item ativo.");
+      scheduleRemoteSync(Array.from(pendingSyncScopes));
+     }
+   } else if (duplicateResolutionError?.code === "local_batch_persist_failed") {
     syncConflictBlocked = true;
-    const target = error.conflicts?.[0];
-    const detail = target ? `${target.field}${target.id ? ` (${target.id})` : ""}` : "um registro";
-    setSyncStatus(`Conflito no mesmo registro: ${detail}. Dados locais preservados.`, "error");
-    toast("Outro usuario alterou o mesmo registro. Seus dados continuam salvos neste computador.");
+    setSyncStatus("Sem espaço local para conciliar com segurança. Dados preservados neste computador.", "error");
+    toast("Libere espaço do navegador e salve novamente. O lote pendente foi preservado.");
+   } else {
+     const target = error.conflicts?.[0];
+     const detail = target ? `${target.field}${target.id ? ` (${target.id})` : ""}` : "um registro";
+     let conflictRebased = false;
+     try {
+      conflictRebased = await rebaseAfterRecordConflict(scopes, detail);
+     } catch (rebaseError) {
+      console.error("Falha ao atualizar a base depois do conflito", rebaseError);
+     }
+     syncConflictBlocked = true;
+     setSyncStatus(`Conflito no mesmo registro: ${detail}. Dados locais preservados.`, "error");
+     toast(conflictRebased
+      ? "Outro usuário alterou o mesmo registro. A versão atual foi carregada; revise e salve novamente."
+      : "Outro usuário alterou o mesmo registro. Seus dados continuam salvos neste computador.");
    }
-   } else if (error.code === "backend_update_required" || error.code === "client_update_required") {
+    } else if (error.code === "local_batch_persist_failed") {
+     syncConflictBlocked = true;
+     setSyncStatus("Sem espaço local para sincronização segura. Dados preservados neste computador.", "error");
+     toast("Libere espaço do navegador e salve novamente. Nenhum dado foi enviado ou perdido.");
+    } else if (error.code === "backend_update_required" || error.code === "client_update_required") {
     syncConflictBlocked = true;
     setSyncStatus("Atualização de segurança pendente. Dados preservados neste computador.", "error");
     toast("Salvamento remoto bloqueado até a atualização segura do sistema.");
@@ -2803,28 +3154,50 @@ async function pushToSheets() {
 async function pushAtomicPatch(scopes, localState) {
  if (!remoteSyncBaseState) {
   const latest = await fetchRemoteState();
+  applyRemoteSyncMetadata(latest);
   remoteProtocolVersion = Number(latest.protocolVersion || 1);
   remoteSyncBaseState = normalizeState(latest.data || {});
-  storeSyncBase(remoteSyncBaseState);
+  if (!storeSyncBase(remoteSyncBaseState)) throw localSyncPersistenceError();
  }
- const operations = buildSyncOperations(remoteSyncBaseState, localState, scopes);
+ let batch = loadSyncBatch();
+ const operations = batch?.operations?.length
+  ? batch.operations
+  : buildSyncOperations(remoteSyncBaseState, localState, scopes);
  if (!operations.length) {
-  return { ok: true, updatedAt: remoteUpdatedAt, data: remoteSyncBaseState };
+  return {
+   ok: true,
+   updatedAt: remoteUpdatedAt,
+   version: remoteVersion,
+   revision: remoteRevision,
+   data: remoteSyncBaseState,
+   syncedScopes: normalizePersistScopes(scopes),
+  };
  }
+ if (!batch) batch = createSyncBatch(scopes, operations);
+ const batchScopes = normalizePersistScopes(batch.scopes);
+ const expectedStateAfterBatch = normalizeState(
+  applySyncOperationsLocally(remoteSyncBaseState || {}, batch.operations)
+ );
+ const localOperationsAfterBatch = buildSyncOperations(
+  expectedStateAfterBatch,
+  localState,
+  Array.from(pendingSyncScopes)
+ );
  const actor = currentSessionUser();
  const response = await fetchWithTimeout(SHEETS_ENDPOINT, {
   method: "POST",
   body: JSON.stringify({
-   action: "sync.patch",
-   protocolVersion: SYNC_PROTOCOL_VERSION,
-   mutationId: `${syncClientId()}-${Date.now()}-${crypto.randomUUID()}`,
-   clientId: syncClientId(),
+    action: "sync.patch",
+    protocolVersion: SYNC_PROTOCOL_VERSION,
+    mutationId: batch.mutationId,
+    clientId: syncClientId(),
    actorId: String(actor?.id || actor?.username || ""),
    actorName: String(actor?.name || actor?.username || ""),
    actorUsername: String(actor?.username || ""),
    view: String(document.body?.dataset?.view || ""),
-   scopes: normalizePersistScopes(scopes),
-   operations,
+    scopes: batchScopes,
+    operations: batch.operations,
+    baseVersion: batch.baseVersion || "",
   }),
  }, SYNC_TIMEOUT_MS);
  const result = await response.json();
@@ -2836,7 +3209,12 @@ async function pushAtomicPatch(scopes, localState) {
   error.userMessage = result.message || "";
   throw error;
  }
- return { ...result, appliedOperations: operations };
+ return {
+  ...result,
+  appliedOperations: batch.operations,
+  syncedScopes: batchScopes,
+  localOperationsAfterBatch,
+ };
 }
 
 function syncScopeLabel(scopes) {
@@ -2933,8 +3311,8 @@ async function ensureMasterUser({ save = true } = {}) {
 
  if (normalizeLoginText(getSession()?.username) === MASTER_USERNAME) setSession(master);
  if (changed) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  if (save) persist("config");
+  saveLocalState();
+  if (save) persist("config", { resolveConflict: false });
  }
 }
 
@@ -11676,7 +12054,7 @@ function ensureIluminarStockLoaded() {
  const payload = stockImportPayload();
  if (!payload.items.length) return;
  if (applyIluminarStockBaseline()) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  saveLocalState();
   scheduleRemoteSync("estoque");
   return;
  }
@@ -11685,7 +12063,7 @@ function ensureIluminarStockLoaded() {
  const stockImport = importIluminarStock({ silent: true, includeMovements: false });
  stockAutoImportRunning = false;
  if (stockImport.changed) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  saveLocalState();
   scheduleRemoteSync("estoque");
  }
 }

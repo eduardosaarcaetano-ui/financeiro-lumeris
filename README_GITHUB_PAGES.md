@@ -49,6 +49,20 @@ Se você já tinha implantado uma versão antiga do `Code.gs` (que gravava numa 
 
 Detalhes de funcionamento:
 
+### Atualizar o Apps Script sem trocar a URL
+
+Alteracoes em `AppsScript_Code.gs` nao entram no ar apenas com o push no GitHub. Para atualizar o servidor usado pelo ERP:
+
+1. Abra o projeto vinculado a planilha em `Extensoes > Apps Script`.
+2. Substitua o conteudo de `Code.gs` pelo conteudo atual de `AppsScript_Code.gs`.
+3. Use `Implantar > Gerenciar implantacoes`.
+4. Edite a implantacao existente, selecione `Nova versao` e confirme `Implantar`.
+5. Nao crie outra implantacao escritora para o mesmo arquivo. Preserve a URL `/exec` existente.
+
+O protocolo atual consulta a versao do estado e reaproveita a base confirmada no navegador quando nada mudou. A leitura integral do JSON ocorre apenas no primeiro acesso, quando a versao mudou ou durante uma recuperacao.
+
+Se `financeiro-lumeris-data.json` for restaurado ou substituido manualmente no Drive, execute uma vez `rebuildSyncMetadataAndCache` no editor do Apps Script. A funcao invalida o cache, gera uma nova revisao e impede que os navegadores ignorem a restauracao.
+
 - Ao abrir o app, ele busca os dados mais recentes (do arquivo no Drive) e substitui o que estava salvo localmente.
 - Cada alteração é salva primeiro no navegador (instantâneo) e enviada para o Drive em segundo plano (indicador no topo da tela mostra o status).
 - Se dois usuários salvarem ao mesmo tempo, o segundo recebe um aviso de conflito pedindo para recarregar a página antes de continuar, evitando sobrescrever dados sem perceber.
