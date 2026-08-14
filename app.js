@@ -17,7 +17,10 @@ const SYNC_TIMEOUT_MS = 90000;
 const SYNC_RETRY_DELAY_MS = 12000;
 const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
-const MAINTENANCE_POLL_MS = 60000;
+// Alem do status de manutencao, esse polling tambem carrega a versao atual
+// dos dados (resposta ja inclui isso) - serve pra detectar quando outro
+// computador salvou algo e puxar a atualizacao sem precisar de F5.
+const MAINTENANCE_POLL_MS = 45000;
 const SYNC_PROTOCOL_VERSION = 2;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
@@ -2388,7 +2391,7 @@ async function initRemoteSync(options = {}) {
  if (!backgroundRetry) setSyncStatus("Verificando atualizações compartilhadas...", "syncing");
  const slowLoadNotice = window.setTimeout(() => {
   if (!backgroundRetry && remoteInitInFlight) {
-   setSyncStatus("Dados locais disponíveis. Google Sheets está respondendo lentamente...", "syncing");
+   setSyncStatus("Dados locais disponíveis. O servidor está respondendo lentamente...", "syncing");
   }
  }, SYNC_SLOW_LOAD_NOTICE_MS);
  try {
@@ -2427,7 +2430,7 @@ async function initRemoteSync(options = {}) {
     setSyncStatus(`Conflito aguardando revisão: ${activeSyncConflict.detail}. Dados locais preservados.`, "error");
    }
    if (!enforceMaintenanceMode() && !pendingSyncScopes.size) {
-    setSyncStatus("Sincronizado com o Google Sheets", "ok");
+    setSyncStatus("Sincronizado com a nuvem", "ok");
    }
    return;
    }
@@ -2462,11 +2465,11 @@ async function initRemoteSync(options = {}) {
     }
   }
   if (!enforceMaintenanceMode()) {
-   if (!pendingSyncScopes.size) setSyncStatus("Sincronizado com o Google Sheets", "ok");
+   if (!pendingSyncScopes.size) setSyncStatus("Sincronizado com a nuvem", "ok");
   }
  } catch (error) {
   console.error(error);
-  setSyncStatus("Dados locais disponíveis. Nova tentativa automática com o Google Sheets...", "error");
+  setSyncStatus("Dados locais disponíveis. Nova tentativa automática de sincronização...", "error");
   scheduleRemoteInitializationRetry();
  } finally {
   window.clearTimeout(slowLoadNotice);
@@ -2551,6 +2554,10 @@ async function pollRemoteMaintenanceStatus() {
    showApp();
    if (pendingSyncScopes.size && !syncConflictBlocked) scheduleRemoteSync(Array.from(pendingSyncScopes));
   }
+  const remoteChanged = Boolean(result.version) && result.version !== remoteVersion;
+  if (!nowBlocking && remoteChanged && !remoteInitInFlight && !syncConflictBlocked) {
+   initRemoteSync({ background: true });
+  }
  } catch (error) {
   console.warn("Não foi possível consultar o modo de manutenção:", error);
  } finally {
@@ -2563,6 +2570,9 @@ function startMaintenancePolling() {
  if (!SHEETS_ENDPOINT || isSalesRankingTvMode()) return;
  if (remoteSyncBaseState) pollRemoteMaintenanceStatus();
  maintenancePollTimer = window.setInterval(pollRemoteMaintenanceStatus, MAINTENANCE_POLL_MS);
+ document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") pollRemoteMaintenanceStatus();
+ });
 }
 
 function normalizePersistScopes(scopes) {
@@ -3050,7 +3060,7 @@ async function pushToSheets() {
    localState = normalizeState(cloneStateValue(state));
    capturedRevision = localStateRevision;
    window.clearTimeout(syncTimer);
-   setSyncStatus(`Sincronizando ${syncScopeLabel(scopes)} com o Google Sheets...`, "syncing");
+   setSyncStatus(`Sincronizando ${syncScopeLabel(scopes)} com a nuvem...`, "syncing");
    if (remoteProtocolVersion < SYNC_PROTOCOL_VERSION) {
     const error = new Error("Backend desatualizado para sincronizacao segura");
     error.code = "backend_update_required";
@@ -3095,7 +3105,7 @@ async function pushToSheets() {
    saveSyncOutbox();
    if (!clearSyncBatch()) throw localSyncPersistenceError();
   window.clearTimeout(syncRetryTimer);
-  if (!pendingSyncScopes.size) setSyncStatus("Sincronizado com o Google Sheets", "ok");
+  if (!pendingSyncScopes.size) setSyncStatus("Sincronizado com a nuvem", "ok");
  } catch (error) {
   console.error(error);
   scopes.forEach((scope) => pendingSyncScopes.add(scope));
