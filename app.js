@@ -4466,6 +4466,22 @@ function fileToBase64(file) {
  });
 }
 
+let vercelBlobClientModulePromise = null;
+
+// Carregado sob demanda (so quando alguem realmente envia um anexo pela Vercel)
+// em vez de no carregamento da pagina, para nao pesar toda navegacao com uma
+// conexao a um dominio externo que a maioria das sessoes nunca usa.
+async function uploadOpportunityFileToBlob(file, pathname) {
+ if (!vercelBlobClientModulePromise) {
+  vercelBlobClientModulePromise = import("https://esm.sh/@vercel/blob@2.8.0/client");
+ }
+ const { upload } = await vercelBlobClientModulePromise;
+ return upload(pathname, file, {
+  access: "public",
+  handleUploadUrl: "/api/crm-upload",
+ });
+}
+
 async function uploadOpportunityFile(file) {
  const folderName = await ensureOpportunityDriveFolder();
  if (!folderName) throw new Error("Informe ou crie a pasta da oportunidade antes de enviar arquivos.");
@@ -4495,11 +4511,8 @@ async function uploadOpportunityFile(file) {
   };
  }
 
- if (typeof window.uploadOpportunityFileToBlob !== "function") {
-  throw new Error("Upload de anexos indisponível (modulo de upload não carregado).");
- }
  const pathname = `crm/${folderName}/${crypto.randomUUID()}-${file.name}`;
- const blob = await window.uploadOpportunityFileToBlob(file, pathname);
+ const blob = await uploadOpportunityFileToBlob(file, pathname);
  return {
   id: crypto.randomUUID(),
   type: inferAttachmentType(file),
