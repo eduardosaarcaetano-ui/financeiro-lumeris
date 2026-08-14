@@ -4413,11 +4413,8 @@ function inferAttachmentType(fileOrUrl) {
 }
 
 async function checkDriveAutomationAvailable() {
- if (driveAutomationCapability !== null) return driveAutomationCapability;
- if (!ATTACHMENTS_ENDPOINT) {
-  driveAutomationCapability = false;
-  return false;
- }
+ if (driveAutomationCapability === true) return true;
+ if (!ATTACHMENTS_ENDPOINT) return false;
  try {
   const capabilitiesUrl = new URL(ATTACHMENTS_ENDPOINT, window.location.origin);
   capabilitiesUrl.searchParams.set("capabilities", "drive");
