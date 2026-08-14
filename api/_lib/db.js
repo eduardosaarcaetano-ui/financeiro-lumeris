@@ -2,18 +2,38 @@
 
 const { Pool } = require("pg");
 
-const CONNECTION_STRING =
-  process.env.POSTGRES_URL ||
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_PRISMA_URL ||
-  "";
+// A integracao Neon/Postgres da Vercel permite escolher um prefixo customizado
+// para as env vars (ex.: "STORAGE_POSTGRES_URL" em vez de "POSTGRES_URL"), e
+// isso muda dependendo do que foi digitado na tela "Connect a Project" - por
+// isso nao fixamos um unico nome, e sim procuramos qualquer variavel que
+// pareca uma connection string de Postgres, preferindo a variante pooled
+// (evitando NON_POOLING/UNPOOLED/NO_SSL/PRISMA, usadas para outros fins).
+function resolveConnectionString() {
+  const explicit = process.env.POSTGRES_URL || process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL;
+  if (explicit) return explicit;
+
+  const isPostgresUrl = (value) =>
+    typeof value === "string" && (value.startsWith("postgres://") || value.startsWith("postgresql://"));
+
+  const keys = Object.keys(process.env).filter(
+    (key) => /(^|_)POSTGRES_URL$|(^|_)DATABASE_URL$/.test(key) && isPostgresUrl(process.env[key])
+  );
+  const pooled = keys.find((key) => !/NON_POOLING|UNPOOLED|NO_SSL|PRISMA/.test(key));
+  if (pooled) return process.env[pooled];
+  if (keys.length) return process.env[keys[0]];
+
+  const anyPostgresVar = Object.keys(process.env).find((key) => isPostgresUrl(process.env[key]));
+  return anyPostgresVar ? process.env[anyPostgresVar] : "";
+}
+
+const CONNECTION_STRING = resolveConnectionString();
 
 let pool = null;
 let schemaReadyPromise = null;
 
 function getPool() {
   if (!CONNECTION_STRING) {
-    throw new Error("POSTGRES_URL nao configurada. Conecte um banco Postgres (Neon) ao projeto na Vercel.");
+    throw new Error("Nenhuma connection string de Postgres encontrada nas env vars. Conecte um banco Postgres (Neon) ao projeto na Vercel.");
   }
   if (!pool) {
     pool = new Pool({
