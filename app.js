@@ -6189,10 +6189,14 @@ function openSaleInstallmentsDialog(saleId) {
   return;
  }
  els.saleInstallmentsSaleId.value = sale.id;
+ const people = state.people.filter((person) => person.type === "cliente" || person.type === "ambos");
+ const personOptions = people.length
+  ? people.map((person) => `<option value="${person.id}"${person.id === sale.personId ? " selected" : ""}>${escapeHtml(person.name)}</option>`).join("")
+  : `<option value="${sale.personId}">${escapeHtml(personName(sale.personId))}</option>`;
  els.saleInstallmentsSummary.innerHTML = `
   <div>
    <span>Cliente</span>
-   <strong>${escapeHtml(personName(sale.personId))}</strong>
+   <select id="saleInstallmentsPerson">${personOptions}</select>
   </div>
   <div>
    <span>Venda</span>
@@ -6296,6 +6300,12 @@ function updateSaleInstallmentsEditorTotal() {
 function saveSaleInstallmentChanges() {
  const sale = state.sales.find((item) => item.id === els.saleInstallmentsSaleId.value);
  if (!sale) return;
+ const personSelect = document.querySelector("#saleInstallmentsPerson");
+ const selectedPersonId = personSelect?.value || sale.personId;
+ if (!selectedPersonId) {
+  toast("Selecione um cliente para a venda.");
+  return;
+ }
  const rows = readSaleInstallmentEditorRows();
  if (!rows.length) {
   toast("Mantenha pelo menos uma parcela para esta venda.");
@@ -6310,6 +6320,7 @@ function saveSaleInstallmentChanges() {
   toast("A soma das parcelas precisa ser igual ao valor total da venda.");
   return;
  }
+ sale.personId = selectedPersonId;
 
  const keptIds = new Set(rows.map((item) => item.existing?.id).filter(Boolean));
  const removed = saleInstallmentsFor(sale.id).filter((item) => !keptIds.has(item.id));
