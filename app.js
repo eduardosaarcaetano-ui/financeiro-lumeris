@@ -4428,7 +4428,7 @@ async function checkDriveAutomationAvailable() {
 async function postDriveAutomation(action, payload, timeoutMs = 60000) {
  const available = await checkDriveAutomationAvailable();
  if (!available) {
-  throw new Error("Atualize e publique o Apps Script para ativar criação de pastas e upload automático no Drive.");
+  throw new Error("Não foi possível confirmar o serviço de anexos. Tente novamente em instantes.");
  }
  const response = await fetchWithTimeout(
   SHEETS_ENDPOINT,
@@ -4439,7 +4439,7 @@ async function postDriveAutomation(action, payload, timeoutMs = 60000) {
   timeoutMs
  );
  const result = await response.json();
- if (!result.ok) throw new Error(result.error || "Falha no Google Drive");
+ if (!result.ok) throw new Error(result.error || "Falha no envio do anexo.");
  return result;
 }
 
@@ -4720,8 +4720,8 @@ function renderOpportunityAttachmentRows() {
     <label>Nome
      <input data-attachment-name maxlength="120" value="${escapeHtml(item.name)}" placeholder="Ex.: Conta de energia" />
     </label>
-    <label class="attachment-url">Link do Drive
-     <input data-attachment-url type="url" maxlength="300" value="${escapeHtml(item.url)}" placeholder="https://drive.google.com/..." />
+    <label class="attachment-url">Link do arquivo
+     <input data-attachment-url type="url" maxlength="300" value="${escapeHtml(item.url)}" placeholder="https://..." />
     </label>
     <label class="attachment-notes">Observações
      <input data-attachment-notes maxlength="180" value="${escapeHtml(item.notes)}" />
@@ -4731,7 +4731,7 @@ function renderOpportunityAttachmentRows() {
    </article>
   `;
    }).join("")
-  : emptyMessage("Nenhum anexo registrado. Crie a pasta da oportunidade no Drive e adicione os arquivos ou links aqui.");
+  : emptyMessage("Nenhum anexo registrado. Crie o espaço da oportunidade e adicione os arquivos ou links aqui.");
 }
 
 function defaultProposalMaterialCost(moduleQuantity) {
