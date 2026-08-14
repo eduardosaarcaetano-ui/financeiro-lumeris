@@ -1,9 +1,11 @@
-# Backend na Vercel (Postgres + Blob)
+# Backend na Vercel (Postgres) + anexos no Google Drive
 
-O ERP passou a usar a Vercel para hospedar tudo: front-end estático (`index.html`,
-`app.js`, `styles.css`) e as funções serverless em `api/` (sincronização de dados,
-anexos do CRM e integração bancária). O antigo backend em Google Apps Script
-(`AppsScript_Code.gs`) e o GitHub Pages ficam só como referência/rollback — veja
+O ERP passou a usar a Vercel para hospedar o front-end estático (`index.html`,
+`app.js`, `styles.css`) e as funções serverless em `api/` que fazem a
+sincronização geral de dados (Postgres) e a integração bancária. Os **anexos
+do CRM continuam indo para o Google Drive via Apps Script**, em qualquer host
+— ver seção "Anexos do CRM" abaixo. O Apps Script (`AppsScript_Code.gs`) e o
+GitHub Pages ficam também como referência/rollback do backend antigo — veja
 [README_GITHUB_PAGES.md](README_GITHUB_PAGES.md).
 
 ## Configuração inicial (uma vez)
@@ -11,10 +13,10 @@ anexos do CRM e integração bancária). O antigo backend em Google Apps Script
 1. **Importar o repositório na Vercel** (`vercel.com/new`), preset "Other" — o
    projeto não tem build step, é HTML/JS estático na raiz + funções em `api/`.
 2. **Storage → Create Database → Postgres (Neon)**, conectar ao projeto. Isso
-   injeta `POSTGRES_URL` (pooled) e `POSTGRES_URL_NON_POOLING` nas env vars.
-3. **Storage → Create Database → Blob**, conectar ao projeto. Isso injeta
-   `BLOB_READ_WRITE_TOKEN`.
-4. As tabelas (`sync_state`, `sync_mutations`, `sync_state_backups`) são
+   injeta `POSTGRES_URL` (pooled) e `POSTGRES_URL_NON_POOLING` nas env vars
+   (ou variantes com prefixo customizado — `api/_lib/db.js` reconhece qualquer
+   uma delas).
+3. As tabelas (`sync_state`, `sync_mutations`, `sync_state_backups`) são
    criadas automaticamente na primeira chamada a `api/sync.js` (ver
    `api/_lib/db.js` → `ensureSchema`). Não precisa rodar migração manual, exceto
    para trazer os dados que já existiam no Apps Script (ver seção de corte
@@ -66,9 +68,10 @@ backend novo). Depois de migrar, publique o app com `SHEETS_ENDPOINT =
 
 ## Anexos do CRM
 
-Os anexos de oportunidades agora vão para o Vercel Blob (não mais Google
-Drive). O upload é feito direto do navegador para o Blob (usando
-`crm-upload-client.js`, que chama `api/crm-upload.js` só para autorizar),
-evitando o limite de ~4.5 MB do corpo de requisição das funções serverless.
-Não existe mais um link de "pasta" navegável — cada anexo tem seu próprio link
-de download, que é o que já aparece na lista de anexos da oportunidade.
+Os anexos de oportunidades continuam indo para o Google Drive, através do
+mesmo Apps Script (`crm.createLeadFolder`/`crm.uploadLeadFile`) — em
+`app.js`, a constante `ATTACHMENTS_ENDPOINT` aponta sempre para a URL do Apps
+Script, em qualquer host (Vercel ou GitHub Pages). Só a sincronização geral
+dos dados (`SHEETS_ENDPOINT`) mudou para o backend novo. Isso mantém o limite
+de ~9 MB por arquivo que já existia (limite de corpo de requisição do Apps
+Script) e a necessidade do Apps Script continuar publicado.

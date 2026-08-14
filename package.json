@@ -2,15 +2,14 @@
   "name": "financeiro-lumeris",
   "version": "1.0.0",
   "private": true,
-  "description": "ERP Lumeris - front-end estatico + funcoes serverless (Vercel) para sync de dados, anexos do CRM e integracao bancaria.",
+  "description": "ERP Lumeris - front-end estatico + funcoes serverless (Vercel) para sync de dados e integracao bancaria. Anexos do CRM continuam no Google Drive via Apps Script.",
   "scripts": {
-    "check": "node --check api/sync.js && node --check api/crm-upload.js && node --check api/bank/inter.js && node --check api/bank/receita.js && node --check api/bank/health.js && node --check api/_lib/db.js && node --check api/_lib/syncEngine.js && node --check api/_lib/bankProviders/inter.js && node --check api/_lib/bankProviders/receita.js"
+    "check": "node --check api/sync.js && node --check api/bank/inter.js && node --check api/bank/receita.js && node --check api/bank/health.js && node --check api/_lib/db.js && node --check api/_lib/syncEngine.js && node --check api/_lib/bankProviders/inter.js && node --check api/_lib/bankProviders/receita.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "@vercel/blob": "^2.8.0",
     "pg": "^8.13.1"
   }
 }

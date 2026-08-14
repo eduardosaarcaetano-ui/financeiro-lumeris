@@ -2,7 +2,6 @@
 
 const { withTransaction, query } = require("./_lib/db");
 const engine = require("./_lib/syncEngine");
-const { opportunityFolderName } = require("./_lib/attachments");
 const { getJsonBody, sendJson } = require("./_lib/http");
 
 const BACKUP_INTERVAL_MS = 5 * 60 * 1000;
@@ -22,22 +21,6 @@ module.exports = async function handler(req, res) {
 
 async function handleGet(req, res) {
   const q = req.query || {};
-
-  if (q.capabilities === "drive") {
-    const meta = await readMetaRow();
-    return sendJson(res, 200, {
-      ok: true,
-      capabilities: {
-        driveUploads: true,
-        syncMetadata: true,
-        dataCache: false,
-        version: "vercel-postgres-blob-1",
-      },
-      syncMetadata: meta,
-      protocolVersion: engine.SYNC_PROTOCOL_VERSION,
-      syncMode: "atomic-record-patch",
-    });
-  }
 
   if (q.meta === "1") {
     const meta = await readMetaRow();
@@ -86,16 +69,6 @@ async function handleGet(req, res) {
 
 async function handlePost(req, res) {
   const body = getJsonBody(req);
-
-  if (body.action === "crm.createLeadFolder") {
-    const folderName = opportunityFolderName(body);
-    return sendJson(res, 200, {
-      ok: true,
-      folderId: folderName,
-      folderUrl: folderName,
-      folderName,
-    });
-  }
 
   if (body.action !== "sync.patch") {
     return sendJson(res, 200, {

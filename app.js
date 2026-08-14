@@ -12,6 +12,12 @@ const LEGACY_APPS_SCRIPT_ENDPOINT = "https://script.google.com/macros/s/AKfycbwv
 const SHEETS_ENDPOINT = new URLSearchParams(window.location.search).get("localtest") === "1"
  ? ""
  : IS_LEGACY_GITHUB_PAGES ? LEGACY_APPS_SCRIPT_ENDPOINT : "/api/sync";
+// Anexos do CRM continuam sempre no Google Drive via Apps Script, em
+// qualquer host - so a sincronizacao geral dos dados mudou para o backend
+// novo. Ver AppsScript_Code.gs (acoes crm.createLeadFolder/crm.uploadLeadFile).
+const ATTACHMENTS_ENDPOINT = new URLSearchParams(window.location.search).get("localtest") === "1"
+ ? ""
+ : LEGACY_APPS_SCRIPT_ENDPOINT;
 const SYNC_DEBOUNCE_MS = 800;
 const SYNC_TIMEOUT_MS = 90000;
 const SYNC_RETRY_DELAY_MS = 12000;
@@ -4408,12 +4414,12 @@ function inferAttachmentType(fileOrUrl) {
 
 async function checkDriveAutomationAvailable() {
  if (driveAutomationCapability !== null) return driveAutomationCapability;
- if (!SHEETS_ENDPOINT) {
+ if (!ATTACHMENTS_ENDPOINT) {
   driveAutomationCapability = false;
   return false;
  }
  try {
-  const capabilitiesUrl = new URL(SHEETS_ENDPOINT, window.location.origin);
+  const capabilitiesUrl = new URL(ATTACHMENTS_ENDPOINT, window.location.origin);
   capabilitiesUrl.searchParams.set("capabilities", "drive");
   const response = await fetchWithTimeout(capabilitiesUrl.toString(), {}, 8000);
   const result = await response.json();
@@ -4428,10 +4434,10 @@ async function checkDriveAutomationAvailable() {
 async function postDriveAutomation(action, payload, timeoutMs = 60000) {
  const available = await checkDriveAutomationAvailable();
  if (!available) {
-  throw new Error("Não foi possível confirmar o serviço de anexos. Tente novamente em instantes.");
+  throw new Error("Atualize e publique o Apps Script para ativar criação de pastas e upload automático no Drive.");
  }
  const response = await fetchWithTimeout(
-  SHEETS_ENDPOINT,
+  ATTACHMENTS_ENDPOINT,
   {
    method: "POST",
    body: JSON.stringify({ action, ...payload }),
@@ -4439,21 +4445,21 @@ async function postDriveAutomation(action, payload, timeoutMs = 60000) {
   timeoutMs
  );
  const result = await response.json();
- if (!result.ok) throw new Error(result.error || "Falha no envio do anexo.");
+ if (!result.ok) throw new Error(result.error || "Falha no Google Drive");
  return result;
 }
 
 async function createOpportunityDriveFolderForCurrentLead() {
  try {
-  setOpportunityAttachmentStatus("Preparando espaço de anexos da oportunidade...", "syncing");
+  setOpportunityAttachmentStatus("Criando pasta da oportunidade em Financeiro/Dados Oportunidades...", "syncing");
   const result = await postDriveAutomation("crm.createLeadFolder", {
    folderName: currentOpportunityFolderName(),
    clientName: currentOpportunityClientName(),
    opportunityNumber: els.opportunityNumber.value.trim(),
   });
   els.opportunityDriveFolder.value = result.folderUrl || "";
-  setOpportunityAttachmentStatus("Espaço de anexos pronto. Agora arraste arquivos para enviar.", "ok");
-  toast("Espaço de anexos da oportunidade criado.");
+  setOpportunityAttachmentStatus("Pasta da oportunidade criada. Agora arraste arquivos para enviar direto ao Drive.", "ok");
+  toast("Pasta da oportunidade criada no Google Drive.");
  } catch (error) {
   console.error(error);
   setOpportunityAttachmentStatus(error.message, "error");
@@ -4476,59 +4482,25 @@ function fileToBase64(file) {
  });
 }
 
-let vercelBlobClientModulePromise = null;
-
-// Carregado sob demanda (so quando alguem realmente envia um anexo pela Vercel)
-// em vez de no carregamento da pagina, para nao pesar toda navegacao com uma
-// conexao a um dominio externo que a maioria das sessoes nunca usa.
-async function uploadOpportunityFileToBlob(file, pathname) {
- if (!vercelBlobClientModulePromise) {
-  vercelBlobClientModulePromise = import("https://esm.sh/@vercel/blob@2.8.0/client");
- }
- const { upload } = await vercelBlobClientModulePromise;
- return upload(pathname, file, {
-  access: "public",
-  handleUploadUrl: "/api/crm-upload",
- });
-}
-
 async function uploadOpportunityFile(file) {
- const folderName = await ensureOpportunityDriveFolder();
- if (!folderName) throw new Error("Informe ou crie a pasta da oportunidade antes de enviar arquivos.");
-
- // Host legado (GitHub Pages): mantem o caminho original via Apps Script/Drive
- // (arquivo em base64 no corpo da requisicao). Host novo (Vercel): upload
- // direto do navegador pro Blob, sem passar pela function (sem limite de
- // corpo de requisicao).
- if (IS_LEGACY_GITHUB_PAGES) {
-  const base64 = await fileToBase64(file);
-  const result = await postDriveAutomation("crm.uploadLeadFile", {
-   folderUrl: folderName,
-   folderName: currentOpportunityFolderName(),
-   clientName: currentOpportunityClientName(),
-   opportunityNumber: els.opportunityNumber.value.trim(),
-   fileName: file.name,
-   mimeType: file.type || "application/octet-stream",
-   base64,
-  }, 90000);
-  return {
-   id: crypto.randomUUID(),
-   type: inferAttachmentType(file),
-   name: file.name,
-   url: result.fileUrl || "",
-   notes: "Enviado automaticamente ao Google Drive",
-   createdAt: new Date().toISOString(),
-  };
- }
-
- const pathname = `crm/${folderName}/${crypto.randomUUID()}-${file.name}`;
- const blob = await uploadOpportunityFileToBlob(file, pathname);
+ const folderUrl = await ensureOpportunityDriveFolder();
+ if (!folderUrl) throw new Error("Informe ou crie a pasta do Drive antes de enviar arquivos.");
+ const base64 = await fileToBase64(file);
+ const result = await postDriveAutomation("crm.uploadLeadFile", {
+  folderUrl,
+  folderName: currentOpportunityFolderName(),
+  clientName: currentOpportunityClientName(),
+  opportunityNumber: els.opportunityNumber.value.trim(),
+  fileName: file.name,
+  mimeType: file.type || "application/octet-stream",
+  base64,
+ }, 90000);
  return {
   id: crypto.randomUUID(),
   type: inferAttachmentType(file),
   name: file.name,
-  url: blob.url || "",
-  notes: "Enviado automaticamente pelo ERP",
+  url: result.fileUrl || "",
+  notes: "Enviado automaticamente ao Google Drive",
   createdAt: new Date().toISOString(),
  };
 }
@@ -4536,15 +4508,13 @@ async function uploadOpportunityFile(file) {
 async function handleOpportunityFiles(fileList) {
  const files = [...(fileList || [])];
  if (!files.length) return;
- const maxUploadBytes = (IS_LEGACY_GITHUB_PAGES ? 9 : 20) * 1024 * 1024;
- if (files.some((file) => file.size > maxUploadBytes)) {
-  const maxLabel = IS_LEGACY_GITHUB_PAGES ? "9 MB" : "20 MB";
-  toast(`Arquivo acima de ${maxLabel}: envie por um link externo.`);
-  setOpportunityAttachmentStatus(`Arquivos acima de ${maxLabel} devem ser adicionados por link.`, "error");
+ if (files.some((file) => file.size > 9 * 1024 * 1024)) {
+  toast("Arquivo acima de 9 MB: envie direto no Drive e arraste o link.");
+  setOpportunityAttachmentStatus("Arquivos acima de 9 MB devem ser enviados manualmente ao Drive.", "error");
   return;
  }
  try {
-  setOpportunityAttachmentStatus(`Enviando ${files.length} arquivo(s)...`, "syncing");
+  setOpportunityAttachmentStatus(`Enviando ${files.length} arquivo(s) para o Google Drive...`, "syncing");
   for (const file of files) {
    const attachment = await uploadOpportunityFile(file);
    opportunityAttachmentsDraft.push(attachment);
@@ -4720,8 +4690,8 @@ function renderOpportunityAttachmentRows() {
     <label>Nome
      <input data-attachment-name maxlength="120" value="${escapeHtml(item.name)}" placeholder="Ex.: Conta de energia" />
     </label>
-    <label class="attachment-url">Link do arquivo
-     <input data-attachment-url type="url" maxlength="300" value="${escapeHtml(item.url)}" placeholder="https://..." />
+    <label class="attachment-url">Link do Drive
+     <input data-attachment-url type="url" maxlength="300" value="${escapeHtml(item.url)}" placeholder="https://drive.google.com/..." />
     </label>
     <label class="attachment-notes">Observações
      <input data-attachment-notes maxlength="180" value="${escapeHtml(item.notes)}" />
@@ -4731,7 +4701,7 @@ function renderOpportunityAttachmentRows() {
    </article>
   `;
    }).join("")
-  : emptyMessage("Nenhum anexo registrado. Crie o espaço da oportunidade e adicione os arquivos ou links aqui.");
+  : emptyMessage("Nenhum anexo registrado. Crie a pasta da oportunidade no Drive e adicione os arquivos ou links aqui.");
 }
 
 function defaultProposalMaterialCost(moduleQuantity) {
