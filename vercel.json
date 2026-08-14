@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "api/bank/*.js": {
+      "maxDuration": 60
+    },
+    "api/sync.js": {
+      "maxDuration": 30
+    },
+    "api/crm-upload.js": {
+      "maxDuration": 30
+    }
+  }
+}

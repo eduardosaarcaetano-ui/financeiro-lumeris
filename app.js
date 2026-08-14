@@ -1,11 +1,17 @@
 ﻿const STORAGE_KEY = "financeiro-lumeris-v3";
 const LEGACY_STORAGE_KEYS = ["financeiro-lumeris-v2", "financeiro-lumeris-v1"];
 
-// URL de implantação do Google Apps Script (Web App). Preencha depois de publicar o Code.gs
-// na sua planilha para que todos os usuários passem a compartilhar os mesmos dados.
+// GitHub Pages e Vercel publicam o mesmo branch/app.js. Enquanto os dois
+// sistemas convivem, o GitHub Pages (host legado) continua falando com o
+// Google Apps Script; qualquer outro host (Vercel, inclusive dominio proprio
+// que venha a ser configurado) usa o backend novo em api/sync.js (mesma
+// origem, caminho relativo). Quando o Apps Script for desativado de vez,
+// remover IS_LEGACY_GITHUB_PAGES e deixar so o caminho relativo.
+const IS_LEGACY_GITHUB_PAGES = window.location.hostname === "eduardosaarcaetano-ui.github.io";
+const LEGACY_APPS_SCRIPT_ENDPOINT = "https://script.google.com/macros/s/AKfycbwvq0ov-i-Zdk3T5G-jm5WGPYLPnvZTvxxM53lTy4yAqd9XWQL4I2UKVeGAOdWCzQ83/exec";
 const SHEETS_ENDPOINT = new URLSearchParams(window.location.search).get("localtest") === "1"
  ? ""
- : "https://script.google.com/macros/s/AKfycbwvq0ov-i-Zdk3T5G-jm5WGPYLPnvZTvxxM53lTy4yAqd9XWQL4I2UKVeGAOdWCzQ83/exec";
+ : IS_LEGACY_GITHUB_PAGES ? LEGACY_APPS_SCRIPT_ENDPOINT : "/api/sync";
 const SYNC_DEBOUNCE_MS = 800;
 const SYNC_TIMEOUT_MS = 90000;
 const SYNC_RETRY_DELAY_MS = 12000;
@@ -2515,7 +2521,7 @@ function normalizeMaintenanceState(value) {
 }
 
 function maintenanceStatusUrl() {
- const url = new URL(SHEETS_ENDPOINT);
+ const url = new URL(SHEETS_ENDPOINT, window.location.origin);
  url.searchParams.set("maintenance", "1");
  url.searchParams.set("_", String(Date.now()));
  return url.toString();
@@ -2806,7 +2812,7 @@ async function rebaseAfterRecordConflict(scopes, detail) {
 }
 
 async function fetchRemoteState(knownVersion) {
- const url = new URL(SHEETS_ENDPOINT);
+ const url = new URL(SHEETS_ENDPOINT, window.location.origin);
  if (knownVersion !== undefined) url.searchParams.set("knownVersion", String(knownVersion || ""));
  url.searchParams.set("_", String(Date.now()));
  const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, SYNC_TIMEOUT_MS);
@@ -4387,7 +4393,7 @@ async function checkDriveAutomationAvailable() {
   return false;
  }
  try {
-  const capabilitiesUrl = new URL(SHEETS_ENDPOINT);
+  const capabilitiesUrl = new URL(SHEETS_ENDPOINT, window.location.origin);
   capabilitiesUrl.searchParams.set("capabilities", "drive");
   const response = await fetchWithTimeout(capabilitiesUrl.toString(), {}, 8000);
   const result = await response.json();
@@ -4419,15 +4425,15 @@ async function postDriveAutomation(action, payload, timeoutMs = 60000) {
 
 async function createOpportunityDriveFolderForCurrentLead() {
  try {
-  setOpportunityAttachmentStatus("Criando pasta da oportunidade em Financeiro/Dados Oportunidades...", "syncing");
+  setOpportunityAttachmentStatus("Preparando espaço de anexos da oportunidade...", "syncing");
   const result = await postDriveAutomation("crm.createLeadFolder", {
    folderName: currentOpportunityFolderName(),
    clientName: currentOpportunityClientName(),
    opportunityNumber: els.opportunityNumber.value.trim(),
   });
   els.opportunityDriveFolder.value = result.folderUrl || "";
-  setOpportunityAttachmentStatus("Pasta da oportunidade criada. Agora arraste arquivos para enviar direto ao Drive.", "ok");
-  toast("Pasta da oportunidade criada no Google Drive.");
+  setOpportunityAttachmentStatus("Espaço de anexos pronto. Agora arraste arquivos para enviar.", "ok");
+  toast("Espaço de anexos da oportunidade criado.");
  } catch (error) {
   console.error(error);
   setOpportunityAttachmentStatus(error.message, "error");
@@ -4451,24 +4457,45 @@ function fileToBase64(file) {
 }
 
 async function uploadOpportunityFile(file) {
- const folderUrl = await ensureOpportunityDriveFolder();
- if (!folderUrl) throw new Error("Informe ou crie a pasta do Drive antes de enviar arquivos.");
- const base64 = await fileToBase64(file);
- const result = await postDriveAutomation("crm.uploadLeadFile", {
-  folderUrl,
-  folderName: currentOpportunityFolderName(),
-  clientName: currentOpportunityClientName(),
-  opportunityNumber: els.opportunityNumber.value.trim(),
-  fileName: file.name,
-  mimeType: file.type || "application/octet-stream",
-  base64,
- }, 90000);
+ const folderName = await ensureOpportunityDriveFolder();
+ if (!folderName) throw new Error("Informe ou crie a pasta da oportunidade antes de enviar arquivos.");
+
+ // Host legado (GitHub Pages): mantem o caminho original via Apps Script/Drive
+ // (arquivo em base64 no corpo da requisicao). Host novo (Vercel): upload
+ // direto do navegador pro Blob, sem passar pela function (sem limite de
+ // corpo de requisicao).
+ if (IS_LEGACY_GITHUB_PAGES) {
+  const base64 = await fileToBase64(file);
+  const result = await postDriveAutomation("crm.uploadLeadFile", {
+   folderUrl: folderName,
+   folderName: currentOpportunityFolderName(),
+   clientName: currentOpportunityClientName(),
+   opportunityNumber: els.opportunityNumber.value.trim(),
+   fileName: file.name,
+   mimeType: file.type || "application/octet-stream",
+   base64,
+  }, 90000);
+  return {
+   id: crypto.randomUUID(),
+   type: inferAttachmentType(file),
+   name: file.name,
+   url: result.fileUrl || "",
+   notes: "Enviado automaticamente ao Google Drive",
+   createdAt: new Date().toISOString(),
+  };
+ }
+
+ if (typeof window.uploadOpportunityFileToBlob !== "function") {
+  throw new Error("Upload de anexos indisponível (modulo de upload não carregado).");
+ }
+ const pathname = `crm/${folderName}/${crypto.randomUUID()}-${file.name}`;
+ const blob = await window.uploadOpportunityFileToBlob(file, pathname);
  return {
   id: crypto.randomUUID(),
   type: inferAttachmentType(file),
   name: file.name,
-  url: result.fileUrl || "",
-  notes: "Enviado automaticamente ao Google Drive",
+  url: blob.url || "",
+  notes: "Enviado automaticamente pelo ERP",
   createdAt: new Date().toISOString(),
  };
 }
@@ -4476,13 +4503,15 @@ async function uploadOpportunityFile(file) {
 async function handleOpportunityFiles(fileList) {
  const files = [...(fileList || [])];
  if (!files.length) return;
- if (files.some((file) => file.size > 9 * 1024 * 1024)) {
-  toast("Arquivo acima de 9 MB: envie direto no Drive e arraste o link.");
-  setOpportunityAttachmentStatus("Arquivos acima de 9 MB devem ser enviados manualmente ao Drive.", "error");
+ const maxUploadBytes = (IS_LEGACY_GITHUB_PAGES ? 9 : 20) * 1024 * 1024;
+ if (files.some((file) => file.size > maxUploadBytes)) {
+  const maxLabel = IS_LEGACY_GITHUB_PAGES ? "9 MB" : "20 MB";
+  toast(`Arquivo acima de ${maxLabel}: envie por um link externo.`);
+  setOpportunityAttachmentStatus(`Arquivos acima de ${maxLabel} devem ser adicionados por link.`, "error");
   return;
  }
  try {
-  setOpportunityAttachmentStatus(`Enviando ${files.length} arquivo(s) para o Google Drive...`, "syncing");
+  setOpportunityAttachmentStatus(`Enviando ${files.length} arquivo(s)...`, "syncing");
   for (const file of files) {
    const attachment = await uploadOpportunityFile(file);
    opportunityAttachmentsDraft.push(attachment);
@@ -4493,7 +4522,7 @@ async function handleOpportunityFiles(fileList) {
  } catch (error) {
   console.error(error);
   setOpportunityAttachmentStatus(error.message, "error");
-  toast("Upload automático indisponível. Use o link da pasta do Drive.");
+  toast("Upload automático indisponível. Adicione o arquivo por link.");
  } finally {
   if (els.opportunityFileInput) els.opportunityFileInput.value = "";
  }

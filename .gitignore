@@ -1,3 +1,4 @@
+node_modules/
 backend-integration/.env
 backend-integration/node_modules/
 backend-integration/certs/

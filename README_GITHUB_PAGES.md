@@ -1,3 +1,6 @@
+> **Atenção:** a produção migrou para a Vercel — veja [README_VERCEL.md](README_VERCEL.md).
+> Este documento fica só como referência/rollback do backend antigo (Google Apps Script).
+
 # Publicacao no GitHub Pages
 
 Este sistema e um app estatico. Para publicar no GitHub Pages, mantenha estes arquivos na raiz do repositorio:
