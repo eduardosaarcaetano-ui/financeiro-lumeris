@@ -79,6 +79,11 @@ button {
   color: #b8c8c1;
 }
 
+.brand-version {
+  font-size: 11px;
+  opacity: 0.65;
+}
+
 .nav-list,
 .sidebar-actions {
   display: grid;
