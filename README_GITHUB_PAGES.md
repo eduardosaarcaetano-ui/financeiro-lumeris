@@ -62,7 +62,7 @@ Alteracoes em `AppsScript_Code.gs` nao entram no ar apenas com o push no GitHub.
 4. Edite a implantacao existente, selecione `Nova versao` e confirme `Implantar`.
 5. Nao crie outra implantacao escritora para o mesmo arquivo. Preserve a URL `/exec` existente.
 
-O protocolo atual consulta a versao do estado e reaproveita a base confirmada no navegador quando nada mudou. A leitura integral do JSON ocorre apenas no primeiro acesso, quando a versao mudou ou durante uma recuperacao.
+O protocolo atual consulta a versao do estado e reaproveita a base confirmada no navegador quando nada mudou. Quando houve alteracao, o servidor envia somente os setores modificados desde a revisao guardada no navegador. A leitura integral do JSON fica restrita ao primeiro acesso, a migracao inicial desse protocolo ou uma recuperacao.
 
 Se `financeiro-lumeris-data.json` for restaurado ou substituido manualmente no Drive, execute uma vez `rebuildSyncMetadataAndCache` no editor do Apps Script. A funcao invalida o cache, gera uma nova revisao e impede que os navegadores ignorem a restauracao.
 

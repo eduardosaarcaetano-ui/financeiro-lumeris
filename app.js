@@ -2392,7 +2392,10 @@ async function initRemoteSync(options = {}) {
   }
  }, SYNC_SLOW_LOAD_NOTICE_MS);
  try {
-  let result = await fetchRemoteState(storedBaseMetadata?.version);
+  let result = await fetchRemoteState(
+   storedBase ? storedBaseMetadata?.version : undefined,
+   storedBase ? storedBaseMetadata?.revision : undefined
+  );
   if (result.notModified) {
    const syncMetadata = normalizeRemoteSyncMetadata({ ...result, initialized: true });
    if (!canReuseStoredSyncBase(syncMetadata, storedBaseMetadata, storedBase)) {
@@ -2435,7 +2438,10 @@ async function initRemoteSync(options = {}) {
   applyRemoteSyncMetadata(result);
   remoteProtocolVersion = Number(result.protocolVersion || 1);
   if (result.data) {
-   const remoteState = normalizeState(result.data);
+   const remotePayload = result.partial === "fields-v1" && storedBase
+    ? { ...cloneStateValue(storedBase), ...cloneStateValue(result.data) }
+    : result.data;
+   const remoteState = normalizeState(remotePayload);
    const localState = loadState();
    const pendingScopesDuringLoad = Array.from(pendingSyncScopes);
    const pendingBase = storedBase || sessionStartState;
@@ -2811,9 +2817,13 @@ async function rebaseAfterRecordConflict(scopes, detail) {
  return true;
 }
 
-async function fetchRemoteState(knownVersion) {
+async function fetchRemoteState(knownVersion, knownRevision) {
  const url = new URL(SHEETS_ENDPOINT, window.location.origin);
- if (knownVersion !== undefined) url.searchParams.set("knownVersion", String(knownVersion || ""));
+ if (knownVersion !== undefined) {
+  url.searchParams.set("knownVersion", String(knownVersion || ""));
+  url.searchParams.set("knownRevision", String(Number(knownRevision || 0)));
+  url.searchParams.set("partial", "fields-v1");
+ }
  url.searchParams.set("_", String(Date.now()));
  const response = await fetchWithTimeout(url.toString(), { cache: "no-store" }, SYNC_TIMEOUT_MS);
  const result = await response.json();

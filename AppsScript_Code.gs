@@ -86,6 +86,75 @@ function doGet(e) {
         syncMode: "atomic-record-patch",
       });
     }
+    var knownRevision = Number(e.parameter.knownRevision || 0);
+    var supportsPartialFields = e.parameter.partial === "fields-v1";
+    var currentRevision = Number(conditionalMetadata.revision || 0);
+    var fieldRevisions = conditionalMetadata.fieldRevisions || {};
+    if (
+      supportsPartialFields &&
+      conditionalMetadata.initialized &&
+      !conditionalMetadata.dirty &&
+      knownRevision > 0 &&
+      knownRevision < currentRevision &&
+      Object.keys(fieldRevisions).length
+    ) {
+      // Leia o snapshot confirmado antes de decidir os campos. Uma gravacao pode
+      // terminar entre a leitura da metadata e esta etapa; nesse caso usamos o
+      // mapa da mesma revisao do snapshot para nao omitir a mudanca concorrente.
+      var partialStored = readDataFile();
+      var latestPartialMetadata = readSyncMetadata();
+      var effectiveFieldRevisions = normalizeFieldRevisions(partialStored.fieldRevisions);
+      if (
+        !Object.keys(effectiveFieldRevisions).length &&
+        String(latestPartialMetadata.version || "") === String(partialStored.version || "")
+      ) {
+        effectiveFieldRevisions = normalizeFieldRevisions(latestPartialMetadata.fieldRevisions);
+      }
+      if (!Object.keys(effectiveFieldRevisions).length) {
+        return jsonResponse({
+          ok: true,
+          data: partialStored.data,
+          updatedAt: partialStored.updatedAt || "",
+          version: partialStored.version || "",
+          revision: Number(partialStored.revision || 0),
+          protocolVersion: SYNC_PROTOCOL_VERSION,
+          syncMode: "atomic-record-patch",
+        });
+      }
+      var changedFields = Object.keys(effectiveFieldRevisions).filter(function (field) {
+        return Number(effectiveFieldRevisions[field] || 0) > knownRevision;
+      });
+      if (!changedFields.length) {
+        return jsonResponse({
+          ok: true,
+          notModified: true,
+          updatedAt: partialStored.updatedAt || "",
+          version: partialStored.version || "",
+          revision: Number(partialStored.revision || 0),
+          maintenance: latestPartialMetadata.maintenance || conditionalMetadata.maintenance || defaultMaintenanceState(),
+          protocolVersion: SYNC_PROTOCOL_VERSION,
+          syncMode: "atomic-record-patch",
+        });
+      }
+      var partialData = {};
+      changedFields.forEach(function (field) {
+        partialData[field] = partialStored.data && Object.prototype.hasOwnProperty.call(partialStored.data, field)
+          ? partialStored.data[field]
+          : null;
+      });
+      return jsonResponse({
+        ok: true,
+        partial: "fields-v1",
+        changedFields: changedFields,
+        data: partialData,
+        updatedAt: partialStored.updatedAt || conditionalMetadata.updatedAt || "",
+        version: partialStored.version || conditionalMetadata.version || "",
+        revision: Number(partialStored.revision || currentRevision),
+        maintenance: latestPartialMetadata.maintenance || conditionalMetadata.maintenance || defaultMaintenanceState(),
+        protocolVersion: SYNC_PROTOCOL_VERSION,
+        syncMode: "atomic-record-patch",
+      });
+    }
   }
   var stored = readDataFile();
   return jsonResponse({
@@ -157,7 +226,7 @@ function readDataFileUnderLock() {
   var file = getDataFile();
   var content = file.getBlob().getDataAsString();
   if (!content) {
-    var emptyStored = { data: null, updatedAt: "", version: "0:", revision: 0, recentMutations: [] };
+    var emptyStored = { data: null, updatedAt: "", version: "0:", revision: 0, fieldRevisions: {}, recentMutations: [] };
     cacheStoredData(emptyStored);
     publishSyncMetadata(emptyStored);
     return emptyStored;
@@ -173,6 +242,7 @@ function readDataFileUnderLock() {
       revision: Math.max(Number(previous.revision || 0), Number(metadata.revision || 0)) + 1,
       updatedAt: new Date().toISOString(),
       data: previous.data || null,
+      fieldRevisions: previous.fieldRevisions || {},
       recentMutations: previous.recentMutations || [],
     });
   }
@@ -183,6 +253,7 @@ function readDataFileUnderLock() {
     updatedAt: updatedAt,
     version: parsed.version || syncVersion(revision, updatedAt),
     revision: revision,
+    fieldRevisions: normalizeFieldRevisions(parsed.fieldRevisions),
     recentMutations: Array.isArray(parsed.recentMutations) ? parsed.recentMutations : [],
   };
   cacheStoredData(stored, JSON.stringify(stored));
@@ -193,11 +264,33 @@ function readDataFileUnderLock() {
 function writeDataFile(payload) {
   var revision = Number(payload.revision || 0);
   var updatedAt = payload.updatedAt || new Date().toISOString();
+  var priorMetadata = readSyncMetadata();
+  var changedFields = Array.isArray(payload.changedFields)
+    ? payload.changedFields.filter(Boolean)
+    : [];
+  var fieldRevisions = normalizeFieldRevisions(payload.fieldRevisions || priorMetadata.fieldRevisions);
+  if (!Object.keys(fieldRevisions).length) {
+    // Na primeira gravacao apos a migracao, os campos que nao mudaram continuam
+    // associados a revisao anterior. Assim quem ja estava atualizado recebe
+    // apenas a alteracao nova, sem uma ultima descarga integral desnecessaria.
+    var baselineRevision = changedFields.length
+      ? Number(priorMetadata.revision || Math.max(0, revision - 1))
+      : revision;
+    fieldRevisions = {};
+    Object.keys(payload.data || {}).forEach(function (field) { fieldRevisions[field] = baselineRevision; });
+    changedFields.forEach(function (field) { fieldRevisions[field] = revision; });
+  } else if (!changedFields.length) {
+    fieldRevisions = {};
+    Object.keys(payload.data || {}).forEach(function (field) { fieldRevisions[field] = revision; });
+  } else {
+    changedFields.forEach(function (field) { fieldRevisions[field] = revision; });
+  }
   var stored = {
     revision: revision,
     version: payload.version || syncVersion(revision, updatedAt),
     updatedAt: updatedAt,
     data: payload.data || null,
+    fieldRevisions: fieldRevisions,
     recentMutations: Array.isArray(payload.recentMutations) ? payload.recentMutations : [],
   };
   var file = getDataFile();
@@ -224,10 +317,21 @@ function metadataFromStored(stored) {
     revision: Number(stored.revision || 0),
     version: stored.version || syncVersion(stored.revision, stored.updatedAt),
     updatedAt: stored.updatedAt || "",
+    fieldRevisions: normalizeFieldRevisions(stored.fieldRevisions),
     maintenance: stored.data && stored.data.maintenance
       ? stored.data.maintenance
       : defaultMaintenanceState(),
   };
+}
+
+function normalizeFieldRevisions(value) {
+  var source = value && typeof value === "object" ? value : {};
+  var result = {};
+  Object.keys(source).forEach(function (field) {
+    var revision = Number(source[field] || 0);
+    if (field && revision >= 0 && isFinite(revision)) result[field] = revision;
+  });
+  return result;
 }
 
 function normalizeSyncMetadata(metadata) {
@@ -240,6 +344,7 @@ function normalizeSyncMetadata(metadata) {
     revision: Number(value.revision || 0),
     version: String(value.version || ""),
     updatedAt: String(value.updatedAt || ""),
+    fieldRevisions: normalizeFieldRevisions(value.fieldRevisions),
     maintenance: value.maintenance && typeof value.maintenance === "object"
       ? value.maintenance
       : defaultMaintenanceState(),
@@ -318,6 +423,7 @@ function rebuildSyncMetadataAndCache() {
       revision: Math.max(Number(restored.revision || 0), Number(previousMetadata.revision || 0)) + 1,
       updatedAt: new Date().toISOString(),
       data: restored.data || null,
+      fieldRevisions: restored.fieldRevisions || {},
       recentMutations: restored.recentMutations || [],
     });
   } finally {
@@ -433,6 +539,7 @@ function writePreviousDataFile(stored) {
     version: stored.version || "",
     updatedAt: stored.updatedAt || "",
     data: stored.data || null,
+    fieldRevisions: stored.fieldRevisions || {},
     recentMutations: stored.recentMutations || [],
   }));
 }
@@ -452,6 +559,7 @@ function readPreviousDataFile() {
       version: parsed.version || syncVersion(revision, updatedAt),
       updatedAt: updatedAt,
       data: parsed.data || null,
+      fieldRevisions: normalizeFieldRevisions(parsed.fieldRevisions),
       recentMutations: Array.isArray(parsed.recentMutations) ? parsed.recentMutations : [],
     };
   } catch (error) {
@@ -479,7 +587,7 @@ function getDataFile() {
     properties.setProperty(DATA_FILE_ID_PROPERTY, existing.getId());
     return existing;
   }
-  var created = folder.createFile(DATA_FILE_NAME, JSON.stringify({ revision: 0, version: "0:", updatedAt: "", data: null }), MimeType.PLAIN_TEXT);
+  var created = folder.createFile(DATA_FILE_NAME, JSON.stringify({ revision: 0, version: "0:", updatedAt: "", data: null, fieldRevisions: {} }), MimeType.PLAIN_TEXT);
   properties.setProperty(DATA_FILE_ID_PROPERTY, created.getId());
   return created;
 }
@@ -584,6 +692,7 @@ function applySyncPatch(body, stored) {
     revision: Number(stored.revision || 0) + 1,
     updatedAt: now,
     data: working,
+    changedFields: operations.map(function (operation) { return String(operation.field || ""); }),
     recentMutations: recentMutations,
   });
   return {
@@ -766,6 +875,7 @@ function createSafetyBackupIfDue(stored) {
         version: stored.version || "",
         updatedAt: stored.updatedAt || "",
         data: stored.data || null,
+        fieldRevisions: stored.fieldRevisions || {},
         recentMutations: stored.recentMutations || [],
       }),
       MimeType.PLAIN_TEXT
