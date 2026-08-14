@@ -179,6 +179,9 @@ function doPost(e) {
   if (body.action === "crm.uploadLeadFile") {
     return jsonResponse(uploadLeadFile(body));
   }
+  if (body.action === "crm.listAttachmentFolders") {
+    return jsonResponse(listAttachmentFolders());
+  }
 
   if (body.action !== "sync.patch") {
     return jsonResponse({
@@ -941,6 +944,38 @@ function uploadLeadFile(body) {
     folderId: folder.getId(),
     folderUrl: folder.getUrl(),
   };
+}
+
+// Lista todas as pastas de oportunidades (uma por cliente/OP) e os arquivos
+// dentro de cada uma. Usado para reconciliar anexos que foram colocados
+// direto no Drive (fora do fluxo do app) com o campo `attachments` de cada
+// oportunidade no backend novo (Postgres).
+function listAttachmentFolders() {
+  var root = getCrmAttachmentsRootFolder();
+  var result = [];
+  var folders = root.getFolders();
+  while (folders.hasNext()) {
+    var folder = folders.next();
+    var files = [];
+    var fileIterator = folder.getFiles();
+    while (fileIterator.hasNext()) {
+      var file = fileIterator.next();
+      files.push({
+        id: file.getId(),
+        url: file.getUrl(),
+        name: file.getName(),
+        mimeType: file.getMimeType(),
+        createdTime: file.getDateCreated().toISOString(),
+      });
+    }
+    result.push({
+      folderId: folder.getId(),
+      folderUrl: folder.getUrl(),
+      folderName: folder.getName(),
+      files: files,
+    });
+  }
+  return { ok: true, folders: result };
 }
 
 function getCrmAttachmentsRootFolder() {
