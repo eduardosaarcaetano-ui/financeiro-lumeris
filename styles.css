@@ -2071,7 +2071,7 @@ button.project-chip {
 
 .ranking-tv-controls .ranking-tv-updated {
   color: #cfe4da;
-  font-size: clamp(15px, 1vw, 18px);
+  font-size: clamp(17px, 1.1vw, 20px);
   font-weight: 800;
   line-height: 1.25;
   text-align: center;
@@ -2112,7 +2112,7 @@ button.project-chip {
 .ranking-tv-month-values span,
 .ranking-tv-month-goal.missing span {
   color: #cfe4da;
-  font-size: clamp(18px, 1.25vw, 23px);
+  font-size: clamp(20px, 1.35vw, 26px);
   font-weight: 800;
   line-height: 1.2;
   text-transform: none;
@@ -2131,7 +2131,7 @@ button.project-chip {
 }
 
 .ranking-tv-month-values b {
-  font-size: clamp(21px, 1.5vw, 28px);
+  font-size: clamp(24px, 1.7vw, 32px);
 }
 
 .ranking-tv-month-bar {
