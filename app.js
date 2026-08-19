@@ -20,7 +20,6 @@ const ATTACHMENTS_ENDPOINT = new URLSearchParams(window.location.search).get("lo
  : LEGACY_APPS_SCRIPT_ENDPOINT;
 const SYNC_DEBOUNCE_MS = 800;
 const SYNC_TIMEOUT_MS = 90000;
-const SYNC_RETRY_DELAY_MS = 12000;
 const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
 const SYNC_PROTOCOL_VERSION = 2;
@@ -36,7 +35,6 @@ let remoteUpdatedAt = "";
 let remoteVersion = "";
 let remoteRevision = 0;
 let syncTimer = null;
-let syncRetryTimer = null;
 let syncInFlight = false;
 let syncQueued = false;
 let pendingSyncScopes = new Set();
@@ -2583,11 +2581,14 @@ function refreshRemoteStateOnViewChange(previousView, nextView) {
   isSalesRankingTvMode() ||
   !previousView ||
   previousView === nextView ||
-  maintenancePollInFlight ||
   remoteInitInFlight ||
-  syncInFlight ||
-  pendingSyncScopes.size
+  syncInFlight
  ) return;
+ if (pendingSyncScopes.size) {
+  if (!syncConflictBlocked) scheduleRemoteSync(Array.from(pendingSyncScopes));
+  return;
+ }
+ if (maintenancePollInFlight) return;
  pollRemoteMaintenanceStatus();
 }
 
@@ -3012,7 +3013,6 @@ function loadStoredSyncBaseMetadata() {
 
 function scheduleRemoteSync(scopes) {
  if (!SHEETS_ENDPOINT) return false;
- window.clearTimeout(syncRetryTimer);
  normalizePersistScopes(scopes).forEach((scope) => pendingSyncScopes.add(scope));
  if (!saveLocalState() || !saveSyncOutbox()) {
   syncConflictBlocked = true;
@@ -3034,17 +3034,6 @@ function scheduleRemoteSync(scopes) {
  setSyncStatus("Salvo localmente. Sincronizando...", "syncing");
  syncTimer = window.setTimeout(pushToSheets, SYNC_DEBOUNCE_MS);
  return true;
-}
-
-function scheduleRemoteSyncRetry() {
- if (!SHEETS_ENDPOINT || !pendingSyncScopes.size) return;
- window.clearTimeout(syncRetryTimer);
- syncRetryTimer = window.setTimeout(() => {
-  syncRetryTimer = null;
-  if (!syncInFlight && pendingSyncScopes.size) {
-   scheduleRemoteSync(Array.from(pendingSyncScopes));
-  }
- }, SYNC_RETRY_DELAY_MS);
 }
 
 async function pushToSheets() {
@@ -3120,7 +3109,6 @@ async function pushToSheets() {
    if (!saveLocalState()) throw localSyncPersistenceError();
    saveSyncOutbox();
    if (!clearSyncBatch()) throw localSyncPersistenceError();
-  window.clearTimeout(syncRetryTimer);
   if (!pendingSyncScopes.size) setSyncStatus("Sincronizado com a nuvem", "ok");
  } catch (error) {
   console.error(error);
@@ -3184,8 +3172,7 @@ async function pushToSheets() {
     setSyncStatus("Atualização de segurança pendente. Dados preservados neste computador.", "error");
     toast("Salvamento remoto bloqueado até a atualização segura do sistema.");
    } else {
-   setSyncStatus("Erro ao sincronizar - dados preservados na fila local", "error");
-   scheduleRemoteSyncRetry();
+   setSyncStatus("Erro ao sincronizar. Dados locais preservados; troque de tela ou salve novamente para tentar.", "error");
   }
  } finally {
   syncInFlight = false;
