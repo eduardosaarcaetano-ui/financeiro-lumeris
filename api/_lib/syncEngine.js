@@ -4,7 +4,10 @@
 // vizinhas). Mantido como logica pura (sem I/O) - quem le/grava o Postgres e
 // gerencia a transacao/lock e o handler em api/sync.js.
 
-const SYNC_PROTOCOL_VERSION = 2;
+// Incrementar esta versao bloqueia escritores antigos no servidor. Isso e
+// intencional: uma TV/aba com JavaScript em cache nao pode continuar gerando
+// gravacoes depois que o mecanismo de sincronizacao foi corrigido.
+const SYNC_PROTOCOL_VERSION = 3;
 
 const SYNC_SCOPE_FIELDS = {
   crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "salesTargets", "sellers", "interactions", "tasks"],
@@ -255,6 +258,22 @@ function computeSyncPatch(body, stored, { mutationAlreadyApplied = false } = {})
       version: stored.version || "",
       revision: Number(stored.revision || 0),
       protocolVersion: SYNC_PROTOCOL_VERSION,
+    };
+  }
+
+  // Um cliente antigo pode reenviar operacoes que ja representam exatamente o
+  // estado salvo (por exemplo, apos recarregamento automatico da pagina). Nao
+  // avance revisao, nao crie backup e nao grave no Neon quando nenhum dado real
+  // mudou. Essa protecao permanece valida mesmo para clientes atuais.
+  if (syncCanonical(working) === syncCanonical(stored.data || {})) {
+    return {
+      ok: true,
+      updatedAt: stored.updatedAt || "",
+      version: stored.version || "",
+      revision: Number(stored.revision || 0),
+      data: stored.data || {},
+      protocolVersion: SYNC_PROTOCOL_VERSION,
+      skipWrite: true,
     };
   }
 

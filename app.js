@@ -22,7 +22,10 @@ const SYNC_DEBOUNCE_MS = 800;
 const SYNC_TIMEOUT_MS = 90000;
 const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
-const SYNC_PROTOCOL_VERSION = 2;
+// Versao 3 invalida imediatamente abas antigas que ainda tentavam gravar
+// periodicamente. Elas continuam podendo ler os dados, mas precisam recarregar
+// o app atualizado antes de qualquer nova escrita no Neon.
+const SYNC_PROTOCOL_VERSION = 3;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
 const SYNC_BASE_STORAGE_KEY = "financeiro-lumeris-sync-base-v2";
