@@ -261,6 +261,8 @@ let opportunityAttachmentsDraft = [];
 let driveAutomationCapability = null;
 let showLostOpportunities = false;
 let rankingTvRefreshInFlight = false;
+let rankingTvClockTimer = null;
+let rankingTvLastDataRefreshAt = null;
 
 // Ordem do funil é usada tanto para renderizar as colunas quanto para calcular
 // taxa de conversão por estágio nos relatórios. "ganho"/"perdido" são estágios
@@ -929,13 +931,16 @@ async function boot() {
   setDefaultReportPeriod();
   renderAll();
   if (isSalesRankingTvMode()) {
-   if (window.location.protocol === "file:") {
-    Object.assign(state, loadState());
-   } else {
-    await initRemoteSync();
-   }
+   // A TV abre somente o retrato salvo neste computador. Assim, até uma
+   // extensão que recarregue a página não gera leituras no banco de dados.
+   Object.assign(state, loadState());
+   const storedMetadata = loadStoredSyncBaseMetadata();
+   const storedUpdatedAt = storedMetadata?.updatedAt ? new Date(storedMetadata.updatedAt) : null;
+   rankingTvLastDataRefreshAt = storedUpdatedAt && !Number.isNaN(storedUpdatedAt.getTime())
+    ? storedUpdatedAt
+    : null;
    renderSalesRankingTvMode();
-   window.setInterval(refreshSalesRankingTvMode, 30000);
+   startSalesRankingTvClock();
    return;
   }
   await ensureMasterUser({ save: false });
@@ -13129,6 +13134,7 @@ function salesRankingTvUrl(mode, source = "crm") {
  url.searchParams.set("tv", "ranking");
  url.searchParams.set("period", mode);
  url.searchParams.set("source", source);
+ url.searchParams.set("refresh", "manual");
  if (source === "manual") {
   const selectedMonth = els.salesRankFilterPeriod?.value || todayIso.slice(0, 7);
   url.searchParams.set("month", selectedMonth);
@@ -13149,18 +13155,57 @@ function isSalesRankingTvMode() {
 async function refreshSalesRankingTvMode() {
  if (rankingTvRefreshInFlight) return;
  rankingTvRefreshInFlight = true;
+ const refreshButton = document.querySelector("[data-ranking-tv-refresh]");
+ if (refreshButton) {
+  refreshButton.disabled = true;
+  refreshButton.textContent = "Atualizando vendas...";
+ }
  try {
   if (window.location.protocol === "file:") {
    Object.assign(state, loadState());
   } else if (SHEETS_ENDPOINT) {
    await initRemoteSync();
   }
+  rankingTvLastDataRefreshAt = new Date();
   renderSalesRankingTvMode();
  } catch (error) {
   console.warn("Não foi possível atualizar o ranking da TV:", error);
+  const currentButton = document.querySelector("[data-ranking-tv-refresh]");
+  if (currentButton) currentButton.textContent = "Tentar novamente";
  } finally {
   rankingTvRefreshInFlight = false;
+  const currentButton = document.querySelector("[data-ranking-tv-refresh]");
+  if (currentButton) currentButton.disabled = false;
  }
+}
+
+function updateSalesRankingTvClock() {
+ const now = new Date();
+ const clock = document.querySelector(".ranking-tv-clock");
+ if (clock) clock.textContent = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
+ const weekday = document.querySelector(".ranking-tv-weekday");
+ if (weekday) {
+  const weekdayText = now.toLocaleDateString("pt-BR", { weekday: "long" });
+  weekday.textContent = weekdayText.charAt(0).toUpperCase() + weekdayText.slice(1);
+ }
+
+ const fullDate = document.querySelector("[data-ranking-tv-date]");
+ if (fullDate) {
+  fullDate.textContent = now.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+ }
+}
+
+function startSalesRankingTvClock() {
+ window.clearInterval(rankingTvClockTimer);
+ updateSalesRankingTvClock();
+ // Atualização local: usa apenas a hora do Windows e não chama Neon, Vercel ou Google Drive.
+ rankingTvClockTimer = window.setInterval(updateSalesRankingTvClock, 30000);
+}
+
+function bindSalesRankingTvControls() {
+ const refreshButton = document.querySelector("[data-ranking-tv-refresh]");
+ if (refreshButton) refreshButton.addEventListener("click", refreshSalesRankingTvMode);
 }
 
 function salesRankingTvGoalData(entries, month) {
@@ -13260,6 +13305,9 @@ function renderSalesRankingTvMode() {
 
  const podium = [rows[1], rows[0], rows[2]];
  const topFive = rows.slice(3, 5);
+ const lastQueryText = rankingTvLastDataRefreshAt
+  ? `Dados consultados às ${rankingTvLastDataRefreshAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+  : "Clique para buscar vendas novas";
  screen.innerHTML = `
   <section class="ranking-tv-hero">
    <div>
@@ -13268,13 +13316,17 @@ function renderSalesRankingTvMode() {
     <div class="ranking-tv-date-card">
      <span class="ranking-tv-weekday">${escapeHtml(tvWeekday)}</span>
      <div>
-      <strong>${escapeHtml(tvFullDate)}</strong>
+      <strong data-ranking-tv-date>${escapeHtml(tvFullDate)}</strong>
       <small>${escapeHtml(period.label)} • ${won.length} venda${won.length === 1 ? "" : "s"} registrada${won.length === 1 ? "" : "s"}</small>
      </div>
     </div>
    </div>
    ${showMonthlyGoal ? rankingTvMonthlyGoalHtml(tvGoal) : ""}
-   <div class="ranking-tv-clock">${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
+   <div class="ranking-tv-controls">
+    <div class="ranking-tv-clock">${tvNow.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</div>
+    <button class="ranking-tv-refresh" type="button" data-ranking-tv-refresh>Atualizar vendas</button>
+    <small class="ranking-tv-updated">${escapeHtml(lastQueryText)}</small>
+   </div>
   </section>
   <section class="ranking-podium">
    ${podium.map((row, index) => {
@@ -13311,8 +13363,10 @@ function renderSalesRankingTvMode() {
     </article>
    `).join("") || `<article><strong>Aguardando 4º e 5º colocados</strong><em>${money(0)}</em><small>Cadastre mais vendas no ranking</small></article>`}
   </section>
-  ${showMonthlyGoal ? rankingTvDecadesHtml(tvGoal) : ""}
+ ${showMonthlyGoal ? rankingTvDecadesHtml(tvGoal) : ""}
  `;
+ bindSalesRankingTvControls();
+ updateSalesRankingTvClock();
 }
 
 function renderCrm() {
