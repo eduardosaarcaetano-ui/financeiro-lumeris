@@ -2044,7 +2044,7 @@ button.project-chip {
 .ranking-tv-controls {
   display: grid;
   gap: 8px;
-  min-width: 190px;
+  min-width: 220px;
 }
 
 .ranking-tv-refresh {
@@ -2070,9 +2070,10 @@ button.project-chip {
 }
 
 .ranking-tv-controls .ranking-tv-updated {
-  color: #9fb8ac;
-  font-size: 12px;
-  font-weight: 700;
+  color: #cfe4da;
+  font-size: clamp(15px, 1vw, 18px);
+  font-weight: 800;
+  line-height: 1.25;
   text-align: center;
   text-transform: none;
 }
@@ -2111,8 +2112,9 @@ button.project-chip {
 .ranking-tv-month-values span,
 .ranking-tv-month-goal.missing span {
   color: #cfe4da;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: clamp(18px, 1.25vw, 23px);
+  font-weight: 800;
+  line-height: 1.2;
   text-transform: none;
 }
 
@@ -2129,7 +2131,7 @@ button.project-chip {
 }
 
 .ranking-tv-month-values b {
-  font-size: 18px;
+  font-size: clamp(21px, 1.5vw, 28px);
 }
 
 .ranking-tv-month-bar {
