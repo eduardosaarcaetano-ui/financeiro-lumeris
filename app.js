@@ -23,10 +23,6 @@ const SYNC_TIMEOUT_MS = 90000;
 const SYNC_RETRY_DELAY_MS = 12000;
 const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
-// Alem do status de manutencao, esse polling tambem carrega a versao atual
-// dos dados (resposta ja inclui isso) - serve pra detectar quando outro
-// computador salvou algo e puxar a atualizacao sem precisar de F5.
-const MAINTENANCE_POLL_MS = 45000;
 const SYNC_PROTOCOL_VERSION = 2;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
@@ -52,8 +48,8 @@ let syncConflictBlocked = false;
 let activeSyncConflict = null;
 let remoteInitInFlight = false;
 let remoteInitRetryTimer = null;
-let maintenancePollTimer = null;
 let maintenancePollInFlight = false;
+let remoteRefreshOnNavigationEnabled = false;
 
 const AUTH_STORAGE_KEY = "financeiro-lumeris-session";
 const MASTER_USERNAME = "adm";
@@ -960,7 +956,11 @@ async function boot() {
     console.error(error);
     setSyncStatus("Sem conexão com o Sheets - usando dados locais", "error");
    })
-   .finally(startMaintenancePolling);
+   .finally(() => {
+    // Depois da carga inicial, novas versões são verificadas somente quando
+    // o usuário realmente troca de tela. Não há consulta periódica em repouso.
+    remoteRefreshOnNavigationEnabled = true;
+   });
  } finally {
   els.loginSubmit.disabled = false;
   els.loginSubmit.textContent = "Entrar";
@@ -2576,14 +2576,19 @@ async function pollRemoteMaintenanceStatus() {
  }
 }
 
-function startMaintenancePolling() {
- window.clearInterval(maintenancePollTimer);
- if (!SHEETS_ENDPOINT || isSalesRankingTvMode()) return;
- if (remoteSyncBaseState) pollRemoteMaintenanceStatus();
- maintenancePollTimer = window.setInterval(pollRemoteMaintenanceStatus, MAINTENANCE_POLL_MS);
- document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") pollRemoteMaintenanceStatus();
- });
+function refreshRemoteStateOnViewChange(previousView, nextView) {
+ if (
+  !remoteRefreshOnNavigationEnabled ||
+  !SHEETS_ENDPOINT ||
+  isSalesRankingTvMode() ||
+  !previousView ||
+  previousView === nextView ||
+  maintenancePollInFlight ||
+  remoteInitInFlight ||
+  syncInFlight ||
+  pendingSyncScopes.size
+ ) return;
+ pollRemoteMaintenanceStatus();
 }
 
 function normalizePersistScopes(scopes) {
@@ -4061,6 +4066,7 @@ function setDefaultReportPeriod() {
 }
 
 function setView(view) {
+ const previousView = document.querySelector(".nav-item.active")?.dataset.view || document.body.dataset.view || "";
  if (!canAccessView(view)) {
   toast("Acesso restrito para o seu perfil.");
   view = defaultViewForRole();
@@ -4077,6 +4083,7 @@ function setView(view) {
  const isFinancialEntryView = activeView === "receber" || activeView === "pagar";
  document.querySelector("#newSaleBtn").classList.toggle("hidden", !isFinancialEntryView || !canAccessView("receber"));
  document.querySelector("#newTransactionBtn").classList.toggle("hidden", !isFinancialEntryView || (!canAccessView("receber") && !canAccessView("pagar")));
+ refreshRemoteStateOnViewChange(previousView, view);
 }
 
 function safeRender(label, renderFn) {
