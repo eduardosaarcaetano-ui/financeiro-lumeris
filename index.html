@@ -4,7 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Lumeris Engenharia</title>
-    <link rel="stylesheet" href="styles.css?v=20260818-ranking-manual4" />
+    <script>
+      (() => {
+        const params = new URLSearchParams(window.location.search);
+        const isRankingTv = params.get("tv") === "ranking";
+        const activeTvKey = "tv-20260818-r2";
+        if (isRankingTv && params.get("tvkey") !== activeTvKey) {
+          window.location.replace("/tv-link-desativado.html");
+        }
+      })();
+    </script>
+    <link rel="stylesheet" href="styles.css?v=20260818-ranking-link-r2" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -3154,6 +3164,6 @@
     <script src="assets/estoque-iluminar-data.js?v=20260811-base-estoque-corrigida29"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260818-ranking-manual4"></script>
+    <script src="app.js?v=20260818-ranking-link-r2"></script>
   </body>
 </html>

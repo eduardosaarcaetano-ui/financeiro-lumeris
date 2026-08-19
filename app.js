@@ -13132,6 +13132,7 @@ function salesRankingTvUrl(mode, source = "crm") {
  const url = new URL(window.location.href);
  url.search = "";
  url.searchParams.set("tv", "ranking");
+ url.searchParams.set("tvkey", "tv-20260818-r2");
  url.searchParams.set("period", mode);
  url.searchParams.set("source", source);
  url.searchParams.set("refresh", "manual");
@@ -13149,7 +13150,7 @@ function openSalesRankingTv(mode, source = "crm") {
 
 function isSalesRankingTvMode() {
  const params = new URLSearchParams(window.location.search);
- return params.get("tv") === "ranking";
+ return params.get("tv") === "ranking" && params.get("tvkey") === "tv-20260818-r2";
 }
 
 async function refreshSalesRankingTvMode() {

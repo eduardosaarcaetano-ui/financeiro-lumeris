@@ -1,4 +1,28 @@
 {
+  "redirects": [
+    {
+      "source": "/",
+      "has": [
+        { "type": "query", "key": "tv", "value": "ranking" }
+      ],
+      "missing": [
+        { "type": "query", "key": "tvkey" }
+      ],
+      "destination": "/tv-link-desativado.html",
+      "permanent": true
+    },
+    {
+      "source": "/index.html",
+      "has": [
+        { "type": "query", "key": "tv", "value": "ranking" }
+      ],
+      "missing": [
+        { "type": "query", "key": "tvkey" }
+      ],
+      "destination": "/tv-link-desativado.html",
+      "permanent": true
+    }
+  ],
   "functions": {
     "api/bank/*.js": {
       "maxDuration": 60
@@ -16,6 +40,12 @@
     },
     {
       "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/tv-link-desativado.html",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
