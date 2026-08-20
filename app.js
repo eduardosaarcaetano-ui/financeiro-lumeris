@@ -924,9 +924,7 @@ boot().catch((error) => {
 async function boot() {
  try {
   bindEvents();
-  if (ensureSalesTargetCompatibilityEntries()) persist("crm", { resolveConflict: false });
   setDefaultReportPeriod();
-  renderAll();
   if (isSalesRankingTvMode()) {
    // A TV abre somente o retrato salvo neste computador. Assim, até uma
    // extensão que recarregue a página não gera leituras no banco de dados.
@@ -940,6 +938,8 @@ async function boot() {
    startSalesRankingTvClock();
    return;
   }
+  if (ensureSalesTargetCompatibilityEntries()) persist("crm", { resolveConflict: false });
+  renderAll();
   await ensureMasterUser({ save: false });
   renderUsers();
   restoreSessionOrShowLogin();
@@ -4073,6 +4073,7 @@ function setView(view) {
  const isFinancialEntryView = activeView === "receber" || activeView === "pagar";
  document.querySelector("#newSaleBtn").classList.toggle("hidden", !isFinancialEntryView || !canAccessView("receber"));
  document.querySelector("#newTransactionBtn").classList.toggle("hidden", !isFinancialEntryView || (!canAccessView("receber") && !canAccessView("pagar")));
+ renderCurrentView(view);
  refreshRemoteStateOnViewChange(previousView, view);
 }
 
@@ -4084,34 +4085,48 @@ function safeRender(label, renderFn) {
  }
 }
 
+function currentRequestedView() {
+ return document.querySelector(".nav-item.active")?.dataset.view || document.body.dataset.view || "dashboard";
+}
+
+function renderCurrentView(requestedView = currentRequestedView()) {
+ const view = canonicalView(requestedView);
+ const renderers = {
+  dashboard: () => safeRender("dashboard", renderDashboard),
+  crm: () => {
+   safeRender("opcoes do CRM", hydrateCrmOptions);
+   safeRender("CRM", renderCrm);
+  },
+  receber: () => safeRender("contas a receber", renderTransactionTables),
+  pagar: () => safeRender("contas a pagar", renderTransactionTables),
+  vendas: () => safeRender("vendas", renderSales),
+  projetos: () => {
+   safeRender("projetos", renderProjects);
+   safeRender("relatorios de projetos", renderProjectReports);
+  },
+  protocolos: () => safeRender("protocolos", renderProtocols),
+  instalacoes: () => safeRender("instalacoes", renderInstallations),
+  banco: () => safeRender("bancos", renderBank),
+  apisbancarias: () => {
+   safeRender("APIs bancarias", renderBankApiConfigs);
+   safeRender("sincronizacao diaria bancaria", runDailyBankApiSync);
+  },
+  notasfiscais: () => safeRender("notas fiscais", renderInvoices),
+  estoque: () => safeRender("estoque", renderStock),
+  pessoas: () => safeRender("cadastros", renderPeople),
+  usuarios: () => safeRender("usuarios", renderUsers),
+  relatorios: () => safeRender("relatorios", renderReports),
+ };
+ (renderers[view] || renderers.dashboard)();
+}
+
 function renderAll() {
  els.currentPeriod.textContent = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
   month: "long",
   year: "numeric",
  }).format(today);
- safeRender("opcoes do CRM", hydrateCrmOptions);
- safeRender("CRM", renderCrm);
- safeRender("dashboard", renderDashboard);
- safeRender("lancamentos", renderTransactionTables);
- safeRender("vendas", renderSales);
- safeRender("projetos", renderProjects);
- safeRender("relatorios de projetos", renderProjectReports);
- safeRender("protocolos", renderProtocols);
- safeRender("instalacoes", renderInstallations);
- safeRender("bancos", renderBank);
- safeRender("cadastros", renderPeople);
- safeRender("notas fiscais", renderInvoices);
- safeRender("estoque", renderStock);
- safeRender("APIs bancarias", renderBankApiConfigs);
- safeRender("CRM final", renderCrm);
- safeRender("relatorios", renderReports);
- safeRender("opcoes de pessoas", hydratePersonOptions);
- safeRender("opcoes de vendas", hydrateSalePeople);
- safeRender("opcoes de projetos", hydrateProjectOptions);
- safeRender("opcoes de notas fiscais", hydrateInvoicePersonOptions);
- safeRender("opcoes de status", hydrateStatusOptions);
- safeRender("sincronizacao diaria bancaria", runDailyBankApiSync);
+ renderCurrentView();
 }
 
 function hydrateCrmOptions() {
