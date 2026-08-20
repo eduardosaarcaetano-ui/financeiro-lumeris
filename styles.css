@@ -3261,6 +3261,20 @@ dialog::backdrop {
   background: rgba(17, 24, 22, 0.45);
 }
 
+/*
+ * O CRM possui um kanban extenso, com centenas de opcoes em filtros e cards.
+ * Enquanto o formulario de oportunidade esta no top layer, esse conteudo fica
+ * totalmente coberto pelo backdrop. Evitar seu layout/pintura impede que cada
+ * tecla digitada no modal force trabalho desnecessario na tela de fundo.
+ */
+body:has(#opportunityDialog[open]) #crm {
+  content-visibility: hidden;
+}
+
+#opportunityDialog .embedded-panel {
+  contain: layout paint style;
+}
+
 .modal {
   box-sizing: border-box;
   width: 100%;
