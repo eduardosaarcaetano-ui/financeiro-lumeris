@@ -51,7 +51,7 @@ let remoteInitInFlight = false;
 let remoteInitRetryTimer = null;
 let maintenancePollInFlight = false;
 let remoteRefreshOnNavigationEnabled = false;
-let lastAutomaticSyncSignature = "";
+let automaticSyncFollowUpCount = 0;
 
 const AUTH_STORAGE_KEY = "financeiro-lumeris-session";
 const MASTER_USERNAME = "adm";
@@ -2368,6 +2368,7 @@ function persist(scopes, options = {}) {
   return false;
  }
  const normalizedScopes = normalizePersistScopes(scopes);
+ automaticSyncFollowUpCount = 0;
  normalizedScopes.forEach((scope) => pendingSyncScopes.add(scope));
  if (options.resolveConflict !== false && activeSyncConflict) {
   const conflictScopes = activeSyncConflict.scopes || [];
@@ -3085,21 +3086,23 @@ async function pushToSheets() {
     const changesMadeDuringRequest = capturedRevision === localStateRevision
      ? []
      : buildSyncOperations(localState, normalizeState(cloneStateValue(state)), Array.from(pendingSyncScopes));
-    // Se a mesma diferenca reaparece depois de uma gravacao confirmada, ela e
-    // resultado de normalizacao cliente/servidor, nao de uma nova edicao. Sem
-    // esta trava, a fila alterna para sempre entre "Salvo localmente" e
-    // "Sincronizando". Edicoes feitas durante a requisicao continuam protegidas
-    // por changesMadeDuringRequest e nunca entram nesta deduplicacao.
+    // Uma gravacao pode legitimamente precisar de uma rodada complementar
+    // (por exemplo, se havia um lote pendente restaurado). Sem nova edicao do
+    // usuario, porem, nunca pode iniciar uma terceira rodada: divergencias de
+    // normalizacao que mudam a cada resposta criariam um loop infinito e
+    // consumiriam rede, Vercel e banco de dados continuamente.
     const automaticOperations = capturedRevision === localStateRevision
      ? (result.localOperationsAfterBatch || [])
      : [];
-    const automaticSignature = automaticOperations.length ? syncChecksum(automaticOperations) : "";
-    const repeatedAutomaticOperations = Boolean(
-     automaticSignature && automaticSignature === lastAutomaticSyncSignature
+    const allowAutomaticFollowUp = Boolean(
+     automaticOperations.length && automaticSyncFollowUpCount < 1
     );
-    lastAutomaticSyncSignature = repeatedAutomaticOperations ? "" : automaticSignature;
+    if (allowAutomaticFollowUp) automaticSyncFollowUpCount += 1;
+    else if (!automaticOperations.length) automaticSyncFollowUpCount = 0;
     const remainingLocalOperations = [
-     ...(repeatedAutomaticOperations ? [] : (result.localOperationsAfterBatch || [])),
+     ...(capturedRevision === localStateRevision
+      ? (allowAutomaticFollowUp ? automaticOperations : [])
+      : (result.localOperationsAfterBatch || [])),
      ...changesMadeDuringRequest,
     ];
     hasUnsyncedChanges = remainingLocalOperations.length > 0;
