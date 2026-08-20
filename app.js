@@ -51,6 +51,7 @@ let remoteInitInFlight = false;
 let remoteInitRetryTimer = null;
 let maintenancePollInFlight = false;
 let remoteRefreshOnNavigationEnabled = false;
+let lastAutomaticSyncSignature = "";
 
 const AUTH_STORAGE_KEY = "financeiro-lumeris-session";
 const MASTER_USERNAME = "adm";
@@ -3084,8 +3085,21 @@ async function pushToSheets() {
     const changesMadeDuringRequest = capturedRevision === localStateRevision
      ? []
      : buildSyncOperations(localState, normalizeState(cloneStateValue(state)), Array.from(pendingSyncScopes));
+    // Se a mesma diferenca reaparece depois de uma gravacao confirmada, ela e
+    // resultado de normalizacao cliente/servidor, nao de uma nova edicao. Sem
+    // esta trava, a fila alterna para sempre entre "Salvo localmente" e
+    // "Sincronizando". Edicoes feitas durante a requisicao continuam protegidas
+    // por changesMadeDuringRequest e nunca entram nesta deduplicacao.
+    const automaticOperations = capturedRevision === localStateRevision
+     ? (result.localOperationsAfterBatch || [])
+     : [];
+    const automaticSignature = automaticOperations.length ? syncChecksum(automaticOperations) : "";
+    const repeatedAutomaticOperations = Boolean(
+     automaticSignature && automaticSignature === lastAutomaticSyncSignature
+    );
+    lastAutomaticSyncSignature = repeatedAutomaticOperations ? "" : automaticSignature;
     const remainingLocalOperations = [
-     ...(result.localOperationsAfterBatch || []),
+     ...(repeatedAutomaticOperations ? [] : (result.localOperationsAfterBatch || [])),
      ...changesMadeDuringRequest,
     ];
     hasUnsyncedChanges = remainingLocalOperations.length > 0;
