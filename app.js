@@ -13347,7 +13347,28 @@ function rankingTvMonthlyGoalHtml(goal) {
   </div>`;
 }
 
-function rankingTvDecadesHtml(goal) {
+function rankingTvSellerResultsForDecadeHtml(rows, entries, month, decade) {
+ const results = rows.map((row) => {
+  const target = salesRankSellerTargetForPeriod(month, row.name);
+  const sold = sum(entries.filter((item) => {
+   if (normalizeText(item.seller) !== normalizeText(row.name)) return false;
+   const day = Number(salesRankEntryDate(item).slice(8, 10));
+   return day >= decade.start && day <= decade.end;
+  }).map((item) => Number(item.amount || 0)));
+  return { name: row.name, percentage: target > 0 ? (sold / target) * 100 : 0 };
+ }).sort((a, b) => b.percentage - a.percentage || a.name.localeCompare(b.name, "pt-BR"));
+ return `
+  <div class="ranking-tv-decade-sellers">
+   <div class="ranking-tv-decade-seller-head"><span>Vendedor</span><span>% atingida</span></div>
+   ${results.map((result) => `
+    <div class="ranking-tv-decade-seller-row${result.percentage >= SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD ? " achieved" : ""}">
+     <span>${escapeHtml(result.name)}</span>
+     <b>${result.percentage.toFixed(2).replace(".", ",")}%</b>
+    </div>`).join("")}
+  </div>`;
+}
+
+function rankingTvDecadesHtml(goal, rows = [], entries = [], month = "") {
  if (!goal) return "";
  return `
   <section class="ranking-tv-decades" aria-label="Atingimento das metas por dezena">
@@ -13362,51 +13383,9 @@ function rankingTvDecadesHtml(goal) {
       <h3>Dias ${decade.start} a ${decade.end}</h3>
       <p><b>${money(decade.effectiveSold)}</b> de ${money(decade.target)}</p>
       <small>${escapeHtml(carryText)}</small>
+      ${rankingTvSellerResultsForDecadeHtml(rows, entries, month, decade)}
      </article>`;
    }).join("")}
-  </section>`;
-}
-
-function rankingTvSellerGoalsHtml(rows, entries, month) {
- if (!rows.length) return "";
- const lastDay = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
- const decades = [
-  { label: "1ª dezena", start: 1, end: 10 },
-  { label: "2ª dezena", start: 11, end: 20 },
-  { label: "3ª dezena", start: 21, end: lastDay },
- ];
- return `
-  <section class="ranking-tv-seller-goals" aria-label="Atingimento da meta por vendedor e dezena">
-   <h2>Resultado por vendedor em cada dezena</h2>
-   <div>
-    ${rows.map((row) => {
-     const target = salesRankSellerTargetForPeriod(month, row.name);
-     const sellerEntries = entries.filter((item) => normalizeText(item.seller) === normalizeText(row.name));
-     return `
-      <article class="ranking-tv-seller-goal">
-       <header>
-        <div><span>${escapeHtml(row.name)}</span><small>Meta mensal: ${money(target)}</small></div>
-        <strong>${money(row.total)}</strong>
-       </header>
-       <div class="ranking-tv-seller-decades">
-        ${decades.map((decade) => {
-         const sold = sum(sellerEntries.filter((item) => {
-          const day = Number(salesRankEntryDate(item).slice(8, 10));
-          return day >= decade.start && day <= decade.end;
-         }).map((item) => Number(item.amount || 0)));
-         const percentage = target > 0 ? (sold / target) * 100 : 0;
-         const reachedThreshold = percentage >= SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD;
-         return `
-          <div class="ranking-tv-seller-decade${reachedThreshold ? " achieved" : ""}">
-           <span>${decade.label}<small>Dias ${decade.start} a ${decade.end}</small></span>
-           <strong>${money(sold)}</strong>
-           <b>${percentage.toFixed(2).replace(".", ",")}%</b>
-          </div>`;
-        }).join("")}
-       </div>
-      </article>`;
-    }).join("")}
-   </div>
   </section>`;
 }
 
@@ -13495,8 +13474,7 @@ function renderSalesRankingTvMode() {
     </article>
    `).join("") || `<article><strong>Aguardando 4º e 5º colocados</strong><em>${money(0)}</em><small>Cadastre mais vendas no ranking</small></article>`}
   </section>
- ${showMonthlyGoal ? rankingTvDecadesHtml(tvGoal) : ""}
- ${showMonthlyGoal ? rankingTvSellerGoalsHtml(rows, won, selectedMonth.slice(0, 7)) : ""}
+ ${showMonthlyGoal ? rankingTvDecadesHtml(tvGoal, rows, won, selectedMonth.slice(0, 7)) : ""}
  `;
  bindSalesRankingTvControls();
  updateSalesRankingTvClock();
