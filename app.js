@@ -24,10 +24,9 @@ const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
 const DEFAULT_SALES_RANK_SELLER_GOAL = 200000;
 const SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD = 33.33;
-// Versao 3 invalida imediatamente abas antigas que ainda tentavam gravar
-// periodicamente. Elas continuam podendo ler os dados, mas precisam recarregar
-// o app atualizado antes de qualquer nova escrita no Neon.
-const SYNC_PROTOCOL_VERSION = 3;
+// Versao 4 tambem invalida o formato antigo de metas individuais, que fazia
+// vendedores diferentes disputarem o mesmo registro mensal salesTargets.
+const SYNC_PROTOCOL_VERSION = 4;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
 const SYNC_BASE_STORAGE_KEY = "financeiro-lumeris-sync-base-v2";
@@ -130,7 +129,7 @@ const SECTOR_ALLOWED_VIEWS = {
 };
 
 const SAVE_SCOPE_FIELDS = {
- crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "salesTargets", "sellers", "interactions", "tasks"],
+ crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "sellers", "interactions", "tasks"],
  financeiro: ["transactions", "bankAccounts", "bankMovements", "bankApiConfigs", "invoices"],
  protocolo: ["protocols", "protocolHistory", "utilityCompanies", "protocolActivityTypes"],
  estoque: ["stockItems", "stockMovements", "stockLocations", "stockBaselineVersion"],
@@ -1521,7 +1520,15 @@ function loadState() {
    };
    syncConflictBlocked = true;
   }
-  return normalizeState(parsed);
+  const normalized = normalizeState(parsed);
+  if (activeSyncConflict && String(activeSyncConflict.detail || "").includes("salesTargets")) {
+   activeSyncConflict = null;
+   syncConflictBlocked = false;
+   pendingSyncScopes.add("crm");
+   localStorage.removeItem(SYNC_BATCH_STORAGE_KEY);
+   activeSyncBatch = null;
+  }
+  return normalized;
  }
 
  return normalizeState({
@@ -1630,7 +1637,7 @@ normalized.salesTargets = normalized.salesTargets
  .filter((item) => item.period && item.amount >= 0);
 
  const targetsByPeriod = new Map(normalized.salesTargets.map((target) => [target.period, target]));
- normalized.salesRankingEntries.filter(isSalesTargetCompatibilityEntry).forEach((entry) => {
+ normalized.salesRankingEntries.filter(isSalesMonthlyTargetCompatibilityEntry).forEach((entry) => {
   const period = String(entry.period || "").slice(0, 7);
   const amount = roundCurrency(Number(entry.amount || 0));
   if (!period || amount <= 0) return;
@@ -1646,6 +1653,39 @@ normalized.salesTargets = normalized.salesTargets
   }
  });
  normalized.salesTargets = [...targetsByPeriod.values()].sort((a, b) => a.period.localeCompare(b.period));
+
+ normalized.salesTargets.forEach((target) => {
+  Object.entries(target.sellerTargets || {}).forEach(([sellerKey, rawAmount]) => {
+   const amount = roundCurrency(Number(rawAmount || 0));
+   if (!sellerKey || amount <= 0) return;
+   const id = salesRankSellerTargetEntryId(target.period, sellerKey);
+   const markerIndex = normalized.salesRankingEntries.findIndex((entry) => entry.id === id || (
+    isSalesSellerTargetCompatibilityEntry(entry) && entry.period === target.period && normalizeText(entry.sellerKey || entry.seller) === sellerKey
+   ));
+   const existingMarker = markerIndex >= 0 ? normalized.salesRankingEntries[markerIndex] : null;
+   if (existingMarker && String(existingMarker.updatedAt || "") > String(target.updatedAt || "")) return;
+   const sellerName = normalized.salesRankingEntries.find((entry) => (
+    !isSalesTargetCompatibilityEntry(entry) && normalizeText(entry.seller) === sellerKey
+   ))?.seller || existingMarker?.seller || sellerKey;
+   const marker = {
+    ...(existingMarker || {}),
+    id,
+    recordType: "sales_seller_target",
+    source: "system",
+    seller: sellerName,
+    sellerKey,
+    client: "Meta individual",
+    city: "",
+    period: target.period,
+    saleDate: `${target.period}-01`,
+    amount,
+    createdAt: existingMarker?.createdAt || target.updatedAt || "",
+    updatedAt: target.updatedAt || existingMarker?.updatedAt || "",
+   };
+   if (markerIndex >= 0) normalized.salesRankingEntries[markerIndex] = marker;
+   else normalized.salesRankingEntries.push(marker);
+  });
+ });
 
  normalized.sellers = normalized.sellers.map((item) => ({
   id: item.id,
@@ -5937,6 +5977,11 @@ function salesRankTargetForPeriod(period) {
 
 function salesRankSellerTargetForPeriod(period, seller) {
  const key = normalizeText(seller);
+ const marker = state.salesRankingEntries.find((entry) => (
+  isSalesSellerTargetCompatibilityEntry(entry) && entry.period === period && normalizeText(entry.sellerKey || entry.seller) === key
+ ));
+ const markerAmount = Number(marker?.amount || 0);
+ if (markerAmount > 0) return markerAmount;
  const target = state.salesTargets.find((item) => item.period === period);
  const amount = Number(target?.sellerTargets?.[key] || 0);
  return amount > 0 ? amount : DEFAULT_SALES_RANK_SELLER_GOAL;
@@ -5952,26 +5997,50 @@ function syncSalesRankSellerGoalInput() {
 function updateSalesRankSellerTarget(period, seller, amount) {
  const key = normalizeText(seller);
  if (!period || !key || amount <= 0) return false;
- const index = state.salesTargets.findIndex((item) => item.period === period);
- const previous = index >= 0 ? state.salesTargets[index] : null;
- const currentAmount = Number(previous?.sellerTargets?.[key] || DEFAULT_SALES_RANK_SELLER_GOAL);
- const hasExplicitTarget = Object.prototype.hasOwnProperty.call(previous?.sellerTargets || {}, key);
- if (currentAmount === amount && (hasExplicitTarget || amount === DEFAULT_SALES_RANK_SELLER_GOAL)) return false;
- const target = {
+ const id = salesRankSellerTargetEntryId(period, key);
+ const markerIndex = state.salesRankingEntries.findIndex((entry) => entry.id === id || (
+  isSalesSellerTargetCompatibilityEntry(entry) && entry.period === period && normalizeText(entry.sellerKey || entry.seller) === key
+ ));
+ const previous = markerIndex >= 0 ? state.salesRankingEntries[markerIndex] : null;
+ const legacyTarget = state.salesTargets.find((item) => item.period === period);
+ const hasLegacyExplicitTarget = Object.prototype.hasOwnProperty.call(legacyTarget?.sellerTargets || {}, key);
+ if (previous && Number(previous.amount || 0) === amount) return false;
+ if (!previous && !hasLegacyExplicitTarget && amount === DEFAULT_SALES_RANK_SELLER_GOAL) return false;
+ const updatedAt = new Date().toISOString();
+ const marker = {
   ...(previous || {}),
-  id: previous?.id || `sales-target-${period}`,
+  id,
+  recordType: "sales_seller_target",
+  source: "system",
+  seller,
+  sellerKey: key,
+  client: "Meta individual",
+  city: "",
   period,
-  amount: roundCurrency(Number(previous?.amount || 0)),
-  sellerTargets: { ...(previous?.sellerTargets || {}), [key]: roundCurrency(amount) },
-  updatedAt: new Date().toISOString(),
+  saleDate: `${period}-01`,
+  amount: roundCurrency(amount),
+  createdAt: previous?.createdAt || updatedAt,
+  updatedAt,
  };
- if (index >= 0) state.salesTargets[index] = target;
- else state.salesTargets.push(target);
+ if (markerIndex >= 0) state.salesRankingEntries[markerIndex] = marker;
+ else state.salesRankingEntries.push(marker);
  return true;
 }
 
-function isSalesTargetCompatibilityEntry(item) {
+function salesRankSellerTargetEntryId(period, seller) {
+ return `sales-seller-target-entry-${period}-${encodeURIComponent(normalizeText(seller))}`;
+}
+
+function isSalesMonthlyTargetCompatibilityEntry(item) {
  return item?.recordType === "sales_target" || String(item?.id || "").startsWith("sales-target-entry-");
+}
+
+function isSalesSellerTargetCompatibilityEntry(item) {
+ return item?.recordType === "sales_seller_target" || String(item?.id || "").startsWith("sales-seller-target-entry-");
+}
+
+function isSalesTargetCompatibilityEntry(item) {
+ return isSalesMonthlyTargetCompatibilityEntry(item) || isSalesSellerTargetCompatibilityEntry(item);
 }
 
 function ensureSalesTargetCompatibilityEntries() {
@@ -5981,7 +6050,7 @@ function ensureSalesTargetCompatibilityEntries() {
   const amount = roundCurrency(Number(target.amount || 0));
   if (!period || amount <= 0) return;
   const id = `sales-target-entry-${period}`;
-  const marker = state.salesRankingEntries.find((entry) => entry.id === id || (isSalesTargetCompatibilityEntry(entry) && entry.period === period));
+  const marker = state.salesRankingEntries.find((entry) => entry.id === id || (isSalesMonthlyTargetCompatibilityEntry(entry) && entry.period === period));
   const updatedAt = target.updatedAt || new Date().toISOString();
   const nextMarker = {
    ...(marker || {}),
