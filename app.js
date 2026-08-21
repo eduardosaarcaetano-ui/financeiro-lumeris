@@ -24,9 +24,9 @@ const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
 const DEFAULT_SALES_RANK_SELLER_GOAL = 200000;
 const SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD = 33.33;
-// Versao 6 invalida abas com a normalizacao bancaria antiga, que renovava o
-// updatedAt do saldo manual a cada leitura e criava gravacoes infinitas.
-const SYNC_PROTOCOL_VERSION = 6;
+// Versao 7 tambem exige o controle de manutencao com confirmacao remota
+// imediata, evitando que o botao fique indefinidamente em "Liberando".
+const SYNC_PROTOCOL_VERSION = 7;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
 const SYNC_BASE_STORAGE_KEY = "financeiro-lumeris-sync-base-v2";
@@ -3524,7 +3524,7 @@ function openMaintenanceControl() {
  els.maintenanceControlDialog.showModal();
 }
 
-function saveMaintenanceControl(event) {
+async function saveMaintenanceControl(event) {
  if (event.submitter?.value === "cancel") return;
  event.preventDefault();
  if (!isMaintenanceController()) {
@@ -3534,7 +3534,7 @@ function saveMaintenanceControl(event) {
  const enabling = !Boolean(state.maintenance.enabled);
  const message = String(els.maintenanceControlMessage.value || "").trim()
   || "Estamos realizando ajustes no sistema. Por favor, aguarde a liberação do administrador.";
- state.maintenance = enabling
+ const nextMaintenance = enabling
   ? {
     enabled: true,
     message,
@@ -3542,11 +3542,84 @@ function saveMaintenanceControl(event) {
     startedBy: currentSessionUser()?.username || MASTER_USERNAME,
    }
   : { enabled: false, message: "", startedAt: "", startedBy: "" };
- if (!persist("config")) return;
- updateMaintenanceControlUi();
- els.maintenanceControlDialog.close();
  setSyncStatus(enabling ? "Ativando manutenção para os demais usuários..." : "Liberando o sistema para os usuários...", "syncing");
- toast(enabling ? "Manutenção ativada. O usuário adm continua liberado." : "Manutenção finalizada. Os usuários serão liberados automaticamente.");
+ els.maintenanceControlSubmit.disabled = true;
+ try {
+  await persistMaintenanceStateImmediately(nextMaintenance);
+  updateMaintenanceControlUi();
+  els.maintenanceControlDialog.close();
+  setSyncStatus("Sincronizado com a nuvem", "ok");
+  toast(enabling ? "Manutenção ativada. O usuário adm continua liberado." : "Manutenção finalizada. Os usuários foram liberados.");
+ } catch (error) {
+  console.error("Falha ao alterar a manutenção", error);
+  setSyncStatus("Não foi possível alterar a manutenção. Tente novamente.", "error");
+  toast("A alteração não foi confirmada pelo servidor. Tente novamente.");
+ } finally {
+  els.maintenanceControlSubmit.disabled = false;
+ }
+}
+
+async function persistMaintenanceStateImmediately(nextMaintenance, allowRetry = true) {
+ const latest = await fetchRemoteState();
+ applyRemoteSyncMetadata(latest);
+ remoteProtocolVersion = Number(latest.protocolVersion || 1);
+ if (remoteProtocolVersion < SYNC_PROTOCOL_VERSION) {
+  const error = new Error("Backend desatualizado para controle de manutenção");
+  error.code = "backend_update_required";
+  throw error;
+ }
+
+ const remoteState = normalizeState(latest.data || {});
+ const normalizedNext = normalizeMaintenanceState(nextMaintenance);
+ const remoteMaintenance = normalizeMaintenanceState(remoteState.maintenance);
+ if (syncCanonical(remoteMaintenance) !== syncCanonical(normalizedNext)) {
+  const actor = currentSessionUser();
+  const response = await fetchWithTimeout(SHEETS_ENDPOINT, {
+   method: "POST",
+   body: JSON.stringify({
+    action: "sync.patch",
+    protocolVersion: SYNC_PROTOCOL_VERSION,
+    mutationId: crypto.randomUUID(),
+    clientId: syncClientId(),
+    actorId: String(actor?.id || actor?.username || ""),
+    actorName: String(actor?.name || actor?.username || ""),
+    actorUsername: String(actor?.username || ""),
+    view: "usuarios",
+    scopes: ["config"],
+    operations: [{
+     field: "maintenance",
+     type: "replace",
+     value: normalizedNext,
+     baseChecksum: syncChecksum(remoteMaintenance),
+    }],
+    baseVersion: latest.version || "",
+   }),
+  }, SYNC_TIMEOUT_MS);
+  const result = await response.json();
+  if (!result.ok) {
+   if (result.error === "record_conflict" && allowRetry) {
+    return persistMaintenanceStateImmediately(normalizedNext, false);
+   }
+   const error = new Error(result.message || result.error || "Falha ao alterar manutenção");
+   error.code = result.error || "maintenance_update_failed";
+   throw error;
+  }
+  applyRemoteSyncMetadata(result);
+ }
+
+ remoteState.maintenance = normalizedNext;
+ remoteSyncBaseState = remoteState;
+ state.maintenance = normalizedNext;
+ if (!storeSyncBase(remoteState) || !saveLocalState()) throw localSyncPersistenceError();
+
+ const storedBatch = loadSyncBatch();
+ if (storedBatch?.operations?.length && storedBatch.operations.every((operation) => operation.field === "maintenance")) {
+  if (!clearSyncBatch()) throw localSyncPersistenceError();
+ }
+ if (!buildSyncOperations(remoteState, normalizeState(cloneStateValue(state)), ["config"]).length) {
+  pendingSyncScopes.delete("config");
+  if (!saveSyncOutbox()) throw localSyncPersistenceError();
+ }
 }
 
 function showMaintenance() {
