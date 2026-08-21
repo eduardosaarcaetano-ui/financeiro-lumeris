@@ -14,7 +14,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260820-pos-venda-r1" />
+    <link rel="stylesheet" href="styles.css?v=20260821-won-payment-plan-r6" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -3132,12 +3132,23 @@
             <input id="opportunityWonProtocolApplies" type="checkbox" />
             Exige tr&acirc;mite com a concession&aacute;ria
           </label>
-          <label>Quantidade de parcelas
+          <label>Valor da entrada (R$)
+            <input id="opportunityWonEntryAmount" type="number" min="0" step="0.01" value="0" />
+          </label>
+          <label>Quantidade de parcelas do saldo
             <input id="opportunityWonInstallments" type="number" min="1" max="120" step="1" value="1" required />
           </label>
           <label>Primeiro vencimento
             <input id="opportunityWonFirstDueDate" type="date" required />
           </label>
+          <section class="full won-payment-plan" aria-labelledby="opportunityWonPaymentPlanTitle">
+            <div>
+              <strong id="opportunityWonPaymentPlanTitle">Valores das parcelas</strong>
+              <small>A entrada vence na data do fechamento. Edite abaixo o vencimento e o valor de cada parcela.</small>
+            </div>
+            <div class="editable-installments" id="opportunityWonInstallmentPlan"></div>
+            <small class="allocation-total" id="opportunityWonPaymentTotal"></small>
+          </section>
         </div>
         <div class="won-flow-note" id="opportunityWonFlowNote">
           Todos os ganhos geram pend&ecirc;ncia em Instala&ccedil;&otilde;es, atividade em Protocolos e valores em Contas a Receber. Quando n&atilde;o houver tr&acirc;mite com a concession&aacute;ria, o protocolo ser&aacute; registrado como <strong>N&atilde;o se aplica</strong>.
@@ -3186,6 +3197,6 @@
     <script src="assets/estoque-iluminar-data.js?v=20260811-base-estoque-corrigida29"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260821-maintenance-release-r5"></script>
+    <script src="app.js?v=20260821-won-payment-plan-r6"></script>
   </body>
 </html>

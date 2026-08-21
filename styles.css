@@ -3492,6 +3492,31 @@ body:has(#opportunityDialog[open]) #crm {
   line-height: 1.45;
 }
 
+.won-payment-plan {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8faf9;
+}
+
+.won-payment-plan > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.won-payment-plan > div:first-child small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.won-payment-plan .editable-installments {
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
 .won-flow-action {
   width: 100%;
   margin-top: 8px;

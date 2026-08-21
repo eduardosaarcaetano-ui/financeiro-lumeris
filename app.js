@@ -504,8 +504,11 @@ const els = {
  opportunityWonServiceType: document.querySelector("#opportunityWonServiceType"),
  opportunityWonCreateProject: document.querySelector("#opportunityWonCreateProject"),
  opportunityWonProtocolApplies: document.querySelector("#opportunityWonProtocolApplies"),
+ opportunityWonEntryAmount: document.querySelector("#opportunityWonEntryAmount"),
  opportunityWonInstallments: document.querySelector("#opportunityWonInstallments"),
  opportunityWonFirstDueDate: document.querySelector("#opportunityWonFirstDueDate"),
+ opportunityWonInstallmentPlan: document.querySelector("#opportunityWonInstallmentPlan"),
+ opportunityWonPaymentTotal: document.querySelector("#opportunityWonPaymentTotal"),
  opportunityWonContractBtn: document.querySelector("#opportunityWonContractBtn"),
  opportunityWonContractStatus: document.querySelector("#opportunityWonContractStatus"),
  opportunityWonProtocolStatus: document.querySelector("#opportunityWonProtocolStatus"),
@@ -1163,11 +1166,17 @@ function bindEvents() {
    return;
   }
   if (event.submitter?.value !== "complete") return;
-  completeOpportunityWonFlow(opportunity, opportunityWonSettingsFromDialog());
+  const settings = opportunityWonSettingsFromDialog();
+  if (!validateOpportunityWonPaymentPlan(opportunity, settings)) return;
+  completeOpportunityWonFlow(opportunity, settings);
  });
 
  els.opportunityWonServiceType.addEventListener("change", () => syncOpportunityWonProjectChoice({ useDefaults: true }));
  els.opportunityWonProtocolApplies.addEventListener("change", updateOpportunityWonFlowSummary);
+ els.opportunityWonEntryAmount.addEventListener("input", () => renderOpportunityWonInstallmentPlan());
+ els.opportunityWonInstallments.addEventListener("input", () => renderOpportunityWonInstallmentPlan());
+ els.opportunityWonFirstDueDate.addEventListener("change", () => renderOpportunityWonInstallmentPlan());
+ els.opportunityWonInstallmentPlan.addEventListener("input", updateOpportunityWonPaymentTotal);
  els.opportunityWonContractBtn.addEventListener("click", prepareOpportunityContractFromDialog);
 
  // Ganchos para vincular a oportunidade de volta à venda/projeto gerado, sem alterar
@@ -12899,6 +12908,55 @@ function updateOpportunityWonFlowSummary() {
   : "Registrado como não se aplica";
 }
 
+function getOpportunityWonInstallmentPlan() {
+ return [...els.opportunityWonInstallmentPlan.querySelectorAll(".editable-installment-row")].map((row, index) => ({
+  number: index + 1,
+  dueDate: row.querySelector("[data-won-installment-date]").value,
+  amount: roundCurrency(Number(row.querySelector("[data-won-installment-amount]").value || 0)),
+ }));
+}
+
+function renderOpportunityWonInstallmentPlan(preferredPlan = []) {
+ const opportunity = pendingWonOpportunity;
+ if (!opportunity || !els.opportunityWonInstallmentPlan) return;
+ const total = roundCurrency(Number(opportunity.value || 0));
+ const entryAmount = roundCurrency(Number(els.opportunityWonEntryAmount.value || 0));
+ const count = Math.max(1, Math.min(120, Number(els.opportunityWonInstallments.value || 1)));
+ const firstDueDate = els.opportunityWonFirstDueDate.value || els.opportunityWonClosedDate.value || todayIso;
+ const balance = roundCurrency(total - entryAmount);
+ if (entryAmount < 0 || entryAmount >= total || balance <= 0) {
+  els.opportunityWonInstallmentPlan.innerHTML = emptyMessage("A entrada precisa ser menor que o valor total da oportunidade.");
+  updateOpportunityWonPaymentTotal();
+  return;
+ }
+
+ const reusablePlan = Array.isArray(preferredPlan) && preferredPlan.length === count
+  ? preferredPlan.map((item, index) => ({
+    number: index + 1,
+    dueDate: item.dueDate || toIso(nextInstallmentDate(parseDate(firstDueDate), index, "monthly", 30)),
+    amount: roundCurrency(Number(item.amount || 0)),
+   }))
+  : buildInstallments(balance, count, firstDueDate, "monthly", 30);
+ els.opportunityWonInstallmentPlan.innerHTML = reusablePlan.map((item) => `
+  <div class="editable-installment-row">
+   <span>Parcela ${item.number}/${count}</span>
+   <input data-won-installment-date type="date" value="${item.dueDate}" required />
+   <input data-won-installment-amount type="number" min="0.01" step="0.01" value="${item.amount.toFixed(2)}" required />
+  </div>`).join("");
+ updateOpportunityWonPaymentTotal();
+}
+
+function updateOpportunityWonPaymentTotal() {
+ if (!els.opportunityWonPaymentTotal) return;
+ const opportunityTotal = roundCurrency(Number(pendingWonOpportunity?.value || 0));
+ const entryAmount = roundCurrency(Number(els.opportunityWonEntryAmount.value || 0));
+ const installmentsTotal = roundCurrency(sum(getOpportunityWonInstallmentPlan().map((item) => item.amount)));
+ const informedTotal = roundCurrency(entryAmount + installmentsTotal);
+ const difference = roundCurrency(opportunityTotal - informedTotal);
+ els.opportunityWonPaymentTotal.textContent = `Entrada ${money(entryAmount)} + parcelas ${money(installmentsTotal)} = ${money(informedTotal)} · Diferença: ${money(difference)}`;
+ els.opportunityWonPaymentTotal.classList.toggle("invalid", Math.abs(difference) >= 0.01 || entryAmount < 0 || entryAmount >= opportunityTotal);
+}
+
 function opportunityWonSettingsFromDialog() {
  const serviceType = els.opportunityWonServiceType.value || "instalacao_projeto";
  return {
@@ -12906,9 +12964,31 @@ function opportunityWonSettingsFromDialog() {
   serviceType,
   createProject: Boolean(els.opportunityWonCreateProject.checked),
   protocolApplies: Boolean(els.opportunityWonProtocolApplies.checked),
+  entryAmount: roundCurrency(Number(els.opportunityWonEntryAmount.value || 0)),
   installments: Math.max(1, Math.min(120, Number(els.opportunityWonInstallments.value || 1))),
   firstDueDate: els.opportunityWonFirstDueDate.value || els.opportunityWonClosedDate.value || todayIso,
+  installmentPlan: getOpportunityWonInstallmentPlan(),
  };
+}
+
+function validateOpportunityWonPaymentPlan(opportunity, settings = {}) {
+ const total = roundCurrency(Number(opportunity?.value || 0));
+ const entryAmount = roundCurrency(Number(settings.entryAmount || 0));
+ const plan = Array.isArray(settings.installmentPlan) ? settings.installmentPlan : [];
+ if (entryAmount < 0 || entryAmount >= total) {
+  toast("O valor da entrada precisa ser menor que o valor total da oportunidade.");
+  return false;
+ }
+ if (plan.length !== Number(settings.installments || 0) || plan.some((item) => !item.dueDate || Number(item.amount || 0) <= 0)) {
+  toast("Preencha o vencimento e um valor maior que zero em todas as parcelas.");
+  return false;
+ }
+ const informedTotal = roundCurrency(entryAmount + sum(plan.map((item) => Number(item.amount || 0))));
+ if (Math.abs(roundCurrency(total - informedTotal)) >= 0.01) {
+  toast("A soma da entrada e das parcelas precisa ser igual ao valor da oportunidade.");
+  return false;
+ }
+ return true;
 }
 
 function applyOpportunityWonSettings(opportunity, settings = {}) {
@@ -12920,8 +13000,14 @@ function applyOpportunityWonSettings(opportunity, settings = {}) {
  opportunity.postWinSettings = {
   createProject: Boolean(settings.createProject),
   protocolApplies: Boolean(settings.protocolApplies),
+  entryAmount: roundCurrency(Number(settings.entryAmount || 0)),
   installments: Math.max(1, Number(settings.installments || 1)),
   firstDueDate: settings.firstDueDate || closedDate,
+  installmentPlan: (settings.installmentPlan || []).map((item, index) => ({
+   number: index + 1,
+   dueDate: item.dueDate,
+   amount: roundCurrency(Number(item.amount || 0)),
+  })),
  };
  opportunity.updatedAt = new Date().toISOString();
 }
@@ -13016,14 +13102,20 @@ function openOpportunityWonDialog(opportunity) {
  if (els.opportunityWonServiceType) els.opportunityWonServiceType.value = opportunity.serviceType || "instalacao_projeto";
  const existingSale = state.sales.find((item) => item.opportunityId === opportunity.id);
  const existingReceivables = existingSale ? saleInstallmentsFor(existingSale.id) : [];
+ const existingBalanceReceivables = existingReceivables.filter((item) => item.installmentNumber !== "entrada");
  const savedSettings = opportunity.postWinSettings || {};
  els.opportunityWonCreateProject.checked = savedSettings.createProject ?? (Boolean(opportunity.projectId) || installationRequiresProject(els.opportunityWonServiceType.value));
  els.opportunityWonProtocolApplies.checked = savedSettings.protocolApplies ?? serviceUsuallyRequiresUtilityProtocol(els.opportunityWonServiceType.value);
+ els.opportunityWonEntryAmount.value = savedSettings.entryAmount ?? existingSale?.entryAmount ?? 0;
  els.opportunityWonInstallments.value = savedSettings.installments || existingSale?.balanceInstallments || existingSale?.installments || 1;
- els.opportunityWonFirstDueDate.value = savedSettings.firstDueDate || existingReceivables[0]?.dueDate || opportunity.expectedCloseDate || els.opportunityWonClosedDate.value || todayIso;
+ els.opportunityWonFirstDueDate.value = savedSettings.firstDueDate || existingBalanceReceivables[0]?.dueDate || opportunity.expectedCloseDate || els.opportunityWonClosedDate.value || todayIso;
  els.opportunityWonContractStatus.textContent = opportunity.contractId ? "Minuta preparada" : "Pronto para preparar";
  els.opportunityWonContractBtn.textContent = opportunity.contractId ? "Revisar / gerar contrato" : "Assinar / gerar contrato";
  updateOpportunityWonFlowSummary();
+ const preferredPlan = savedSettings.installmentPlan?.length
+  ? savedSettings.installmentPlan
+  : existingBalanceReceivables.map((item, index) => ({ number: index + 1, dueDate: item.dueDate, amount: item.amount }));
+ renderOpportunityWonInstallmentPlan(preferredPlan);
  els.opportunityWonDialog.showModal();
 }
 
@@ -13068,8 +13160,14 @@ function contractDraftPayload(opportunity, settings = {}) {
   commercial: {
    amount: Number(opportunity.value || 0),
    closedDate: settings.closedDate || opportunity.closedDate || todayIso,
+   entryAmount: roundCurrency(Number(settings.entryAmount || 0)),
    installments: Math.max(1, Number(settings.installments || 1)),
    firstDueDate: settings.firstDueDate || opportunity.closedDate || todayIso,
+   installmentPlan: (settings.installmentPlan || []).map((item, index) => ({
+    number: index + 1,
+    dueDate: item.dueDate,
+    amount: roundCurrency(Number(item.amount || 0)),
+   })),
    paymentTerms: opportunity.proposal?.paymentTerms || "",
   },
   service: {
@@ -13125,9 +13223,11 @@ function contractPreparationHtml(opportunity) {
   </section>
   <h2>Condições comerciais</h2><section class="grid">
    <div class="box"><span>Valor contratado</span><strong>${money(commercial.amount)}</strong></div>
-   <div class="box"><span>Parcelamento</span><strong>${commercial.installments} parcela(s)</strong></div>
+   <div class="box"><span>Entrada</span><strong>${money(commercial.entryAmount || 0)}</strong></div>
+   <div class="box"><span>Parcelamento do saldo</span><strong>${commercial.installments} parcela(s)</strong></div>
    <div class="box"><span>Primeiro vencimento</span><strong>${formatDate(commercial.firstDueDate)}</strong></div>
    <div class="box"><span>Forma informada na proposta</span><strong>${escapeHtml(commercial.paymentTerms || "Não informada")}</strong></div>
+   ${(commercial.installmentPlan || []).length ? `<div class="box full"><span>Valores e vencimentos</span><strong>${commercial.installmentPlan.map((item) => `${item.number}/${commercial.installments}: ${money(item.amount)} em ${formatDate(item.dueDate)}`).join(" · ")}</strong></div>` : ""}
   </section>
   <h2>Escopo técnico puxado da proposta</h2><section class="grid">
    <div class="box"><span>Tipo de serviço</span><strong>${escapeHtml(installationTypeLabel(draft.service.type))}</strong></div>
@@ -13155,6 +13255,7 @@ function prepareOpportunityContractFromDialog() {
  const opportunity = pendingWonOpportunity;
  if (!opportunity) return;
  const settings = opportunityWonSettingsFromDialog();
+ if (!validateOpportunityWonPaymentPlan(opportunity, settings)) return;
  applyOpportunityWonSettings(opportunity, settings);
  ensureOpportunityContractDraft(opportunity, settings);
  persist("crm");
@@ -13214,21 +13315,42 @@ function ensureProtocolFromWonOpportunity(opportunity, settings = {}) {
  return protocol;
 }
 
-function crmReceivablePlanMatches(sale, transactions, amount, installments, firstDueDate) {
- if (!sale || Number(sale.total || 0) !== amount || Number(sale.balanceInstallments || sale.installments || 0) !== installments) return false;
- if (transactions.length !== installments) return false;
- return transactions[0]?.dueDate === firstDueDate && roundCurrency(sum(transactions.map((item) => item.amount))) === roundCurrency(amount);
+function crmReceivablePlanMatches(sale, transactions, amount, entryAmount, installmentPlan, closedDate) {
+ if (!sale || roundCurrency(Number(sale.total || 0)) !== amount) return false;
+ if (roundCurrency(Number(sale.entryAmount || 0)) !== entryAmount) return false;
+ if (Number(sale.balanceInstallments || 0) !== installmentPlan.length) return false;
+ const expected = [
+  ...(entryAmount > 0 ? [{ installmentNumber: "entrada", dueDate: closedDate, amount: entryAmount }] : []),
+  ...installmentPlan.map((item, index) => ({ installmentNumber: index + 1, dueDate: item.dueDate, amount: item.amount })),
+ ];
+ if (transactions.length !== expected.length) return false;
+ return expected.every((item, index) => {
+  const transaction = transactions[index];
+  return String(transaction.installmentNumber) === String(item.installmentNumber)
+   && transaction.dueDate === item.dueDate
+   && roundCurrency(Number(transaction.amount || 0)) === roundCurrency(Number(item.amount || 0));
+ });
 }
 
 function ensureReceivablesFromWonOpportunity(opportunity, settings = {}) {
  const now = new Date().toISOString();
  const amount = roundCurrency(Number(opportunity.value || 0));
+ const entryAmount = roundCurrency(Number(settings.entryAmount || 0));
  const installments = Math.max(1, Number(settings.installments || 1));
  const firstDueDate = settings.firstDueDate || settings.closedDate || todayIso;
+ const closedDate = settings.closedDate || todayIso;
+ const balance = roundCurrency(amount - entryAmount);
+ const installmentPlan = Array.isArray(settings.installmentPlan) && settings.installmentPlan.length === installments
+  ? settings.installmentPlan.map((item, index) => ({
+    number: index + 1,
+    dueDate: item.dueDate,
+    amount: roundCurrency(Number(item.amount || 0)),
+   }))
+  : buildInstallments(balance, installments, firstDueDate, "monthly", 30);
  const projectId = opportunity.projectId || "";
  let sale = state.sales.find((item) => item.opportunityId === opportunity.id);
  let transactions = sale ? saleInstallmentsFor(sale.id) : [];
- if (crmReceivablePlanMatches(sale, transactions, amount, installments, firstDueDate)) {
+ if (crmReceivablePlanMatches(sale, transactions, amount, entryAmount, installmentPlan, closedDate)) {
   opportunity.saleId = sale.id;
   return sale;
  }
@@ -13249,8 +13371,8 @@ function ensureReceivablesFromWonOpportunity(opportunity, settings = {}) {
   category: "Contrato CRM",
   projectId,
   total: amount,
-  installments,
-  entryAmount: 0,
+  installments: installmentPlan.length + (entryAmount > 0 ? 1 : 0),
+  entryAmount,
   balanceInstallments: installments,
   dreGroup: "receita_bruta",
   notes: `Gerado automaticamente após oportunidade ganha no CRM. Cliente: ${personName(opportunity.personId)}.`,
@@ -13259,24 +13381,25 @@ function ensureReceivablesFromWonOpportunity(opportunity, settings = {}) {
   source: "crm_won",
   updatedAt: now,
  });
- buildInstallments(amount, installments, firstDueDate, "monthly", 30).forEach((installment) => {
+
+ const addReceivable = ({ installmentNumber, dueDate, installmentAmount, description }) => {
   state.transactions.push({
    id: crypto.randomUUID(),
    type: "receber",
    personId: opportunity.personId,
-   description: `${sale.description} - Parcela ${installment.number}/${installments}`,
+   description,
    category: sale.category,
    dreGroup: sale.dreGroup,
-   dueDate: installment.dueDate,
-   amount: installment.amount,
+   dueDate,
+   amount: installmentAmount,
    status: "aberto",
    paidDate: "",
    notes: sale.notes,
    saleId: sale.id,
-   installmentNumber: installment.number,
+   installmentNumber,
    installmentTotal: installments,
    projectId,
-   allocations: projectId ? [{ projectId, amount: installment.amount }] : [],
+   allocations: projectId ? [{ projectId, amount: installmentAmount }] : [],
    contractId: opportunity.contractId || "",
    opportunityId: opportunity.id,
    source: "crm_won",
@@ -13284,6 +13407,22 @@ function ensureReceivablesFromWonOpportunity(opportunity, settings = {}) {
    invoiceId: "",
    createdAt: now,
    updatedAt: now,
+  });
+ };
+ if (entryAmount > 0) {
+  addReceivable({
+   installmentNumber: "entrada",
+   dueDate: closedDate,
+   installmentAmount: entryAmount,
+   description: `${sale.description} - Entrada`,
+  });
+ }
+ installmentPlan.forEach((installment) => {
+  addReceivable({
+   installmentNumber: installment.number,
+   dueDate: installment.dueDate,
+   installmentAmount: installment.amount,
+   description: `${sale.description} - Parcela ${installment.number}/${installments}`,
   });
  });
  opportunity.saleId = sale.id;
@@ -13299,6 +13438,7 @@ function completeOpportunityWonFlow(opportunity, settings = {}) {
   toast("Informe um valor maior que zero para gerar o Contas a Receber.");
   return;
  }
+ if (!validateOpportunityWonPaymentPlan(opportunity, settings)) return;
  applyOpportunityWonSettings(opportunity, settings);
  ensureOpportunityContractDraft(opportunity, settings);
  if (settings.createProject) ensureProjectFromWonOpportunity(opportunity, settings);
