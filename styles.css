@@ -1808,14 +1808,32 @@ button.project-chip {
   display: grid;
   gap: 10px;
   margin-top: 18px;
+  padding-bottom: 4px;
+  overflow-x: auto;
 }
 
+.sales-rank-table-head,
 .sales-rank-card {
   display: grid;
-  grid-template-columns: 42px 46px minmax(0, 1fr) auto;
-  gap: 12px;
+  grid-template-columns: minmax(250px, 1.55fr) repeat(3, minmax(125px, 0.8fr)) minmax(135px, 0.9fr);
+  gap: 10px;
+  min-width: 900px;
+}
+
+.sales-rank-table-head {
   align-items: center;
-  min-height: 76px;
+  padding: 0 16px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.sales-rank-table-head span:not(:first-child) { text-align: center; }
+
+.sales-rank-card {
+  align-items: center;
+  min-height: 112px;
   padding: 12px 16px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -1834,6 +1852,19 @@ button.project-chip {
   font-size: 14px;
   font-weight: 900;
   color: var(--muted);
+}
+
+.sales-rank-seller-cell {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sales-rank-seller-identity {
+  display: grid;
+  grid-template-columns: 34px 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
 }
 
 .sales-rank-avatar {
@@ -1862,22 +1893,77 @@ button.project-chip {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.sales-rank-value { color: var(--primary); white-space: nowrap; }
-
-.sales-rank-result {
+.sales-rank-seller-goal-editor {
   display: grid;
-  justify-items: end;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: end;
+}
+
+.sales-rank-seller-goal-editor label {
+  display: grid;
   gap: 3px;
 }
 
-.sales-rank-seller-percentage {
+.sales-rank-seller-goal-editor label span {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 800;
+}
+
+.sales-rank-seller-goal-editor input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 6px 8px;
+}
+
+.sales-rank-seller-goal-editor button {
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.sales-rank-decade-cell,
+.sales-rank-total-cell {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  min-height: 82px;
+  padding: 8px;
+  border-left: 1px solid var(--line);
+  text-align: center;
+}
+
+.sales-rank-decade-cell small,
+.sales-rank-total-cell small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.sales-rank-decade-cell strong {
+  color: var(--text);
+  font-size: 13px;
   white-space: nowrap;
 }
 
-.sales-rank-seller-percentage.achieved { color: #148554; }
+.sales-rank-decade-percentage {
+  color: #b88413;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.sales-rank-decade-percentage.achieved { color: #148554; }
+
+.sales-rank-value { color: var(--primary); white-space: nowrap; }
 
 .sales-rank-recent {
   margin-top: 24px;
@@ -1927,8 +2013,6 @@ button.project-chip {
 }
 
 @media (max-width: 620px) {
-  .sales-rank-card { grid-template-columns: 34px 40px minmax(0, 1fr); }
-  .sales-rank-result { grid-column: 3; justify-items: start; }
   .sales-rank-head { align-items: stretch; }
   .sales-rank-head label { width: 100%; margin-left: 0; }
   .sales-rank-entry { grid-template-columns: minmax(0, 1fr) auto; }

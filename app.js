@@ -1040,6 +1040,7 @@ function bindEvents() {
  els.cancelSalesRankEditBtn.addEventListener("click", resetManualSalesRankForm);
  els.salesRankFilterPeriod.addEventListener("change", renderManualSalesRanking);
  els.salesRankEntries.addEventListener("click", handleManualSalesRankAction);
+ els.salesRankList.addEventListener("click", handleSalesRankListAction);
  els.salesRankPeriod.value = todayIso.slice(0, 7);
  els.salesRankDate.value = todayIso;
  els.salesRankFilterPeriod.value = todayIso.slice(0, 7);
@@ -6199,25 +6200,56 @@ function renderManualSalesRanking() {
  const total = sum(entries.map((item) => Number(item.amount || 0)));
  els.salesRankSummary.textContent = `${entries.length} venda${entries.length === 1 ? "" : "s"} - ${money(total)}`;
  renderSalesRankGoalProgress(period, entries, total);
- els.salesRankList.innerHTML = ranking.length ? ranking.map((row, index) => {
-  const sellerTarget = salesRankSellerTargetForPeriod(period, row.seller);
-  const sellerPercentage = sellerTarget > 0 ? (row.total / sellerTarget) * 100 : 0;
-  const reachedThreshold = sellerPercentage >= SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD;
-  return `
-   <article class="sales-rank-card ${index < 3 ? `place-${index + 1}` : ""}">
-    <span class="sales-rank-position">${index + 1}º</span>
-    <div class="sales-rank-avatar">${escapeHtml(row.seller.slice(0, 1).toUpperCase())}</div>
-    <div class="sales-rank-person">
-     <small>${index === 0 ? "1º lugar" : `${index + 1}º lugar`}</small>
-     <strong>${escapeHtml(row.seller)}</strong>
-     <span>${row.count} venda${row.count === 1 ? "" : "s"}</span>
-    </div>
-    <div class="sales-rank-result">
-     <strong class="sales-rank-value">${money(row.total)}</strong>
-     <span class="sales-rank-seller-percentage${reachedThreshold ? " achieved" : ""}">${sellerPercentage.toFixed(1).replace(".", ",")}% da meta de ${money(sellerTarget)}</span>
-    </div>
-   </article>`;
- }).join("") : emptyMessage("Nenhuma venda lançada neste período.");
+ els.salesRankList.innerHTML = ranking.length ? `
+  <div class="sales-rank-table-head" aria-hidden="true">
+   <span>Vendedor e meta individual</span>
+   <span>1ª dezena</span>
+   <span>2ª dezena</span>
+   <span>3ª dezena</span>
+   <span>Total do mês</span>
+  </div>${ranking.map((row, index) => {
+   const sellerTarget = salesRankSellerTargetForPeriod(period, row.seller);
+   const lastDay = new Date(Number(period.slice(0, 4)), Number(period.slice(5, 7)), 0).getDate();
+   const decades = [
+    { label: "1ª dezena", start: 1, end: 10 },
+    { label: "2ª dezena", start: 11, end: 20 },
+    { label: "3ª dezena", start: 21, end: lastDay },
+   ].map((decade) => {
+    const sold = sum(entries.filter((item) => {
+     const day = Number(salesRankEntryDate(item).slice(8, 10));
+     return normalizeText(item.seller) === normalizeText(row.seller) && day >= decade.start && day <= decade.end;
+    }).map((item) => Number(item.amount || 0)));
+    return { ...decade, sold, percentage: sellerTarget > 0 ? (sold / sellerTarget) * 100 : 0 };
+   });
+   return `
+    <article class="sales-rank-card ${index < 3 ? `place-${index + 1}` : ""}">
+     <div class="sales-rank-seller-cell">
+      <div class="sales-rank-seller-identity">
+       <span class="sales-rank-position">${index + 1}º</span>
+       <div class="sales-rank-avatar">${escapeHtml(row.seller.slice(0, 1).toUpperCase())}</div>
+       <div class="sales-rank-person">
+        <small>${index === 0 ? "1º lugar" : `${index + 1}º lugar`}</small>
+        <strong>${escapeHtml(row.seller)}</strong>
+        <span>${row.count} venda${row.count === 1 ? "" : "s"}</span>
+       </div>
+      </div>
+      <div class="sales-rank-seller-goal-editor">
+       <label><span>Meta individual (R$)</span><input type="number" min="0.01" step="0.01" value="${sellerTarget.toFixed(2)}" /></label>
+       <button type="button" data-action="save-rank-seller-goal" data-seller="${escapeHtml(row.seller)}">Salvar</button>
+      </div>
+     </div>
+     ${decades.map((decade) => `
+      <div class="sales-rank-decade-cell">
+       <small>${decade.label}</small>
+       <strong>${money(decade.sold)}</strong>
+       <span class="sales-rank-decade-percentage${decade.percentage >= SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD ? " achieved" : ""}">${decade.percentage.toFixed(2).replace(".", ",")}%</span>
+      </div>`).join("")}
+     <div class="sales-rank-total-cell">
+      <small>Total do mês</small>
+      <strong class="sales-rank-value">${money(row.total)}</strong>
+     </div>
+    </article>`;
+  }).join("")}` : emptyMessage("Nenhuma venda lançada neste período.");
  els.salesRankEntries.innerHTML = entries.length ? entries.map((item) => `
   <article class="sales-rank-entry">
    <div><strong>${escapeHtml(item.client)}</strong><span>${formatDate(salesRankEntryDate(item))} - ${escapeHtml(item.seller)}${item.city ? ` - ${escapeHtml(item.city)}` : ""}</span></div>
@@ -6227,6 +6259,26 @@ function renderManualSalesRanking() {
     <button type="button" data-action="delete-rank-entry" data-id="${item.id}" aria-label="Excluir lançamento">Excluir</button>
    </div>
   </article>`).join("") : emptyMessage("Nenhum lançamento manual neste período.");
+}
+
+function handleSalesRankListAction(event) {
+ const button = event.target.closest("[data-action='save-rank-seller-goal']");
+ if (!button) return;
+ const seller = String(button.dataset.seller || "").trim();
+ const input = button.closest(".sales-rank-seller-goal-editor")?.querySelector("input");
+ const amount = roundCurrency(Number(input?.value || 0));
+ const period = els.salesRankFilterPeriod.value || todayIso.slice(0, 7);
+ if (!seller || amount <= 0) {
+  toast("Informe uma meta individual maior que zero.");
+  return;
+ }
+ if (!updateSalesRankSellerTarget(period, seller, amount)) {
+  toast(`A meta de ${seller} já está em ${money(amount)}.`);
+  return;
+ }
+ if (!persist("crm")) return;
+ renderManualSalesRanking();
+ toast(`Meta individual de ${seller} salva.`);
 }
 
 function handleManualSalesRankAction(event) {
