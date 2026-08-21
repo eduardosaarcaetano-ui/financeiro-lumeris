@@ -7,7 +7,7 @@
 // Incrementar esta versao bloqueia escritores antigos no servidor. Isso e
 // intencional: uma TV/aba com JavaScript em cache nao pode continuar gerando
 // gravacoes depois que o mecanismo de sincronizacao foi corrigido.
-const SYNC_PROTOCOL_VERSION = 4;
+const SYNC_PROTOCOL_VERSION = 5;
 
 const SYNC_SCOPE_FIELDS = {
   crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "salesTargets", "sellers", "interactions", "tasks"],

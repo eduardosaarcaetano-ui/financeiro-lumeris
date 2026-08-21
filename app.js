@@ -24,9 +24,10 @@ const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
 const DEFAULT_SALES_RANK_SELLER_GOAL = 200000;
 const SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD = 33.33;
-// Versao 4 tambem invalida o formato antigo de metas individuais, que fazia
-// vendedores diferentes disputarem o mesmo registro mensal salesTargets.
-const SYNC_PROTOCOL_VERSION = 4;
+// Versao 5 invalida abas antigas que ainda podiam reenviar uma fila ja
+// confirmada. Isso interrompe o ciclo de gravacoes repetidas sem descartar
+// alteracoes locais legitimas, que continuam preservadas no outbox.
+const SYNC_PROTOCOL_VERSION = 5;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
 const SYNC_BASE_STORAGE_KEY = "financeiro-lumeris-sync-base-v2";
@@ -2430,7 +2431,6 @@ function persist(scopes, options = {}) {
  }
  const normalizedScopes = normalizePersistScopes(scopes);
  automaticSyncFollowUpCount = 0;
- normalizedScopes.forEach((scope) => pendingSyncScopes.add(scope));
  if (options.resolveConflict !== false && activeSyncConflict) {
   const conflictScopes = activeSyncConflict.scopes || [];
   const resolvesConflict = normalizedScopes.includes("all") || conflictScopes.includes("all") ||
@@ -2440,6 +2440,8 @@ function persist(scopes, options = {}) {
    syncConflictBlocked = false;
   }
  }
+ if (discardNoopPendingSyncScopes(normalizedScopes)) return true;
+ normalizedScopes.forEach((scope) => pendingSyncScopes.add(scope));
  localStateRevision += 1;
  if (!saveLocalState()) {
   syncConflictBlocked = true;
@@ -3080,6 +3082,7 @@ function loadStoredSyncBaseMetadata() {
 function scheduleRemoteSync(scopes) {
  if (!SHEETS_ENDPOINT) return false;
  normalizePersistScopes(scopes).forEach((scope) => pendingSyncScopes.add(scope));
+ if (discardNoopPendingSyncScopes(Array.from(pendingSyncScopes))) return false;
  if (!saveLocalState() || !saveSyncOutbox()) {
   syncConflictBlocked = true;
   setSyncStatus("Sem espaço local para sincronização segura. Dados preservados neste computador.", "error");
@@ -6041,6 +6044,25 @@ function updateSalesRankSellerTarget(period, seller, amount) {
  };
  if (markerIndex >= 0) state.salesRankingEntries[markerIndex] = marker;
  else state.salesRankingEntries.push(marker);
+ return true;
+}
+
+function discardNoopPendingSyncScopes(scopes) {
+ // Antes da primeira leitura remota ainda nao existe uma base segura para
+ // comparar. Durante um envio ou com lote persistido, a fila tambem deve ser
+ // mantida para garantir a entrega de uma alteracao real.
+ if (!remoteSyncBaseState || syncInFlight || loadSyncBatch()) return false;
+ const localState = normalizeState(cloneStateValue(state));
+ normalizePersistScopes(scopes).forEach((scope) => {
+  if (!buildSyncOperations(remoteSyncBaseState, localState, [scope]).length) {
+   pendingSyncScopes.delete(scope);
+  }
+ });
+ if (pendingSyncScopes.size) return false;
+ if (!saveLocalState() || !saveSyncOutbox()) return false;
+ automaticSyncFollowUpCount = 0;
+ window.clearTimeout(syncTimer);
+ setSyncStatus("Sincronizado com a nuvem", "ok");
  return true;
 }
 
@@ -9108,7 +9130,8 @@ function renderInstallationKpis() {
   return completed && completed >= monthStart && completed <= monthEnd;
  });
  const late = installations.filter(isInstallationLate);
- const inProgress = installations.filter(isInstallationInProgress);
+ const inProgress = installations.filter((item) => normalizeInstallationStatus(item.status) === "em_andamento");
+ const waitingRelease = installations.filter((item) => normalizeInstallationStatus(item.status).startsWith("aguardando_"));
  const unscheduled = installations.filter(isInstallationWaitingScheduling);
  const weekStart = startOfWeekIso();
  const weekEnd = endOfWeekIso();
@@ -9133,8 +9156,9 @@ function renderInstallationKpis() {
   { label: "Realizados no mês", value: completedMonth.length, hint: `${formatDate(monthStart)} até ${formatDate(monthEnd)}`, tone: "neutral" },
   { label: "Em atraso", value: late.length, hint: "Prazo de 15 dias úteis vencido", tone: late.length ? "danger" : "ok" },
   { label: "Em andamento", value: inProgress.length, hint: "Execução aberta", tone: "warn" },
-  { label: "Falta programação", value: unscheduled.length, hint: "Aguardando projeto, material, cliente ou instalação", tone: unscheduled.length ? "warn" : "ok" },
+  { label: "Falta programação", value: waitingRelease.length, hint: "Aguardando alguma liberação para programar", tone: waitingRelease.length ? "warn" : "ok" },
   { label: "Eficiência da equipe", value: money(saving), hint: `Terceiro ${money(outsourceCost)} - Equipe ${money(ownCost)}`, tone: saving >= 0 ? "ok" : "danger" },
+  { label: "Sem programação", value: unscheduled.length, hint: "Sem data e equipe definidas", tone: unscheduled.length ? "warn" : "ok" },
  ].map((card) => `
   <article class="installation-kpi ${card.tone}">
    <span>${card.label}</span>
