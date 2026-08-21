@@ -136,8 +136,14 @@ async function runSyncPatch(body) {
     }
 
     const result = engine.computeSyncPatch(body, stored, { mutationAlreadyApplied });
-    if (!result.ok || result.idempotent || result.skipWrite) {
+    if (!result.ok) return result;
+
+    if (result.idempotent || result.skipWrite) {
       delete result.skipWrite;
+      // O cliente ja possui o estado usado para montar o patch. Devolver todo
+      // o JSON do ERP em cada confirmacao fazia uma alteracao pequena transferir
+      // novamente a base inteira e multiplicava o consumo de rede.
+      delete result.data;
       return result;
     }
 
@@ -175,7 +181,6 @@ async function runSyncPatch(body) {
       updatedAt: now.toISOString(),
       version: nextVersion,
       revision: nextRevision,
-      data: result.nextData,
       protocolVersion: engine.SYNC_PROTOCOL_VERSION,
     };
   });
