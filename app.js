@@ -24,10 +24,9 @@ const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
 const DEFAULT_SALES_RANK_SELLER_GOAL = 200000;
 const SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD = 33.33;
-// Versao 5 invalida abas antigas que ainda podiam reenviar uma fila ja
-// confirmada. Isso interrompe o ciclo de gravacoes repetidas sem descartar
-// alteracoes locais legitimas, que continuam preservadas no outbox.
-const SYNC_PROTOCOL_VERSION = 5;
+// Versao 6 invalida abas com a normalizacao bancaria antiga, que renovava o
+// updatedAt do saldo manual a cada leitura e criava gravacoes infinitas.
+const SYNC_PROTOCOL_VERSION = 6;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
 const SYNC_BASE_STORAGE_KEY = "financeiro-lumeris-sync-base-v2";
@@ -2707,6 +2706,12 @@ function syncChecksum(value) {
  return hash.toString(16).padStart(8, "0");
 }
 
+function syncRecordContentCanonical(value) {
+ if (!value || typeof value !== "object" || Array.isArray(value)) return syncCanonical(value);
+ const { updatedAt: _ignoredUpdatedAt, ...content } = value;
+ return syncCanonical(content);
+}
+
 function buildSyncOperations(baseState, localState, scopes) {
  const operations = [];
  syncFieldsForScopes(scopes).forEach((field) => {
@@ -2720,7 +2725,9 @@ function buildSyncOperations(baseState, localState, scopes) {
 
    localById.forEach((item, id) => {
     const baseItem = baseById.get(id);
-    if (baseItem && syncCanonical(baseItem) === syncCanonical(item)) return;
+    // updatedAt e metadado de auditoria, nao uma alteracao de negocio. Uma
+    // diferenca somente nesse campo nunca deve gerar nova gravacao remota.
+    if (baseItem && syncRecordContentCanonical(baseItem) === syncRecordContentCanonical(item)) return;
     operations.push({
      field,
      type: "upsert",
@@ -5634,10 +5641,14 @@ function applyManualBankBalanceOverrides(accounts) {
   );
   if (!account) return;
   if ((account.balanceDate || "") > override.balanceDate) return;
+  if (
+   Number(account.balance || 0) === Number(override.balance) &&
+   account.balanceDate === override.balanceDate &&
+   account.source === override.source
+  ) return;
   account.balance = override.balance;
   account.balanceDate = override.balanceDate;
   account.source = override.source;
-  account.updatedAt = new Date().toISOString();
  });
 }
 
