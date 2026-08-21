@@ -22,6 +22,8 @@ const SYNC_DEBOUNCE_MS = 800;
 const SYNC_TIMEOUT_MS = 90000;
 const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
+const DEFAULT_SALES_RANK_SELLER_GOAL = 200000;
+const SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD = 33.33;
 // Versao 3 invalida imediatamente abas antigas que ainda tentavam gravar
 // periodicamente. Elas continuam podendo ler os dados, mas precisam recarregar
 // o app atualizado antes de qualquer nova escrita no Neon.
@@ -128,7 +130,7 @@ const SECTOR_ALLOWED_VIEWS = {
 };
 
 const SAVE_SCOPE_FIELDS = {
- crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "sellers", "interactions", "tasks"],
+ crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "salesTargets", "sellers", "interactions", "tasks"],
  financeiro: ["transactions", "bankAccounts", "bankMovements", "bankApiConfigs", "invoices"],
  protocolo: ["protocols", "protocolHistory", "utilityCompanies", "protocolActivityTypes"],
  estoque: ["stockItems", "stockMovements", "stockLocations", "stockBaselineVersion"],
@@ -534,6 +536,7 @@ const els = {
  salesRankAmount: document.querySelector("#salesRankAmount"),
  salesRankDate: document.querySelector("#salesRankDate"),
  salesRankPeriod: document.querySelector("#salesRankPeriod"),
+ salesRankSellerGoal: document.querySelector("#salesRankSellerGoal"),
  salesRankFilterPeriod: document.querySelector("#salesRankFilterPeriod"),
  salesRankMonthlyGoal: document.querySelector("#salesRankMonthlyGoal"),
  saveSalesRankGoalBtn: document.querySelector("#saveSalesRankGoalBtn"),
@@ -1041,6 +1044,7 @@ function bindEvents() {
  els.salesRankDate.value = todayIso;
  els.salesRankFilterPeriod.value = todayIso.slice(0, 7);
  els.salesRankPeriod.addEventListener("change", syncSalesRankDateToPeriod);
+ els.salesRankSeller.addEventListener("change", syncSalesRankSellerGoalInput);
  els.saveSalesRankGoalBtn.addEventListener("click", saveSalesRankMonthlyGoal);
  els.openManualSalesRankMonthTvBtn?.addEventListener("click", () => openSalesRankingTv("month", "manual"));
  els.openManualSalesRankYearTvBtn?.addEventListener("click", () => openSalesRankingTv("year", "manual"));
@@ -1617,6 +1621,9 @@ normalized.salesTargets = normalized.salesTargets
    id: item.id || `sales-target-${String(item.period || "").slice(0, 7)}`,
    period: String(item.period || "").slice(0, 7),
    amount: roundCurrency(Number(item.amount || 0)),
+   sellerTargets: Object.fromEntries(Object.entries(item.sellerTargets && typeof item.sellerTargets === "object" ? item.sellerTargets : {})
+    .map(([seller, amount]) => [normalizeText(seller), roundCurrency(Number(amount || 0))])
+    .filter(([seller, amount]) => seller && amount > 0)),
    updatedAt: item.updatedAt || "",
  }))
  .filter((item) => item.period && item.amount >= 0);
@@ -1632,6 +1639,7 @@ normalized.salesTargets = normalized.salesTargets
     id: existing?.id || `sales-target-${period}`,
     period,
     amount,
+    sellerTargets: existing?.sellerTargets || {},
     updatedAt: entry.updatedAt || existing?.updatedAt || "",
    });
   }
@@ -5919,10 +5927,46 @@ function syncSalesRankDateToPeriod() {
  if (!els.salesRankDate.value.startsWith(period)) {
   els.salesRankDate.value = period === todayIso.slice(0, 7) ? todayIso : `${period}-01`;
  }
+ syncSalesRankSellerGoalInput();
 }
 
 function salesRankTargetForPeriod(period) {
  return Number(state.salesTargets.find((item) => item.period === period)?.amount || 0);
+}
+
+function salesRankSellerTargetForPeriod(period, seller) {
+ const key = normalizeText(seller);
+ const target = state.salesTargets.find((item) => item.period === period);
+ const amount = Number(target?.sellerTargets?.[key] || 0);
+ return amount > 0 ? amount : DEFAULT_SALES_RANK_SELLER_GOAL;
+}
+
+function syncSalesRankSellerGoalInput() {
+ if (!els.salesRankSellerGoal) return;
+ const period = els.salesRankPeriod.value || els.salesRankFilterPeriod.value || todayIso.slice(0, 7);
+ const amount = salesRankSellerTargetForPeriod(period, els.salesRankSeller.value);
+ els.salesRankSellerGoal.value = amount.toFixed(2);
+}
+
+function updateSalesRankSellerTarget(period, seller, amount) {
+ const key = normalizeText(seller);
+ if (!period || !key || amount <= 0) return false;
+ const index = state.salesTargets.findIndex((item) => item.period === period);
+ const previous = index >= 0 ? state.salesTargets[index] : null;
+ const currentAmount = Number(previous?.sellerTargets?.[key] || DEFAULT_SALES_RANK_SELLER_GOAL);
+ const hasExplicitTarget = Object.prototype.hasOwnProperty.call(previous?.sellerTargets || {}, key);
+ if (currentAmount === amount && (hasExplicitTarget || amount === DEFAULT_SALES_RANK_SELLER_GOAL)) return false;
+ const target = {
+  ...(previous || {}),
+  id: previous?.id || `sales-target-${period}`,
+  period,
+  amount: roundCurrency(Number(previous?.amount || 0)),
+  sellerTargets: { ...(previous?.sellerTargets || {}), [key]: roundCurrency(amount) },
+  updatedAt: new Date().toISOString(),
+ };
+ if (index >= 0) state.salesTargets[index] = target;
+ else state.salesTargets.push(target);
+ return true;
 }
 
 function isSalesTargetCompatibilityEntry(item) {
@@ -5968,10 +6012,13 @@ function saveSalesRankMonthlyGoal() {
   return;
  }
  const index = state.salesTargets.findIndex((item) => item.period === period);
+ const previous = index >= 0 ? state.salesTargets[index] : null;
  const target = {
-  id: index >= 0 ? state.salesTargets[index].id : `sales-target-${period}`,
+  ...(previous || {}),
+  id: previous?.id || `sales-target-${period}`,
   period,
   amount,
+  sellerTargets: previous?.sellerTargets || {},
   updatedAt: new Date().toISOString(),
  };
  if (index >= 0) state.salesTargets[index] = target;
@@ -6046,10 +6093,11 @@ function saveManualSalesRankEntry(event) {
  const seller = els.salesRankSeller.value.trim();
  const client = els.salesRankClient.value.trim();
  const amount = Number(els.salesRankAmount.value);
+ const sellerGoal = roundCurrency(Number(els.salesRankSellerGoal.value));
  const saleDate = els.salesRankDate.value;
  const period = els.salesRankPeriod.value;
- if (!seller || !client || !period || !saleDate || amount <= 0) {
-  toast("Preencha vendedor, cliente, valor, data da venda e período.");
+ if (!seller || !client || !period || !saleDate || amount <= 0 || sellerGoal <= 0) {
+  toast("Preencha vendedor, cliente, valor, data, período e meta do vendedor.");
   return;
  }
  if (!saleDate.startsWith(period)) {
@@ -6075,6 +6123,7 @@ function saveManualSalesRankEntry(event) {
  } else {
   state.salesRankingEntries.push(entry);
  }
+ updateSalesRankSellerTarget(period, seller, sellerGoal);
  if (!persist("crm")) return;
  resetManualSalesRankForm(period);
  els.salesRankFilterPeriod.value = period;
@@ -6088,6 +6137,7 @@ function resetManualSalesRankForm(period = "") {
  els.salesRankEntryId.value = "";
  els.salesRankPeriod.value = selectedPeriod;
  els.salesRankDate.value = selectedPeriod === todayIso.slice(0, 7) ? todayIso : `${selectedPeriod}-01`;
+ els.salesRankSellerGoal.value = DEFAULT_SALES_RANK_SELLER_GOAL.toFixed(2);
  els.salesRankSubmitBtn.textContent = "Adicionar ao ranking";
  els.cancelSalesRankEditBtn.classList.add("hidden");
  refreshSearchableSelect(els.salesRankSeller);
@@ -6101,6 +6151,7 @@ function editManualSalesRankEntry(entry) {
  els.salesRankAmount.value = Number(entry.amount || 0).toFixed(2);
  els.salesRankPeriod.value = entry.period || todayIso.slice(0, 7);
  els.salesRankDate.value = salesRankEntryDate(entry);
+ els.salesRankSellerGoal.value = salesRankSellerTargetForPeriod(els.salesRankPeriod.value, entry.seller).toFixed(2);
  els.salesRankSubmitBtn.textContent = "Salvar alterações";
  els.cancelSalesRankEditBtn.classList.remove("hidden");
  refreshSearchableSelect(els.salesRankSeller);
@@ -6148,17 +6199,25 @@ function renderManualSalesRanking() {
  const total = sum(entries.map((item) => Number(item.amount || 0)));
  els.salesRankSummary.textContent = `${entries.length} venda${entries.length === 1 ? "" : "s"} - ${money(total)}`;
  renderSalesRankGoalProgress(period, entries, total);
- els.salesRankList.innerHTML = ranking.length ? ranking.map((row, index) => `
-  <article class="sales-rank-card ${index < 3 ? `place-${index + 1}` : ""}">
-   <span class="sales-rank-position">${index + 1}º</span>
-   <div class="sales-rank-avatar">${escapeHtml(row.seller.slice(0, 1).toUpperCase())}</div>
-   <div class="sales-rank-person">
-    <small>${index === 0 ? "1º lugar" : `${index + 1}º lugar`}</small>
-    <strong>${escapeHtml(row.seller)}</strong>
-    <span>${row.count} venda${row.count === 1 ? "" : "s"}</span>
-   </div>
-   <strong class="sales-rank-value">${money(row.total)}</strong>
-  </article>`).join("") : emptyMessage("Nenhuma venda lançada neste período.");
+ els.salesRankList.innerHTML = ranking.length ? ranking.map((row, index) => {
+  const sellerTarget = salesRankSellerTargetForPeriod(period, row.seller);
+  const sellerPercentage = sellerTarget > 0 ? (row.total / sellerTarget) * 100 : 0;
+  const reachedThreshold = sellerPercentage >= SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD;
+  return `
+   <article class="sales-rank-card ${index < 3 ? `place-${index + 1}` : ""}">
+    <span class="sales-rank-position">${index + 1}º</span>
+    <div class="sales-rank-avatar">${escapeHtml(row.seller.slice(0, 1).toUpperCase())}</div>
+    <div class="sales-rank-person">
+     <small>${index === 0 ? "1º lugar" : `${index + 1}º lugar`}</small>
+     <strong>${escapeHtml(row.seller)}</strong>
+     <span>${row.count} venda${row.count === 1 ? "" : "s"}</span>
+    </div>
+    <div class="sales-rank-result">
+     <strong class="sales-rank-value">${money(row.total)}</strong>
+     <span class="sales-rank-seller-percentage${reachedThreshold ? " achieved" : ""}">${sellerPercentage.toFixed(1).replace(".", ",")}% da meta de ${money(sellerTarget)}</span>
+    </div>
+   </article>`;
+ }).join("") : emptyMessage("Nenhuma venda lançada neste período.");
  els.salesRankEntries.innerHTML = entries.length ? entries.map((item) => `
   <article class="sales-rank-entry">
    <div><strong>${escapeHtml(item.client)}</strong><span>${formatDate(salesRankEntryDate(item))} - ${escapeHtml(item.seller)}${item.city ? ` - ${escapeHtml(item.city)}` : ""}</span></div>
@@ -13308,6 +13367,27 @@ function rankingTvDecadesHtml(goal) {
   </section>`;
 }
 
+function rankingTvSellerGoalsHtml(rows, month) {
+ if (!rows.length) return "";
+ return `
+  <section class="ranking-tv-seller-goals" aria-label="Atingimento da meta mensal por vendedor">
+   <h2>Resultado mensal por vendedor</h2>
+   <div>
+    ${rows.map((row) => {
+     const target = salesRankSellerTargetForPeriod(month, row.name);
+     const percentage = target > 0 ? (row.total / target) * 100 : 0;
+     const reachedThreshold = percentage >= SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD;
+     return `
+      <article class="ranking-tv-seller-goal${reachedThreshold ? " achieved" : ""}">
+       <span>${escapeHtml(row.name)}</span>
+       <strong>${money(row.total)}</strong>
+       <div><b>${percentage.toFixed(1).replace(".", ",")}%</b><small>da meta de ${money(target)}</small></div>
+      </article>`;
+    }).join("")}
+   </div>
+  </section>`;
+}
+
 function renderSalesRankingTvMode() {
  const params = new URLSearchParams(window.location.search);
  const mode = params.get("period") === "year" ? "year" : "month";
@@ -13394,6 +13474,7 @@ function renderSalesRankingTvMode() {
    `).join("") || `<article><strong>Aguardando 4º e 5º colocados</strong><em>${money(0)}</em><small>Cadastre mais vendas no ranking</small></article>`}
   </section>
  ${showMonthlyGoal ? rankingTvDecadesHtml(tvGoal) : ""}
+ ${showMonthlyGoal ? rankingTvSellerGoalsHtml(rows, selectedMonth.slice(0, 7)) : ""}
  `;
  bindSalesRankingTvControls();
  updateSalesRankingTvClock();
