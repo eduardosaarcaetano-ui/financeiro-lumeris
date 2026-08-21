@@ -196,6 +196,7 @@ const PROTOCOL_CHECKLIST_TEMPLATES = {
 };
 
 const PROTOCOL_STATUSES = [
+ { id: "nao_se_aplica", label: "Não se aplica", tone: "neutral" },
  { id: "novo", label: "Novo", tone: "neutral" },
  { id: "em_preparacao", label: "Em preparação", tone: "neutral" },
  { id: "protocolado", label: "Protocolado", tone: "warn" },
@@ -213,7 +214,7 @@ const PROTOCOL_STATUSES = [
 
 // Status que encerram o acompanhamento de prazo (não faz sentido mostrar "vencido"
 // para um ticket já concluído, cancelado, reprovado ou liberado).
-const PROTOCOL_CLOSED_STATUSES = ["projeto_reprovado", "instalacao_liberada", "concluido", "cancelado"];
+const PROTOCOL_CLOSED_STATUSES = ["nao_se_aplica", "projeto_reprovado", "instalacao_liberada", "concluido", "cancelado"];
 const PROTOCOL_RELEASE_STATUS = "instalacao_liberada";
 const PROJECT_STATUS_RELEASED_FOR_INSTALLATION = "liberado_instalacao";
 
@@ -502,6 +503,12 @@ const els = {
  opportunityWonClosedDate: document.querySelector("#opportunityWonClosedDate"),
  opportunityWonServiceType: document.querySelector("#opportunityWonServiceType"),
  opportunityWonCreateProject: document.querySelector("#opportunityWonCreateProject"),
+ opportunityWonProtocolApplies: document.querySelector("#opportunityWonProtocolApplies"),
+ opportunityWonInstallments: document.querySelector("#opportunityWonInstallments"),
+ opportunityWonFirstDueDate: document.querySelector("#opportunityWonFirstDueDate"),
+ opportunityWonContractBtn: document.querySelector("#opportunityWonContractBtn"),
+ opportunityWonContractStatus: document.querySelector("#opportunityWonContractStatus"),
+ opportunityWonProtocolStatus: document.querySelector("#opportunityWonProtocolStatus"),
  crmKanbanMetrics: document.querySelector("#crmKanbanMetrics"),
  crmLeadListTable: document.querySelector("#crmLeadListTable"),
  crmLeadListSummary: document.querySelector("#crmLeadListSummary"),
@@ -1150,18 +1157,18 @@ function bindEvents() {
  els.opportunityWonForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const opportunity = pendingWonOpportunity;
-  const wonSettings = opportunityWonSettingsFromDialog();
-  pendingWonOpportunity = null;
-  els.opportunityWonDialog.close();
-  if (!opportunity || event.submitter.value === "cancel") return;
-  applyOpportunityWonSettings(opportunity, wonSettings);
-  if (event.submitter.value === "sale") convertOpportunityToSale(opportunity);
-  if (event.submitter.value === "project") convertOpportunityToProject(opportunity);
-  if (event.submitter.value === "installation") createInstallationFromWonOpportunity(opportunity, wonSettings);
-  if (event.submitter.value === "contract") generateContractFromOpportunity(opportunity, wonSettings);
+  if (!opportunity || event.submitter?.value === "cancel") {
+   pendingWonOpportunity = null;
+   els.opportunityWonDialog.close();
+   return;
+  }
+  if (event.submitter?.value !== "complete") return;
+  completeOpportunityWonFlow(opportunity, opportunityWonSettingsFromDialog());
  });
 
- els.opportunityWonServiceType.addEventListener("change", syncOpportunityWonProjectChoice);
+ els.opportunityWonServiceType.addEventListener("change", () => syncOpportunityWonProjectChoice({ useDefaults: true }));
+ els.opportunityWonProtocolApplies.addEventListener("change", updateOpportunityWonFlowSummary);
+ els.opportunityWonContractBtn.addEventListener("click", prepareOpportunityContractFromDialog);
 
  // Ganchos para vincular a oportunidade de volta à venda/projeto gerado, sem alterar
  // saveSale()/saveProject(); eles rodam DEPOIS dos handlers originais (mesma ordem de
@@ -1707,7 +1714,12 @@ normalized.salesTargets = normalized.salesTargets
   projectId: "",
   contractId: "",
   contractGeneratedAt: "",
+  contractStatus: "",
+  contractDraft: null,
   installationId: "",
+  protocolId: "",
+  saleId: "",
+  postWinCompletedAt: "",
   location: { address: "", latitude: "", longitude: "" },
   driveFolderUrl: "",
   attachments: [],
@@ -4334,6 +4346,7 @@ function opportunityCard(item) {
  const project = item.projectId ? projectName(item.projectId) : "";
  const attachmentCount = Array.isArray(item.attachments) ? item.attachments.length : 0;
  const hasLocation = opportunityLocationText(item);
+ const wonFlowComplete = Boolean(item.postWinCompletedAt);
  return `
   <article class="opportunity-card" draggable="true" data-opportunity-id="${item.id}">
    <div class="opportunity-card-top">
@@ -4353,6 +4366,7 @@ function opportunityCard(item) {
     ${normalizeTags(item.tags).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
    </div>
    <div class="attention-row">${flags.map((flag) => `<span>${escapeHtml(flag)}</span>`).join("")}</div>
+   ${wonDate ? `<button class="won-flow-action ${wonFlowComplete ? "complete" : ""}" type="button" data-opportunity-action="won-flow" data-id="${item.id}">${wonFlowComplete ? "Pós-venda enviado - revisar" : "Concluir fluxo de pós-venda"}</button>` : ""}
   </article>`;
 }
 
@@ -4370,6 +4384,9 @@ function bindKanbanEvents() {
  });
  document.querySelectorAll("[data-opportunity-action='edit']").forEach((button) => {
   button.addEventListener("click", () => openOpportunityDialog(state.opportunities.find((item) => item.id === button.dataset.id)));
+ });
+ document.querySelectorAll("[data-opportunity-action='won-flow']").forEach((button) => {
+  button.addEventListener("click", () => openOpportunityWonDialog(state.opportunities.find((item) => item.id === button.dataset.id)));
  });
  document.querySelectorAll("[data-drop-stage]").forEach((dropZone) => {
   dropZone.addEventListener("dragover", (event) => {
@@ -12492,9 +12509,11 @@ function deleteOpportunity() {
   || state.projects.some((item) => item.opportunityId === id)
   || state.installations.some((item) => item.opportunityId === id)
   || state.sales.some((item) => item.opportunityId === id)
+  || state.protocols.some((item) => item.opportunityId === id)
+  || state.transactions.some((item) => item.opportunityId === id)
  );
  const linkedWarning = hasLinkedRecords
-  ? "\n\nO cliente e os registros já gerados em Projetos, Instalações e Financeiro serão preservados."
+  ? "\n\nO cliente e os registros já gerados em Projetos, Instalações, Protocolos e Financeiro serão preservados."
   : "\n\nO cadastro do cliente será preservado.";
  if (!window.confirm(`Excluir a oportunidade de ${client}?${linkedWarning}`)) return;
 
@@ -12556,6 +12575,12 @@ function renderPipelineBoard() {
  });
  document.querySelectorAll("[data-opportunity-stage-select]").forEach((select) => {
   select.addEventListener("change", () => handleStageSelect(select.dataset.opportunityStageSelect, select.value));
+ });
+ document.querySelectorAll("[data-opportunity-won-flow]").forEach((button) => {
+  button.addEventListener("click", () => {
+   const opportunity = state.opportunities.find((item) => item.id === button.dataset.opportunityWonFlow);
+   if (opportunity) openOpportunityWonDialog(opportunity);
+  });
  });
  document.querySelectorAll("[data-toggle-lost-column]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -12646,6 +12671,7 @@ function pipelineCard(opportunity) {
  const dueText = opportunity.expectedCloseDate ? formatDate(opportunity.expectedCloseDate) : "Sem data";
  const projectText = opportunity.projectId ? projectName(opportunity.projectId) : "";
  const overdue = hasOverdueOpportunityTask(opportunity);
+ const wonFlowComplete = Boolean(opportunity.postWinCompletedAt);
  return `
   <article class="pipeline-card ${stalled ? "stalled" : ""}">
    <button class="pipeline-card-title" type="button" data-opportunity-edit="${opportunity.id}">
@@ -12662,6 +12688,7 @@ function pipelineCard(opportunity) {
     ${stalled ? `<span class="warn">+${daysStalled} dias</span>` : ""}
     ${overdue ? `<span class="danger">vencida</span>` : ""}
    </div>
+   ${opportunity.stage === "ganho" ? `<button class="won-flow-action ${wonFlowComplete ? "complete" : ""}" type="button" data-opportunity-won-flow="${opportunity.id}">${wonFlowComplete ? "Pós-venda enviado - revisar" : "Concluir fluxo de pós-venda"}</button>` : ""}
    <select aria-label="Alterar etapa" data-opportunity-stage-select="${opportunity.id}">
     ${OPPORTUNITY_STAGES.map((stageInfo) => `<option value="${stageInfo.key}" ${stageInfo.key === opportunity.stage ? "selected" : ""}>${stageInfo.label}</option>`).join("")}
    </select>
@@ -12708,9 +12735,25 @@ function confirmOpportunityLost() {
  toast("Oportunidade marcada como perdida.");
 }
 
-function syncOpportunityWonProjectChoice() {
+function serviceUsuallyRequiresUtilityProtocol(serviceType) {
+ return !["manutencao_preventiva", "manutencao_corretiva", "retrabalho", "pos_venda"].includes(serviceType);
+}
+
+function syncOpportunityWonProjectChoice({ useDefaults = false } = {}) {
  if (!els.opportunityWonCreateProject || !els.opportunityWonServiceType) return;
- els.opportunityWonCreateProject.checked = installationRequiresProject(els.opportunityWonServiceType.value);
+ const serviceType = els.opportunityWonServiceType.value;
+ if (useDefaults) {
+  els.opportunityWonCreateProject.checked = installationRequiresProject(serviceType);
+  els.opportunityWonProtocolApplies.checked = serviceUsuallyRequiresUtilityProtocol(serviceType);
+ }
+ updateOpportunityWonFlowSummary();
+}
+
+function updateOpportunityWonFlowSummary() {
+ if (!els.opportunityWonProtocolStatus) return;
+ els.opportunityWonProtocolStatus.textContent = els.opportunityWonProtocolApplies.checked
+  ? "Nova atividade / homologação"
+  : "Registrado como não se aplica";
 }
 
 function opportunityWonSettingsFromDialog() {
@@ -12718,7 +12761,10 @@ function opportunityWonSettingsFromDialog() {
  return {
   closedDate: els.opportunityWonClosedDate.value || todayIso,
   serviceType,
-  createProject: Boolean(els.opportunityWonCreateProject.checked) && installationRequiresProject(serviceType),
+  createProject: Boolean(els.opportunityWonCreateProject.checked),
+  protocolApplies: Boolean(els.opportunityWonProtocolApplies.checked),
+  installments: Math.max(1, Math.min(120, Number(els.opportunityWonInstallments.value || 1))),
+  firstDueDate: els.opportunityWonFirstDueDate.value || els.opportunityWonClosedDate.value || todayIso,
  };
 }
 
@@ -12728,8 +12774,13 @@ function applyOpportunityWonSettings(opportunity, settings = {}) {
  opportunity.serviceType = settings.serviceType || opportunity.serviceType || "instalacao_projeto";
  opportunity.postSaleDueDate = addBusinessDaysIso(closedDate, 2);
  opportunity.wonAt = new Date(`${closedDate}T12:00:00`).toISOString();
+ opportunity.postWinSettings = {
+  createProject: Boolean(settings.createProject),
+  protocolApplies: Boolean(settings.protocolApplies),
+  installments: Math.max(1, Number(settings.installments || 1)),
+  firstDueDate: settings.firstDueDate || closedDate,
+ };
  opportunity.updatedAt = new Date().toISOString();
- persist("crm");
 }
 
 function ensureProjectFromWonOpportunity(opportunity, settings = {}) {
@@ -12750,6 +12801,7 @@ function ensureProjectFromWonOpportunity(opportunity, settings = {}) {
   targetMargin: 20,
   costCenterId: crypto.randomUUID(),
   notes: `Criado automaticamente a partir de oportunidade ganha no CRM. P\u00f3s-venda at\u00e9 ${formatDate(addBusinessDaysIso(closedDate, 2))}.`,
+  opportunityId: opportunity.id,
   createdAt: now,
   updatedAt: now,
  };
@@ -12765,25 +12817,25 @@ function createInstallationFromWonOpportunity(opportunity, settings = {}) {
  const closedDate = settings.closedDate || opportunity.closedDate || todayIso;
  const postSaleDueDate = addBusinessDaysIso(closedDate, 2);
  const deadlineDate = addBusinessDaysIso(closedDate, 15);
- const projectId = settings.createProject ? ensureProjectFromWonOpportunity(opportunity, settings) : (opportunity.projectId || "");
+ const projectId = opportunity.projectId || "";
  const existing = state.installations.find((item) => item.opportunityId === opportunity.id);
  const installation = {
   ...(existing || {}),
-  id: existing.id || crypto.randomUUID(),
+  id: existing?.id || crypto.randomUUID(),
   projectId,
   customerId: opportunity.personId,
   serviceType,
-  status: existing.status || (projectId && installationRequiresProject(serviceType) ? "aguardando_projeto" : "sem_programacao"),
+  status: !existing || ["aguardando_projeto", "pendente"].includes(existing.status) ? "sem_programacao" : existing.status,
   closedDate,
   postSaleDueDate,
-  postSaleContactedAt: existing.postSaleContactedAt || "",
+  postSaleContactedAt: existing?.postSaleContactedAt || "",
   deadlineDate,
-  scheduledDate: existing.scheduledDate || "",
-  completedDate: existing.completedDate || "",
-  panels: existing.panels || Number(opportunity.proposal.moduleQuantity || 0),
-  team: existing.team || "",
-  labor: existing.labor || [],
-  technicalReport: existing.technicalReport || {
+  scheduledDate: existing?.scheduledDate || "",
+  completedDate: existing?.completedDate || "",
+  panels: existing?.panels || Number(opportunity.proposal?.moduleQuantity || 0),
+  team: existing?.team || "",
+  labor: existing?.labor || [],
+  technicalReport: existing?.technicalReport || {
    warrantyStartDate: "",
    technician: "",
    whatsapp: "",
@@ -12792,16 +12844,15 @@ function createInstallationFromWonOpportunity(opportunity, settings = {}) {
    photos: [],
    generatedAt: "",
   },
-  materials: existing.materials || "",
-  notes: [
-   existing.notes || "",
-   `Gerado pelo CRM em ${formatDate(todayIso)}. Fechamento em ${formatDate(closedDate)}. Contato p\u00f3s-venda at\u00e9 ${formatDate(postSaleDueDate)}.`,
+  materials: existing?.materials || "",
+  notes: existing?.notes || [
+   `Gerado pelo CRM. Pendente de programação. Fechamento em ${formatDate(closedDate)}. Contato pós-venda até ${formatDate(postSaleDueDate)}.`,
    opportunity.driveFolderUrl ? `Pasta/anexos do lead: ${opportunity.driveFolderUrl}` : "",
   ].filter(Boolean).join("\n"),
-  conclusion: existing.conclusion || "",
+  conclusion: existing?.conclusion || "",
   opportunityId: opportunity.id,
   contractId: opportunity.contractId || "",
-  createdAt: existing.createdAt || now,
+  createdAt: existing?.createdAt || now,
   updatedAt: now,
  };
  if (existing) {
@@ -12812,10 +12863,7 @@ function createInstallationFromWonOpportunity(opportunity, settings = {}) {
  }
  opportunity.installationId = installation.id;
  opportunity.updatedAt = now;
- persist(["crm", "projetos"]);
- renderAll();
- setView("instalacoes");
- toast("Ganho enviado para Instala\u00e7\u00f5es com prazo de p\u00f3s-venda.");
+ return installation;
 }
 
 function openOpportunityWonDialog(opportunity) {
@@ -12823,7 +12871,16 @@ function openOpportunityWonDialog(opportunity) {
  els.opportunityWonSummary.textContent = `${opportunity.title} - ${personName(opportunity.personId)} - ${money(opportunity.value)}`;
  if (els.opportunityWonClosedDate) els.opportunityWonClosedDate.value = opportunity.closedDate || (opportunity.wonAt || "").slice(0, 10) || todayIso;
  if (els.opportunityWonServiceType) els.opportunityWonServiceType.value = opportunity.serviceType || "instalacao_projeto";
- syncOpportunityWonProjectChoice();
+ const existingSale = state.sales.find((item) => item.opportunityId === opportunity.id);
+ const existingReceivables = existingSale ? saleInstallmentsFor(existingSale.id) : [];
+ const savedSettings = opportunity.postWinSettings || {};
+ els.opportunityWonCreateProject.checked = savedSettings.createProject ?? (Boolean(opportunity.projectId) || installationRequiresProject(els.opportunityWonServiceType.value));
+ els.opportunityWonProtocolApplies.checked = savedSettings.protocolApplies ?? serviceUsuallyRequiresUtilityProtocol(els.opportunityWonServiceType.value);
+ els.opportunityWonInstallments.value = savedSettings.installments || existingSale?.balanceInstallments || existingSale?.installments || 1;
+ els.opportunityWonFirstDueDate.value = savedSettings.firstDueDate || existingReceivables[0]?.dueDate || opportunity.expectedCloseDate || els.opportunityWonClosedDate.value || todayIso;
+ els.opportunityWonContractStatus.textContent = opportunity.contractId ? "Minuta preparada" : "Pronto para preparar";
+ els.opportunityWonContractBtn.textContent = opportunity.contractId ? "Revisar / gerar contrato" : "Assinar / gerar contrato";
+ updateOpportunityWonFlowSummary();
  els.opportunityWonDialog.showModal();
 }
 
@@ -12850,126 +12907,270 @@ function convertOpportunityToProject(opportunity) {
  toast("Revise os dados do projeto e clique em Salvar projeto para concluir a conversão.");
 }
 
-function generateContractFromOpportunity(opportunity, settings = {}) {
- if (opportunity.contractId) {
-  toast("Essa oportunidade já possui contrato gerado.");
-  setView("homologacao");
-  return;
- }
-
- const now = new Date().toISOString();
- const contractId = crypto.randomUUID();
- const projectId = crypto.randomUUID();
- const installationId = crypto.randomUUID();
- const saleId = crypto.randomUUID();
- const closedDate = settings.closedDate || opportunity.closedDate || todayIso;
- const serviceType = settings.serviceType || opportunity.serviceType || "instalacao_projeto";
- const dueDate = opportunity.expectedCloseDate || todayIso;
- const title = opportunity.title || `Contrato ${personName(opportunity.personId)}`;
- const amount = Number(opportunity.value || 0);
-
- const project = {
-  id: projectId,
-  code: "",
-  name: title,
-  customerId: opportunity.personId,
-  status: "homologacao",
-  startDate: closedDate,
-  endDate: dueDate,
-  contractValue: amount,
-  expectedCosts: 0,
-  targetMargin: 20,
-  costCenterId: crypto.randomUUID(),
-  notes: `Gerado automaticamente pelo CRM. Contrato: ${contractId}`,
+function contractDraftPayload(opportunity, settings = {}) {
+ const person = state.people.find((item) => item.id === opportunity.personId) || {};
+ const proposal = opportunity.proposal || {};
+ return {
+  version: 1,
+  opportunityId: opportunity.id,
+  opportunityNumber: opportunity.number || opportunity.title || "",
+  client: {
+   id: person.id || opportunity.personId,
+   name: person.name || opportunity.company || "",
+   document: person.document || "",
+   contact: person.contact || opportunity.phone || "",
+   email: opportunity.email || person.email || "",
+   address: opportunity.location?.address || person.address || "",
+  },
+  commercial: {
+   amount: Number(opportunity.value || 0),
+   closedDate: settings.closedDate || opportunity.closedDate || todayIso,
+   installments: Math.max(1, Number(settings.installments || 1)),
+   firstDueDate: settings.firstDueDate || opportunity.closedDate || todayIso,
+   paymentTerms: opportunity.proposal?.paymentTerms || "",
+  },
+  service: {
+   type: settings.serviceType || opportunity.serviceType || "instalacao_projeto",
+   description: opportunity.title || "",
+   location: opportunity.location?.address || "",
+  },
+  proposal: {
+   powerKwp: Number(proposal.powerKwp || 0),
+   moduleQuantity: Number(proposal.moduleQuantity || 0),
+   moduleBrand: proposal.moduleBrand || "",
+   modulePowerWp: Number(proposal.modulePowerWp || 0),
+   inverterType: proposal.inverterType || "",
+   inverterBrand: proposal.inverterBrand || "",
+   inverterQuantity: Number(proposal.inverterQuantity || 0),
+   roofType: proposal.roofType || "",
+   battery: proposal.battery || "",
+   deliveryDeadline: proposal.deliveryDeadline || "",
+   notes: proposal.notes || "",
+  },
  };
- state.projects.push(project);
- upsertCostCenter(project);
+}
 
- state.sales.push({
-  id: saleId,
+function ensureOpportunityContractDraft(opportunity, settings = {}) {
+ const now = new Date().toISOString();
+ opportunity.contractId = opportunity.contractId || crypto.randomUUID();
+ opportunity.contractGeneratedAt = opportunity.contractGeneratedAt || now;
+ opportunity.contractStatus = opportunity.contractStatus || "aguardando_assinatura";
+ opportunity.contractDraft = contractDraftPayload(opportunity, settings);
+ opportunity.contractUpdatedAt = now;
+ opportunity.updatedAt = now;
+ return opportunity.contractDraft;
+}
+
+function contractPreparationHtml(opportunity) {
+ const draft = opportunity.contractDraft || contractDraftPayload(opportunity, opportunity.postWinSettings || {});
+ const client = draft.client || {};
+ const commercial = draft.commercial || {};
+ const proposal = draft.proposal || {};
+ const baseHref = `${window.location.origin}/`;
+ return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><base href="${escapeHtml(baseHref)}">
+  <title>Dados para contrato - ${escapeHtml(client.name || "Cliente")}</title>
+  <style>@page{size:A4;margin:16mm}body{font:14px/1.5 Arial,sans-serif;color:#10231d;margin:0}header{display:flex;justify-content:space-between;align-items:center;border-bottom:4px solid #0f7665;padding-bottom:14px}header img{width:180px;background:#050505;padding:8px}.status{color:#0f7665;font-weight:700}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.box{border:1px solid #d7dfdb;border-radius:8px;padding:12px}.box span{display:block;color:#62706a;font-size:11px;text-transform:uppercase}.full{grid-column:1/-1}h1{font-size:24px}h2{margin:24px 0 10px;color:#0f7665;font-size:17px}footer{margin-top:28px;padding-top:12px;border-top:1px solid #d7dfdb;color:#62706a;font-size:11px}@media print{button{display:none}}</style></head><body>
+  <header><img src="assets/logo-lumeris-wide.jpeg" alt="Lumeris Engenharia"><div><strong>Ficha preparada para contrato</strong><br><span class="status">Aguardando assinatura externa</span><br>${formatDate(commercial.closedDate)}</div></header>
+  <h1>${escapeHtml(draft.opportunityNumber || "Oportunidade")} — ${escapeHtml(client.name || "Cliente")}</h1>
+  <p>Dados consolidados automaticamente da proposta ganha no CRM. Esta ficha deixa o cadastro pronto para envio ao gerador/assinador externo; a integração automática será conectada posteriormente.</p>
+  <h2>Contratante</h2><section class="grid">
+   <div class="box"><span>Nome / razão social</span><strong>${escapeHtml(client.name || "Não informado")}</strong></div>
+   <div class="box"><span>CPF / CNPJ</span><strong>${escapeHtml(client.document || "Não informado")}</strong></div>
+   <div class="box"><span>Contato</span><strong>${escapeHtml(client.contact || "Não informado")}</strong></div>
+   <div class="box"><span>E-mail</span><strong>${escapeHtml(client.email || "Não informado")}</strong></div>
+   <div class="box full"><span>Endereço do serviço</span><strong>${escapeHtml(client.address || draft.service.location || "Não informado")}</strong></div>
+  </section>
+  <h2>Condições comerciais</h2><section class="grid">
+   <div class="box"><span>Valor contratado</span><strong>${money(commercial.amount)}</strong></div>
+   <div class="box"><span>Parcelamento</span><strong>${commercial.installments} parcela(s)</strong></div>
+   <div class="box"><span>Primeiro vencimento</span><strong>${formatDate(commercial.firstDueDate)}</strong></div>
+   <div class="box"><span>Forma informada na proposta</span><strong>${escapeHtml(commercial.paymentTerms || "Não informada")}</strong></div>
+  </section>
+  <h2>Escopo técnico puxado da proposta</h2><section class="grid">
+   <div class="box"><span>Tipo de serviço</span><strong>${escapeHtml(installationTypeLabel(draft.service.type))}</strong></div>
+   <div class="box"><span>Potência</span><strong>${formatNumber(proposal.powerKwp || 0)} kWp</strong></div>
+   <div class="box"><span>Módulos</span><strong>${formatNumber(proposal.moduleQuantity || 0, 0)} — ${escapeHtml(proposal.moduleBrand || "marca a definir")}</strong></div>
+   <div class="box"><span>Inversores</span><strong>${formatNumber(proposal.inverterQuantity || 0, 0)} — ${escapeHtml(proposal.inverterBrand || "marca a definir")}</strong></div>
+   <div class="box full"><span>Observações da proposta</span><strong>${escapeHtml(proposal.notes || "Sem observações")}</strong></div>
+  </section>
+  <footer>ID interno do contrato: ${escapeHtml(opportunity.contractId)}. Documento de preparação operacional; revisar cláusulas no gerador externo antes da assinatura.</footer>
+  <script>window.addEventListener("load",()=>setTimeout(()=>window.print(),400));<\/script></body></html>`;
+}
+
+function openOpportunityContractPreview(opportunity) {
+ const win = window.open("", "_blank");
+ if (!win) {
+  toast("Permita pop-ups para abrir os dados do contrato.");
+  return false;
+ }
+ win.document.write(contractPreparationHtml(opportunity));
+ win.document.close();
+ return true;
+}
+
+function prepareOpportunityContractFromDialog() {
+ const opportunity = pendingWonOpportunity;
+ if (!opportunity) return;
+ const settings = opportunityWonSettingsFromDialog();
+ applyOpportunityWonSettings(opportunity, settings);
+ ensureOpportunityContractDraft(opportunity, settings);
+ persist("crm");
+ els.opportunityWonContractStatus.textContent = "Minuta preparada";
+ els.opportunityWonContractBtn.textContent = "Revisar / gerar contrato";
+ openOpportunityContractPreview(opportunity);
+ toast("Dados do contrato preparados a partir da proposta.");
+}
+
+function ensureProtocolFromWonOpportunity(opportunity, settings = {}) {
+ const now = new Date().toISOString();
+ const applies = Boolean(settings.protocolApplies);
+ const existing = state.protocols.find((item) => item.opportunityId === opportunity.id);
+ const automaticStatus = applies ? "novo" : "nao_se_aplica";
+ const status = existing && !["novo", "nao_se_aplica"].includes(existing.status) ? existing.status : automaticStatus;
+ const activityTypeId = installationRequiresProject(settings.serviceType) ? "homologacao" : "outro";
+ const checklist = applies && PROTOCOL_CHECKLIST_TEMPLATES[activityTypeId]
+  ? (existing?.checklist?.length ? existing.checklist : PROTOCOL_CHECKLIST_TEMPLATES[activityTypeId].map((label) => ({ id: crypto.randomUUID(), label, status: "pendente" })))
+  : [];
+ const protocol = {
+  ...(existing || {}),
+  id: existing?.id || crypto.randomUUID(),
+  internalNumber: existing?.internalNumber || nextProtocolInternalNumber(),
+  protocolNumber: existing?.protocolNumber || "",
+  activityTypeId,
+  utilityCompanyId: existing?.utilityCompanyId || "",
+  customerId: opportunity.personId,
+  city: existing?.city || "",
+  consumerUnit: existing?.consumerUnit || "",
+  projectId: opportunity.projectId || existing?.projectId || "",
+  status,
+  responsibleUserId: existing?.responsibleUserId || "",
+  openedAt: existing?.openedAt || settings.closedDate || todayIso,
+  utilityDeadline: existing?.utilityDeadline || "",
+  expectedDate: existing?.expectedDate || "",
+  priority: existing?.priority || "media",
+  notes: existing?.notes || (applies
+   ? `Atividade criada automaticamente após ganho no CRM. Vincular a projeto existente ou criar o projeto e realizar o cadastro na concessionária.`
+   : `Atividade registrada automaticamente após ganho no CRM. ${installationTypeLabel(settings.serviceType)} sem necessidade de trâmite com a concessionária.`),
+  checklist,
+  opportunityId: opportunity.id,
+  appliesToUtility: applies,
+  source: "crm_won",
+  lastMovementAt: existing?.lastMovementAt || now,
+  createdAt: existing?.createdAt || now,
+  updatedAt: now,
+ };
+ if (existing) {
+  const previousStatus = existing.status;
+  state.protocols[state.protocols.findIndex((item) => item.id === existing.id)] = protocol;
+  if (previousStatus !== status) addProtocolHistory(protocol.id, "Aplicabilidade atualizada pelo CRM", previousStatus, status);
+ } else {
+  state.protocols.push(protocol);
+  addProtocolHistory(protocol.id, "Atividade criada após oportunidade ganha", "", status);
+ }
+ opportunity.protocolId = protocol.id;
+ return protocol;
+}
+
+function crmReceivablePlanMatches(sale, transactions, amount, installments, firstDueDate) {
+ if (!sale || Number(sale.total || 0) !== amount || Number(sale.balanceInstallments || sale.installments || 0) !== installments) return false;
+ if (transactions.length !== installments) return false;
+ return transactions[0]?.dueDate === firstDueDate && roundCurrency(sum(transactions.map((item) => item.amount))) === roundCurrency(amount);
+}
+
+function ensureReceivablesFromWonOpportunity(opportunity, settings = {}) {
+ const now = new Date().toISOString();
+ const amount = roundCurrency(Number(opportunity.value || 0));
+ const installments = Math.max(1, Number(settings.installments || 1));
+ const firstDueDate = settings.firstDueDate || settings.closedDate || todayIso;
+ const projectId = opportunity.projectId || "";
+ let sale = state.sales.find((item) => item.opportunityId === opportunity.id);
+ let transactions = sale ? saleInstallmentsFor(sale.id) : [];
+ if (crmReceivablePlanMatches(sale, transactions, amount, installments, firstDueDate)) {
+  opportunity.saleId = sale.id;
+  return sale;
+ }
+ if (sale && transactions.some((item) => item.status !== "aberto")) {
+  opportunity.saleId = sale.id;
+  return sale;
+ }
+ if (!sale) {
+  sale = { id: crypto.randomUUID(), createdAt: now };
+  state.sales.push(sale);
+ } else {
+  state.transactions = state.transactions.filter((item) => item.saleId !== sale.id);
+ }
+ Object.assign(sale, {
   personId: opportunity.personId,
-  saleDate: closedDate,
-  description: title,
+  saleDate: settings.closedDate || todayIso,
+  description: opportunity.title || `Venda ${personName(opportunity.personId)}`,
   category: "Contrato CRM",
   projectId,
   total: amount,
-  installments: 1,
+  installments,
+  entryAmount: 0,
+  balanceInstallments: installments,
   dreGroup: "receita_bruta",
-  notes: `Contrato gerado no CRM: ${contractId}`,
-  contractId,
+  notes: `Gerado automaticamente após oportunidade ganha no CRM. Cliente: ${personName(opportunity.personId)}.`,
+  contractId: opportunity.contractId || "",
   opportunityId: opportunity.id,
-  createdAt: now,
- });
-
- state.transactions.push({
-  id: crypto.randomUUID(),
-  type: "receber",
-  personId: opportunity.personId,
-  description: `${title} - Contrato CRM`,
-  category: "Contrato CRM",
-  dreGroup: "receita_bruta",
-  dueDate,
-  amount,
-  status: "aberto",
-  paidDate: "",
-  notes: `Gerado automaticamente pelo CRM. Contrato: ${contractId}`,
-  saleId,
-  installmentNumber: 1,
-  installmentTotal: 1,
-  projectId,
-  allocations: [{ projectId, amount }],
-  contractId,
-  bankMovementId: "",
-  invoiceId: "",
+  source: "crm_won",
   updatedAt: now,
  });
-
- state.installations.push({
-  id: installationId,
-  projectId,
-  customerId: opportunity.personId,
-  serviceType,
-  status: "aguardando_projeto",
-  closedDate,
-  postSaleDueDate: addBusinessDaysIso(closedDate, 2),
-  postSaleContactedAt: "",
-  deadlineDate: addBusinessDaysIso(closedDate, 15),
-  scheduledDate: dueDate,
-  completedDate: "",
-  panels: 0,
-  team: "",
-  labor: [],
-  technicalReport: {
-   warrantyStartDate: "",
-   technician: "",
-   whatsapp: "",
-   email: "",
-   summary: "",
-   photos: [],
-   generatedAt: "",
-  },
-  materials: "",
-  notes: `Programação criada automaticamente pelo contrato ${contractId}.`,
-  conclusion: "",
-  opportunityId: opportunity.id,
-  contractId,
-  createdAt: now,
-  updatedAt: now,
+ buildInstallments(amount, installments, firstDueDate, "monthly", 30).forEach((installment) => {
+  state.transactions.push({
+   id: crypto.randomUUID(),
+   type: "receber",
+   personId: opportunity.personId,
+   description: `${sale.description} - Parcela ${installment.number}/${installments}`,
+   category: sale.category,
+   dreGroup: sale.dreGroup,
+   dueDate: installment.dueDate,
+   amount: installment.amount,
+   status: "aberto",
+   paidDate: "",
+   notes: sale.notes,
+   saleId: sale.id,
+   installmentNumber: installment.number,
+   installmentTotal: installments,
+   projectId,
+   allocations: projectId ? [{ projectId, amount: installment.amount }] : [],
+   contractId: opportunity.contractId || "",
+   opportunityId: opportunity.id,
+   source: "crm_won",
+   bankMovementId: "",
+   invoiceId: "",
+   createdAt: now,
+   updatedAt: now,
+  });
  });
+ opportunity.saleId = sale.id;
+ return sale;
+}
 
- opportunity.projectId = projectId;
- opportunity.contractId = contractId;
- opportunity.contractGeneratedAt = now;
- opportunity.installationId = installationId;
- opportunity.closedDate = closedDate;
- opportunity.serviceType = serviceType;
- opportunity.postSaleDueDate = addBusinessDaysIso(closedDate, 2);
+function completeOpportunityWonFlow(opportunity, settings = {}) {
+ if (!opportunity.personId) {
+  toast("Vincule um cliente antes de concluir o ganho.");
+  return;
+ }
+ if (Number(opportunity.value || 0) <= 0) {
+  toast("Informe um valor maior que zero para gerar o Contas a Receber.");
+  return;
+ }
+ applyOpportunityWonSettings(opportunity, settings);
+ ensureOpportunityContractDraft(opportunity, settings);
+ if (settings.createProject) ensureProjectFromWonOpportunity(opportunity, settings);
+ createInstallationFromWonOpportunity(opportunity, settings);
+ ensureProtocolFromWonOpportunity(opportunity, settings);
+ ensureReceivablesFromWonOpportunity(opportunity, settings);
+ const now = new Date().toISOString();
+ opportunity.postWinCompletedAt = opportunity.postWinCompletedAt || now;
+ opportunity.postWinUpdatedAt = now;
  opportunity.updatedAt = now;
-
- persist(["crm", "financeiro", "projetos"]);
+ persist(["crm", "financeiro", "projetos", "protocolo"]);
+ pendingWonOpportunity = null;
+ els.opportunityWonDialog.close();
  renderAll();
- setView("homologacao");
- toast("Contrato gerado: recebimento, projeto e instalação foram criados.");
+ toast("Ganho concluído: contrato preparado, instalação pendente, protocolo e contas a receber criados.");
 }
 
 function latestInteractionFor(opportunityId) {

@@ -3447,6 +3447,66 @@ body:has(#opportunityDialog[open]) #crm {
   gap: 12px;
 }
 
+.opportunity-won-dialog {
+  width: min(920px, calc(100vw - 32px));
+}
+
+.opportunity-won-dialog .modal-head h2 {
+  margin: 2px 0 0;
+}
+
+.won-flow-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.won-flow-grid article {
+  display: grid;
+  gap: 4px;
+  padding: 11px;
+  border: 1px solid rgba(15, 118, 101, 0.24);
+  border-radius: 8px;
+  background: #f3f9f7;
+}
+
+.won-flow-grid span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.won-flow-grid strong {
+  color: var(--primary-strong);
+  font-size: 13px;
+}
+
+.won-flow-note {
+  padding: 11px 12px;
+  border-left: 3px solid var(--primary);
+  border-radius: 6px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.won-flow-action {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid rgba(15, 118, 101, 0.3);
+  color: var(--primary-strong);
+  background: #f3f9f7;
+  font-size: 12px;
+}
+
+.won-flow-action.complete {
+  border-color: rgba(28, 122, 77, 0.35);
+  color: var(--ok);
+  background: #f1faf5;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -4147,7 +4207,8 @@ body:has(#opportunityDialog[open]) #crm {
   .technical-photo-grid,
   .attachment-row,
   .attachment-file-row,
-  .map-lead-item {
+  .map-lead-item,
+  .won-flow-grid {
     grid-template-columns: 1fr;
   }
 

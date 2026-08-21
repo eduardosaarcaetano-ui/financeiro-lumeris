@@ -14,7 +14,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260820-sales-rank-targets-r5" />
+    <link rel="stylesheet" href="styles.css?v=20260820-pos-venda-r1" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -3093,17 +3093,26 @@
       </form>
     </dialog>
 
-    <dialog id="opportunityWonDialog">
+    <dialog id="opportunityWonDialog" class="opportunity-won-dialog">
       <form method="dialog" class="modal" id="opportunityWonForm">
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
         <div class="modal-head">
-          <h2>Oportunidade ganha 🎉</h2>
+          <div>
+            <small class="eyebrow">Fluxo de p&oacute;s-venda</small>
+            <h2>Concluir ganho e enviar aos setores</h2>
+          </div>
           <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
         </div>
         <p class="muted" id="opportunityWonSummary"></p>
+        <section class="won-flow-grid" aria-label="Destinos autom&aacute;ticos do ganho">
+          <article><span>Contrato</span><strong id="opportunityWonContractStatus">Pronto para preparar</strong></article>
+          <article><span>Instala&ccedil;&otilde;es</span><strong>Pendente de programa&ccedil;&atilde;o</strong></article>
+          <article><span>Protocolos</span><strong id="opportunityWonProtocolStatus">Nova atividade</strong></article>
+          <article><span>Financeiro</span><strong>Contas a receber</strong></article>
+        </section>
         <div class="form-grid">
           <label>Data do fechamento / contrato
-            <input id="opportunityWonClosedDate" type="date" />
+            <input id="opportunityWonClosedDate" type="date" required />
           </label>
           <label>Tipo de serviço para instalações
             <select id="opportunityWonServiceType">
@@ -3117,16 +3126,26 @@
           </label>
           <label class="full checkbox-line">
             <input id="opportunityWonCreateProject" type="checkbox" />
-            Criar projeto quando este ganho exigir obra/homologação
+            Criar o projeto agora e vincul&aacute;-lo ao fluxo
+          </label>
+          <label class="full checkbox-line">
+            <input id="opportunityWonProtocolApplies" type="checkbox" />
+            Exige tr&acirc;mite com a concession&aacute;ria
+          </label>
+          <label>Quantidade de parcelas
+            <input id="opportunityWonInstallments" type="number" min="1" max="120" step="1" value="1" required />
+          </label>
+          <label>Primeiro vencimento
+            <input id="opportunityWonFirstDueDate" type="date" required />
           </label>
         </div>
-        <p class="muted">O pós-venda deve contatar o cliente em até 2 dias úteis. Manutenções podem ir direto para Instalações sem criar projeto.</p>
+        <div class="won-flow-note" id="opportunityWonFlowNote">
+          Todos os ganhos geram pend&ecirc;ncia em Instala&ccedil;&otilde;es, atividade em Protocolos e valores em Contas a Receber. Quando n&atilde;o houver tr&acirc;mite com a concession&aacute;ria, o protocolo ser&aacute; registrado como <strong>N&atilde;o se aplica</strong>.
+        </div>
         <menu class="modal-actions">
-          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Não gerar agora</button>
-          <button class="secondary-btn" id="opportunityWonSaleBtn" value="sale" type="submit">Gerar venda parcelada</button>
-          <button class="secondary-btn" value="installation" type="submit">Enviar para instalações</button>
-          <button class="primary-btn" id="opportunityWonProjectBtn" value="project" type="submit">Gerar projeto</button>
-          <button class="primary-btn" value="contract" type="submit">Gerar contrato e iniciar operação</button>
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Fechar e concluir depois</button>
+          <button class="secondary-btn" id="opportunityWonContractBtn" type="button">Assinar / gerar contrato</button>
+          <button class="primary-btn" value="complete" type="submit">Confirmar ganho e enviar aos setores</button>
         </menu>
       </form>
     </dialog>
@@ -3167,6 +3186,6 @@
     <script src="assets/estoque-iluminar-data.js?v=20260811-base-estoque-corrigida29"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260820-sales-rank-targets-r5"></script>
+    <script src="app.js?v=20260820-pos-venda-r1"></script>
   </body>
 </html>
