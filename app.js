@@ -13367,21 +13367,43 @@ function rankingTvDecadesHtml(goal) {
   </section>`;
 }
 
-function rankingTvSellerGoalsHtml(rows, month) {
+function rankingTvSellerGoalsHtml(rows, entries, month) {
  if (!rows.length) return "";
+ const lastDay = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+ const decades = [
+  { label: "1ª dezena", start: 1, end: 10 },
+  { label: "2ª dezena", start: 11, end: 20 },
+  { label: "3ª dezena", start: 21, end: lastDay },
+ ];
  return `
-  <section class="ranking-tv-seller-goals" aria-label="Atingimento da meta mensal por vendedor">
-   <h2>Resultado mensal por vendedor</h2>
+  <section class="ranking-tv-seller-goals" aria-label="Atingimento da meta por vendedor e dezena">
+   <h2>Resultado por vendedor em cada dezena</h2>
    <div>
     ${rows.map((row) => {
      const target = salesRankSellerTargetForPeriod(month, row.name);
-     const percentage = target > 0 ? (row.total / target) * 100 : 0;
-     const reachedThreshold = percentage >= SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD;
+     const sellerEntries = entries.filter((item) => normalizeText(item.seller) === normalizeText(row.name));
      return `
-      <article class="ranking-tv-seller-goal${reachedThreshold ? " achieved" : ""}">
-       <span>${escapeHtml(row.name)}</span>
-       <strong>${money(row.total)}</strong>
-       <div><b>${percentage.toFixed(1).replace(".", ",")}%</b><small>da meta de ${money(target)}</small></div>
+      <article class="ranking-tv-seller-goal">
+       <header>
+        <div><span>${escapeHtml(row.name)}</span><small>Meta mensal: ${money(target)}</small></div>
+        <strong>${money(row.total)}</strong>
+       </header>
+       <div class="ranking-tv-seller-decades">
+        ${decades.map((decade) => {
+         const sold = sum(sellerEntries.filter((item) => {
+          const day = Number(salesRankEntryDate(item).slice(8, 10));
+          return day >= decade.start && day <= decade.end;
+         }).map((item) => Number(item.amount || 0)));
+         const percentage = target > 0 ? (sold / target) * 100 : 0;
+         const reachedThreshold = percentage >= SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD;
+         return `
+          <div class="ranking-tv-seller-decade${reachedThreshold ? " achieved" : ""}">
+           <span>${decade.label}<small>Dias ${decade.start} a ${decade.end}</small></span>
+           <strong>${money(sold)}</strong>
+           <b>${percentage.toFixed(2).replace(".", ",")}%</b>
+          </div>`;
+        }).join("")}
+       </div>
       </article>`;
     }).join("")}
    </div>
@@ -13474,7 +13496,7 @@ function renderSalesRankingTvMode() {
    `).join("") || `<article><strong>Aguardando 4º e 5º colocados</strong><em>${money(0)}</em><small>Cadastre mais vendas no ranking</small></article>`}
   </section>
  ${showMonthlyGoal ? rankingTvDecadesHtml(tvGoal) : ""}
- ${showMonthlyGoal ? rankingTvSellerGoalsHtml(rows, selectedMonth.slice(0, 7)) : ""}
+ ${showMonthlyGoal ? rankingTvSellerGoalsHtml(rows, won, selectedMonth.slice(0, 7)) : ""}
  `;
  bindSalesRankingTvControls();
  updateSalesRankingTvClock();
