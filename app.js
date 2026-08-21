@@ -2535,6 +2535,7 @@ async function initRemoteSync(options = {}) {
     if (!saveLocalState()) throw localSyncPersistenceError();
     if (!storeSyncBase(remoteState)) throw localSyncPersistenceError();
    renderAll();
+   updateMaintenanceControlUi();
     if (pendingScopesDuringLoad.length && !syncConflictBlocked) scheduleRemoteSync(pendingScopesDuringLoad);
     if (syncConflictBlocked && activeSyncConflict) {
      setSyncStatus(`Conflito aguardando revisão: ${activeSyncConflict.detail}. Dados locais preservados.`, "error");
