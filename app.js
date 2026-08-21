@@ -8149,6 +8149,7 @@ function openProtocolDrawer(protocolId) {
    </div>
   </section>
   <menu class="modal-actions">
+   <button class="danger-btn modal-delete-action" type="button" id="deleteProtocolFromDrawerBtn" data-protocol-id="${protocol.id}">Excluir protocolo</button>
    <button class="secondary-btn" type="button" id="editProtocolFromDrawerBtn" data-protocol-id="${protocol.id}">Editar dados</button>
    ${project ? `<button class="secondary-btn" type="button" id="openInstallationFromProtocolBtn" data-protocol-id="${protocol.id}">Programar instalação</button>` : ""}
   </menu>
@@ -8197,11 +8198,44 @@ function bindProtocolDrawerEvents() {
  document.querySelector("#editProtocolFromDrawerBtn").addEventListener("click", (event) => {
   openProtocolDialog(state.protocols.find((item) => item.id === event.target.dataset.protocolId));
  });
- document.querySelector("#openInstallationFromProtocolBtn").addEventListener("click", (event) => {
+ document.querySelector("#deleteProtocolFromDrawerBtn").addEventListener("click", (event) => {
+  deleteProtocol(event.target.dataset.protocolId);
+ });
+ document.querySelector("#openInstallationFromProtocolBtn")?.addEventListener("click", (event) => {
   const protocol = state.protocols.find((item) => item.id === event.target.dataset.protocolId);
   const project = protocol ? state.projects.find((item) => item.id === protocol.projectId) : null;
   if (project) openInstallationForProject(project);
  });
+}
+
+function deleteProtocol(protocolId) {
+ const protocol = state.protocols.find((item) => item.id === protocolId);
+ if (!protocol) {
+  toast("Protocolo não encontrado.");
+  return;
+ }
+ const label = protocol.internalNumber || protocol.protocolNumber || personName(protocol.customerId) || "este protocolo";
+ const confirmed = window.confirm(
+  `Excluir por completo o protocolo "${label}"?\n\n` +
+  "Serão removidos o protocolo, o checklist, as observações e todo o histórico vinculado. " +
+  "Cliente, oportunidade, projeto, instalação e financeiro serão preservados."
+ );
+ if (!confirmed) return;
+
+ state.protocols = state.protocols.filter((item) => item.id !== protocolId);
+ state.protocolHistory = state.protocolHistory.filter((item) => item.protocolId !== protocolId);
+ let detachedFromOpportunity = false;
+ state.opportunities.forEach((opportunity) => {
+  if (opportunity.protocolId !== protocolId) return;
+  opportunity.protocolId = "";
+  opportunity.updatedAt = new Date().toISOString();
+  detachedFromOpportunity = true;
+ });
+
+ closeProtocolDrawer();
+ persist(detachedFromOpportunity ? ["protocolo", "crm"] : "protocolo");
+ renderAll();
+ toast("Protocolo excluído por completo.");
 }
 
 function changeProtocolStatus(protocolId, newStatus, { reopenDrawer = true } = {}) {
