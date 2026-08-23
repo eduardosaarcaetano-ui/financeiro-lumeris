@@ -8,22 +8,30 @@ const { Pool } = require("pg");
 // isso nao fixamos um unico nome, e sim procuramos qualquer variavel que
 // pareca uma connection string de Postgres, preferindo a variante pooled
 // (evitando NON_POOLING/UNPOOLED/NO_SSL/PRISMA, usadas para outros fins).
-function resolveConnectionString() {
-  const explicit = process.env.POSTGRES_URL || process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL;
-  if (explicit) return explicit;
-
+function resolveConnectionString(env = process.env) {
   const isPostgresUrl = (value) =>
     typeof value === "string" && (value.startsWith("postgres://") || value.startsWith("postgresql://"));
 
-  const keys = Object.keys(process.env).filter(
-    (key) => /(^|_)POSTGRES_URL$|(^|_)DATABASE_URL$/.test(key) && isPostgresUrl(process.env[key])
+  // Preview e a homologacao devem falhar fechados: mesmo que a integracao
+  // Vercel ainda exponha variaveis produtivas nesse escopo, elas nunca podem
+  // ser escolhidas como fallback.
+  const requiresHomologationDatabase = env.VERCEL_ENV === "preview" || env.APP_ENV === "homologacao";
+  if (requiresHomologationDatabase) {
+    return isPostgresUrl(env.HOMOLOGATION_DATABASE_URL) ? env.HOMOLOGATION_DATABASE_URL : "";
+  }
+
+  const explicit = env.POSTGRES_URL || env.DATABASE_URL || env.POSTGRES_PRISMA_URL;
+  if (explicit) return explicit;
+
+  const keys = Object.keys(env).filter(
+    (key) => /(^|_)POSTGRES_URL$|(^|_)DATABASE_URL$/.test(key) && isPostgresUrl(env[key])
   );
   const pooled = keys.find((key) => !/NON_POOLING|UNPOOLED|NO_SSL|PRISMA/.test(key));
-  if (pooled) return process.env[pooled];
-  if (keys.length) return process.env[keys[0]];
+  if (pooled) return env[pooled];
+  if (keys.length) return env[keys[0]];
 
-  const anyPostgresVar = Object.keys(process.env).find((key) => isPostgresUrl(process.env[key]));
-  return anyPostgresVar ? process.env[anyPostgresVar] : "";
+  const anyPostgresVar = Object.keys(env).find((key) => isPostgresUrl(env[key]));
+  return anyPostgresVar ? env[anyPostgresVar] : "";
 }
 
 const CONNECTION_STRING = resolveConnectionString();
@@ -33,7 +41,10 @@ let schemaReadyPromise = null;
 
 function getPool() {
   if (!CONNECTION_STRING) {
-    throw new Error("Nenhuma connection string de Postgres encontrada nas env vars. Conecte um banco Postgres (Neon) ao projeto na Vercel.");
+    const message = process.env.VERCEL_ENV === "preview" || process.env.APP_ENV === "homologacao"
+      ? "HOMOLOGATION_DATABASE_URL ausente ou invalida. O Preview foi bloqueado para impedir acesso ao banco de producao."
+      : "Nenhuma connection string de Postgres encontrada nas env vars. Conecte um banco Postgres (Neon) ao projeto na Vercel.";
+    throw new Error(message);
   }
   if (!pool) {
     pool = new Pool({
@@ -113,4 +124,4 @@ async function query(text, params) {
   return getPool().query(text, params);
 }
 
-module.exports = { getPool, ensureSchema, withTransaction, query };
+module.exports = { resolveConnectionString, getPool, ensureSchema, withTransaction, query };

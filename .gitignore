@@ -1,4 +1,8 @@
 node_modules/
+.env
+.env.*
+!.env.example
+!.env.*.example
 backend-integration/.env
 backend-integration/node_modules/
 backend-integration/certs/
