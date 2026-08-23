@@ -24,9 +24,9 @@ const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
 const DEFAULT_SALES_RANK_SELLER_GOAL = 200000;
 const SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD = 33.33;
-// Versao 7 tambem exige o controle de manutencao com confirmacao remota
-// imediata, evitando que o botao fique indefinidamente em "Liberando".
-const SYNC_PROTOCOL_VERSION = 7;
+// Versao 8 tambem concilia cadastros determinísticos das importações financeiras,
+// além de exigir o controle de manutenção com confirmação remota imediata.
+const SYNC_PROTOCOL_VERSION = 8;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
 const SYNC_BASE_STORAGE_KEY = "financeiro-lumeris-sync-base-v2";
@@ -1571,6 +1571,13 @@ function loadState() {
    syncConflictBlocked = true;
   }
   const normalized = normalizeState(parsed);
+  if (activeSyncConflict && isRecoverableFinanceImportPeopleConflict(activeSyncConflict.detail)) {
+   activeSyncConflict = null;
+   syncConflictBlocked = false;
+   pendingSyncScopes.add("financeiro");
+   localStorage.removeItem(SYNC_BATCH_STORAGE_KEY);
+   activeSyncBatch = null;
+  }
   if (activeSyncConflict && String(activeSyncConflict.detail || "").includes("salesTargets")) {
    activeSyncConflict = null;
    syncConflictBlocked = false;
@@ -2238,6 +2245,10 @@ normalized.salesTargets = normalized.salesTargets
  applyFinancePayablesImports(normalized);
 
  return normalized;
+}
+
+function isRecoverableFinanceImportPeopleConflict(detail) {
+ return /^people \(finance-import-(?:person|supplier)-[a-z0-9]+\)$/i.test(String(detail || "").trim());
 }
 
 function ensureStableRecordIds(source) {
@@ -12084,7 +12095,7 @@ function importedFinancePerson(normalized, batch, row) {
   document: "",
   contact: "",
   importSource: batch.sourceId,
-  createdAt: new Date().toISOString(),
+  createdAt: `${batch.period || "2000-01"}-01T12:00:00.000Z`,
  };
  normalized.people.push(person);
  return person;
@@ -12231,7 +12242,7 @@ function importedFinanceSupplier(normalized, batch, row) {
   document: "",
   contact: "",
   importSource: batch.sourceId,
-  createdAt: new Date().toISOString(),
+  createdAt: `${batch.period || "2000-01"}-01T12:00:00.000Z`,
  };
  normalized.people.push(person);
  return person;

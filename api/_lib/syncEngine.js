@@ -7,7 +7,7 @@
 // Incrementar esta versao bloqueia escritores antigos no servidor. Isso e
 // intencional: uma TV/aba com JavaScript em cache nao pode continuar gerando
 // gravacoes depois que o mecanismo de sincronizacao foi corrigido.
-const SYNC_PROTOCOL_VERSION = 7;
+const SYNC_PROTOCOL_VERSION = 8;
 
 const SYNC_SCOPE_FIELDS = {
   crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "salesTargets", "sellers", "interactions", "tasks"],
@@ -107,6 +107,32 @@ function threeWayMergeSyncRecord(baseValue, localValue, remoteValue) {
   return { value: merged, conflictingFields };
 }
 
+function isFinanceImportPersonId(id) {
+  return /^finance-import-(?:person|supplier)-[a-z0-9]+$/i.test(String(id || ""));
+}
+
+function normalizedPersonName(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLocaleLowerCase("pt-BR");
+}
+
+function mergedPersonType(currentType, incomingType) {
+  const types = new Set([currentType, incomingType].filter(Boolean));
+  if (types.has("ambos") || (types.has("cliente") && types.has("fornecedor"))) return "ambos";
+  return currentType || incomingType || "cliente";
+}
+
+function mergeFinanceImportPerson(current, incoming) {
+  const merged = { ...cloneSyncValue(incoming), ...cloneSyncValue(current) };
+  merged.type = mergedPersonType(current.type, incoming.type);
+  merged.importSource = current.importSource || incoming.importSource || "";
+  merged.createdAt = current.createdAt || incoming.createdAt || "";
+  merged.updatedAt = [current.updatedAt, incoming.updatedAt].filter(Boolean).sort().pop() || "";
+  ["document", "contact"].forEach((key) => {
+    merged[key] = current[key] || incoming[key] || "";
+  });
+  return merged;
+}
+
 function applyOneSyncOperation(state, operation, allowedFields) {
   const field = String(operation.field || "");
   const type = String(operation.type || "");
@@ -148,6 +174,23 @@ function applyOneSyncOperation(state, operation, allowedFields) {
   const incoming = cloneSyncValue(operation.value);
   if (!incoming || String(incoming.id || "") !== id) {
     return { invalid: { field, id, reason: "id_mismatch" } };
+  }
+
+  // Pessoas geradas pelas planilhas usam IDs determinísticos. Duas abas podem
+  // tentar cadastrar a mesma pessoa antes de receber a revisão mais recente da
+  // nuvem. Nesse caso, concilie somente quando o nome também for o mesmo e
+  // preserve os dados já preenchidos no servidor.
+  if (field === "people" && isFinanceImportPersonId(id)) {
+    if (index < 0) {
+      state[field].push(incoming);
+      return {};
+    }
+    if (normalizedPersonName(current.name) !== normalizedPersonName(incoming.name)) {
+      return { conflict: { field, id, reason: "id_already_exists" } };
+    }
+    const merged = mergeFinanceImportPerson(current, incoming);
+    if (syncChecksum(current) !== syncChecksum(merged)) state[field][index] = merged;
+    return {};
   }
 
   if (index >= 0 && syncChecksum(current) === syncChecksum(incoming)) return {};
