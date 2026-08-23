@@ -14,7 +14,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="styles.css?v=20260821-won-payment-plan-r6" />
+    <link rel="stylesheet" href="styles.css?v=desktop-bank-cnpj-r8" />
   </head>
   <body>
     <div class="login-screen" id="loginScreen">
@@ -343,10 +343,17 @@
               <option value="recebido">Recebido</option>
               <option value="vencido">Vencido</option>
             </select>
-            <label class="toolbar-period">De
+            <select id="receberPeriodMode" aria-label="Período das contas a receber">
+              <option value="mes_atual">Mês atual</option>
+              <option value="ano">Ano</option>
+              <option value="periodo">Período específico</option>
+              <option value="todos">Todos os períodos</option>
+            </select>
+            <select id="receberYear" class="toolbar-year hidden" aria-label="Ano das contas a receber"></select>
+            <label class="toolbar-period hidden" data-transaction-custom-period="receber">De
               <input id="receberPeriodStart" type="date" class="toolbar-date" />
             </label>
-            <label class="toolbar-period">Até
+            <label class="toolbar-period hidden" data-transaction-custom-period="receber">Até
               <input id="receberPeriodEnd" type="date" class="toolbar-date" />
             </label>
             <strong class="toolbar-total" id="receberTotal">Total: R$ 0,00</strong>
@@ -380,10 +387,17 @@
               <option value="pago">Pago</option>
               <option value="vencido">Vencido</option>
             </select>
-            <label class="toolbar-period">De
+            <select id="pagarPeriodMode" aria-label="Período das contas a pagar">
+              <option value="mes_atual">Mês atual</option>
+              <option value="ano">Ano</option>
+              <option value="periodo">Período específico</option>
+              <option value="todos">Todos os períodos</option>
+            </select>
+            <select id="pagarYear" class="toolbar-year hidden" aria-label="Ano das contas a pagar"></select>
+            <label class="toolbar-period hidden" data-transaction-custom-period="pagar">De
               <input id="pagarPeriodStart" type="date" class="toolbar-date" />
             </label>
-            <label class="toolbar-period">Até
+            <label class="toolbar-period hidden" data-transaction-custom-period="pagar">Até
               <input id="pagarPeriodEnd" type="date" class="toolbar-date" />
             </label>
             <strong class="toolbar-total" id="pagarTotal">Total: R$ 0,00</strong>
@@ -1207,8 +1221,11 @@
 
           <section class="panel bank-sync-panel">
             <div class="panel-head">
-              <h2>Contas conectadas</h2>
-              <small class="muted">Sincronize o extrato de cada conta (simulado por enquanto — veja detalhes ao clicar em Sincronizar)</small>
+              <div>
+                <h2>Contas bancárias por CNPJ</h2>
+                <small class="muted">Contas atuais preservadas e quatro novas posições preparadas para cadastro.</small>
+              </div>
+              <small class="muted">Sincronize o extrato de cada conta após configurar os dados bancários.</small>
             </div>
             <div class="bank-sync-list" id="bankSyncList"></div>
           </section>
@@ -2765,6 +2782,46 @@
       </form>
     </dialog>
 
+    <dialog id="bankAccountDialog">
+      <form method="dialog" class="modal" id="bankAccountForm">
+        <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
+        <div class="modal-head">
+          <div>
+            <h2>Dados da conta bancária</h2>
+            <p class="muted bank-account-dialog-subtitle">Preencha quando os dados da nova conta estiverem disponíveis.</p>
+          </div>
+          <button class="icon-btn" value="cancel" aria-label="Fechar" type="submit" formnovalidate>×</button>
+        </div>
+        <input type="hidden" id="bankAccountOriginalKey" />
+        <input type="hidden" id="bankAccountSlotId" />
+        <div class="form-grid">
+          <label class="full">CNPJ responsável
+            <select id="bankAccountCnpjGroup" required>
+              <option value="iluminar">CNPJ Iluminar</option>
+              <option value="lumeris">CNPJ Lumeris</option>
+            </select>
+          </label>
+          <p class="muted full bank-account-group-hint" id="bankAccountGroupHint"></p>
+          <label>Código do banco
+            <input id="bankAccountBankId" maxlength="20" placeholder="Ex.: 077" required />
+          </label>
+          <label>Agência
+            <input id="bankAccountAgency" maxlength="30" placeholder="Ex.: 0001" />
+          </label>
+          <label>Conta
+            <input id="bankAccountAccountId" maxlength="40" placeholder="Número da conta" required />
+          </label>
+          <label>Identificação da conta
+            <input id="bankAccountDisplayName" maxlength="80" placeholder="Ex.: Conta corrente principal" />
+          </label>
+        </div>
+        <menu class="modal-actions">
+          <button class="secondary-btn" value="cancel" type="submit" formnovalidate>Cancelar</button>
+          <button class="primary-btn" value="default" type="submit">Salvar conta</button>
+        </menu>
+      </form>
+    </dialog>
+
     <dialog id="bankSyncDialog">
       <form method="dialog" class="modal" id="bankSyncForm">
         <button type="submit" class="hidden" tabindex="-1" aria-hidden="true"></button>
@@ -3196,7 +3253,9 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="assets/estoque-iluminar-data.js?v=20260811-base-estoque-corrigida29"></script>
     <script src="assets/vendas-2026-data.js?v=20260718-layout-fix1"></script>
+    <script src="assets/finance-receivables-import-data.js?v=20260823-august-r2"></script>
+    <script src="assets/finance-payables-import-data.js?v=20260823-august-payables-r2"></script>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
-    <script src="app.js?v=20260821-won-payment-plan-r6"></script>
+    <script src="app.js?v=desktop-august-payables-r13"></script>
   </body>
 </html>

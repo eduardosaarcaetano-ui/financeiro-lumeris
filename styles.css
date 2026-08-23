@@ -748,6 +748,32 @@ td strong {
 
 .bank-sync-list {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.bank-account-group {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f7faf8;
+}
+
+.bank-account-group-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.bank-account-group-head h3 {
+  margin: 0 0 3px;
+  font-size: 16px;
+}
+
+.bank-account-group-list {
+  display: grid;
   gap: 10px;
 }
 
@@ -764,6 +790,23 @@ td strong {
 
 .bank-sync-item strong {
   display: block;
+}
+
+.bank-account-slot {
+  border-style: dashed;
+  background: #fffdf7;
+}
+
+.bank-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bank-account-dialog-subtitle,
+.bank-account-group-hint {
+  margin: 4px 0 0;
 }
 
 .bank-sync-hint {
@@ -2884,6 +2927,15 @@ textarea {
   width: 150px;
 }
 
+.toolbar-year {
+  width: 100px;
+}
+
+#receberPeriodMode,
+#pagarPeriodMode {
+  min-width: 170px;
+}
+
 .toolbar-total {
   margin-left: auto;
   font-size: 15px;
@@ -4235,6 +4287,18 @@ body:has(#opportunityDialog[open]) #crm {
   .map-lead-item,
   .won-flow-grid {
     grid-template-columns: 1fr;
+  }
+
+  .bank-sync-list {
+    grid-template-columns: 1fr;
+  }
+
+  .bank-sync-item {
+    grid-template-columns: 1fr;
+  }
+
+  .bank-account-actions {
+    justify-content: stretch;
   }
 
   .attachment-file-icon {

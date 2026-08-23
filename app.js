@@ -98,6 +98,18 @@ const BANK_PROVIDERS = {
  santander: { label: "Santander (API real via backend)", requiresEndpoint: true, fetchStatement: (account, range) => fetchStatementViaBackend("santander", account, range) },
 };
 
+const BANK_CNPJ_GROUPS = {
+ iluminar: { label: "Contas CNPJ Iluminar" },
+ lumeris: { label: "Contas CNPJ Lumeris" },
+};
+
+const BANK_PREPARED_SLOTS = [
+ { id: "iluminar-1", cnpjGroup: "iluminar", label: "Nova conta 1" },
+ { id: "iluminar-2", cnpjGroup: "iluminar", label: "Nova conta 2" },
+ { id: "lumeris-1", cnpjGroup: "lumeris", label: "Nova conta 1" },
+ { id: "lumeris-2", cnpjGroup: "lumeris", label: "Nova conta 2" },
+];
+
 const MANUAL_BANK_BALANCE_OVERRIDES = [
  { bankId: "077", accountId: "200652028", balance: 88136.42, balanceDate: "2026-07-23", source: "manual" },
 ];
@@ -730,6 +742,16 @@ const els = {
  bankNotes: document.querySelector("#bankNotes"),
  bankBalanceList: document.querySelector("#bankBalanceList"),
  bankSyncList: document.querySelector("#bankSyncList"),
+ bankAccountDialog: document.querySelector("#bankAccountDialog"),
+ bankAccountForm: document.querySelector("#bankAccountForm"),
+ bankAccountOriginalKey: document.querySelector("#bankAccountOriginalKey"),
+ bankAccountSlotId: document.querySelector("#bankAccountSlotId"),
+ bankAccountCnpjGroup: document.querySelector("#bankAccountCnpjGroup"),
+ bankAccountBankId: document.querySelector("#bankAccountBankId"),
+ bankAccountAgency: document.querySelector("#bankAccountAgency"),
+ bankAccountAccountId: document.querySelector("#bankAccountAccountId"),
+ bankAccountDisplayName: document.querySelector("#bankAccountDisplayName"),
+ bankAccountGroupHint: document.querySelector("#bankAccountGroupHint"),
  bankSyncDialog: document.querySelector("#bankSyncDialog"),
  bankSyncForm: document.querySelector("#bankSyncForm"),
  bankSyncTitle: document.querySelector("#bankSyncTitle"),
@@ -1273,10 +1295,14 @@ function bindEvents() {
   "#crmPendingOnly",
   "#crmStaleOnly",
   "#receberStatus",
+  "#receberPeriodMode",
+  "#receberYear",
   "#receberPeriodStart",
   "#receberPeriodEnd",
   "#pagarSearch",
   "#pagarStatus",
+  "#pagarPeriodMode",
+  "#pagarYear",
   "#pagarPeriodStart",
   "#pagarPeriodEnd",
   "#salesSearch",
@@ -1394,6 +1420,14 @@ function bindEvents() {
  });
 
  els.bankSyncProvider.addEventListener("change", updateBankSyncHint);
+ els.bankAccountForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (event.submitter.value === "cancel") {
+   els.bankAccountDialog.close();
+   return;
+  }
+  saveBankAccountRegistration();
+ });
  els.bankSyncForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (event.submitter.value === "cancel") {
@@ -2149,6 +2183,10 @@ normalized.salesTargets = normalized.salesTargets
   syncEndpoint: item.syncEndpoint || "",
   lastSyncedAt: item.lastSyncedAt || "",
   ...item,
+  cnpjGroup: normalizeBankCnpjGroup(item.cnpjGroup),
+  agency: item.agency || "",
+  displayName: item.displayName || "",
+  preparedSlotId: item.preparedSlotId || "",
  }));
  applyManualBankBalanceOverrides(normalized.bankAccounts);
 
@@ -2180,6 +2218,10 @@ normalized.salesTargets = normalized.salesTargets
     bankId: movement.bankId || "Banco",
     balance: 0,
     balanceDate: movement.date || "",
+    cnpjGroup: "iluminar",
+    agency: "",
+    displayName: "",
+    preparedSlotId: "",
     source: "movements",
     updatedAt: movement.importedAt || "",
    };
@@ -2191,6 +2233,9 @@ normalized.salesTargets = normalized.salesTargets
   });
   normalized.bankAccounts = [...inferred.values()];
  }
+
+ applyFinanceReceivablesImports(normalized);
+ applyFinancePayablesImports(normalized);
 
  return normalized;
 }
@@ -5759,11 +5804,12 @@ function renderBankBalances() {
 }
 
 function renderBankBalanceItem(account) {
+ const cnpjLabel = bankCnpjGroupLabel(account);
  if (!isInterAccount(account)) {
   return `
    <article class="bank-balance-item">
     <div>
-     <strong>${escapeHtml(account.bankId)}</strong>
+     <strong>${escapeHtml(cnpjLabel)} · ${escapeHtml(account.bankId)}</strong>
      <span class="muted">Conta ${escapeHtml(account.accountId || "não identificada")} - ${account.balanceDate ? formatDate(account.balanceDate) : "sem data"} - ${bankBalanceSourceLabel(account)}</span>
     </div>
     <strong class="money">${money(account.balance)}</strong>
@@ -5774,7 +5820,7 @@ function renderBankBalanceItem(account) {
  return `
    <article class="bank-balance-item bank-balance-detail">
     <div>
-     <strong>Inter - Conta ${escapeHtml(account.accountId || "não identificada")}</strong>
+     <strong>${escapeHtml(cnpjLabel)} · Inter - Conta ${escapeHtml(account.accountId || "não identificada")}</strong>
      <span class="muted">${account.balanceDate ? formatDate(account.balanceDate) : "sem data"} - ${bankBalanceSourceLabel(account)}</span>
     </div>
     <strong class="money">${money(account.balance)}</strong>
@@ -5874,18 +5920,77 @@ function renderTransactionTables() {
  renderTransactionTable("pagar");
 }
 
+function hydrateTransactionPeriodControl(type) {
+ const mode = document.querySelector(`#${type}PeriodMode`);
+ const year = document.querySelector(`#${type}Year`);
+ const start = document.querySelector(`#${type}PeriodStart`);
+ const end = document.querySelector(`#${type}PeriodEnd`);
+ if (!mode || !year || !start || !end) return;
+
+ const currentYear = String(today.getFullYear());
+ const selectedYear = year.value || currentYear;
+ const years = [...new Set([
+  currentYear,
+  ...businessTransactions()
+   .filter((item) => item.type === type && /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate || ""))
+   .map((item) => item.dueDate.slice(0, 4)),
+ ])].sort((a, b) => b.localeCompare(a));
+ const options = years.map((value) => `<option value="${value}">${value}</option>`).join("");
+ if (year.innerHTML !== options) year.innerHTML = options;
+ year.value = years.includes(selectedYear) ? selectedYear : currentYear;
+
+ const isYear = mode.value === "ano";
+ const isCustom = mode.value === "periodo";
+ year.classList.toggle("hidden", !isYear);
+ document.querySelectorAll(`[data-transaction-custom-period="${type}"]`)
+  .forEach((label) => label.classList.toggle("hidden", !isCustom));
+ if (isCustom && !start.value && !end.value) {
+  start.value = currentMonthStart;
+  end.value = currentMonthEnd;
+ }
+}
+
+function transactionPeriodSelection(type) {
+ hydrateTransactionPeriodControl(type);
+ const mode = document.querySelector(`#${type}PeriodMode`).value;
+ const startInput = document.querySelector(`#${type}PeriodStart`);
+ const endInput = document.querySelector(`#${type}PeriodEnd`);
+ let start = "";
+ let end = "";
+ let label = "Todos os períodos";
+ if (mode === "mes_atual") {
+  start = currentMonthStart;
+  end = currentMonthEnd;
+  label = "Mês atual";
+ } else if (mode === "ano") {
+  const year = document.querySelector(`#${type}Year`).value || String(today.getFullYear());
+  start = `${year}-01-01`;
+  end = `${year}-12-31`;
+  label = `Ano ${year}`;
+ } else if (mode === "periodo") {
+  start = startInput.value;
+  end = endInput.value;
+  label = start || end
+   ? `${start ? formatDate(start) : "início"} até ${end ? formatDate(end) : "hoje"}`
+   : "Período específico";
+ }
+ const invalid = Boolean(start && end && start > end);
+ startInput.setCustomValidity(invalid ? "A data inicial precisa ser anterior à data final." : "");
+ endInput.setCustomValidity(invalid ? "A data final precisa ser posterior à data inicial." : "");
+ return { start, end, label, invalid };
+}
+
 function renderTransactionTable(type) {
  const search = document.querySelector(`#${type}Search`).value.toLowerCase().trim();
  const statusFilter = document.querySelector(`#${type}Status`).value;
- const periodStart = document.querySelector(`#${type}PeriodStart`).value;
- const periodEnd = document.querySelector(`#${type}PeriodEnd`).value;
+ const period = transactionPeriodSelection(type);
  const tbody = document.querySelector(`#${type}Table`);
  const colspan = type === "receber" ? 8 : 7;
 
  const rows = businessTransactions()
   .filter((item) => item.type === type)
   .filter((item) => matchesTransaction(item, search, statusFilter))
-  .filter((item) => (!periodStart || item.dueDate >= periodStart) && (!periodEnd || item.dueDate <= periodEnd));
+  .filter((item) => !period.invalid && (!period.start || item.dueDate >= period.start) && (!period.end || item.dueDate <= period.end));
 
  if (type === "receber") sortReceivablesBySaleGroup(rows);
  else rows.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
@@ -5904,7 +6009,7 @@ function renderTransactionTable(type) {
   });
  });
 
- document.querySelector(`#${type}Total`).textContent = `Total: ${money(sum(rows))}`;
+ document.querySelector(`#${type}Total`).textContent = `Total · ${period.label}: ${money(sum(rows))}`;
 }
 
 function transactionRow(item, type) {
@@ -5914,8 +6019,8 @@ function transactionRow(item, type) {
    <td>${formatDate(item.dueDate)}</td>
    <td>${escapeHtml(personName(item.personId))}</td>
    <td>
-    <strong>${escapeHtml(item.description)}</strong>
-    <span class="muted block">${escapeHtml(transactionProjectLabel(item))}</span>
+   <strong>${escapeHtml(item.description)}</strong>
+    <span class="muted block">${escapeHtml(transactionContextLabel(item))}</span>
    </td>
    ${installmentCell}
    <td>${escapeHtml(item.category)}</td>
@@ -5932,7 +6037,8 @@ function transactionRow(item, type) {
 }
 
 function matchesTransaction(item, search, statusFilter) {
- const haystack = `${item.description} ${item.category} ${personName(item.personId)} ${item.notes || ""} ${installmentLabel(item)}`.toLowerCase();
+ const sourceValues = Object.values(item.sourceData || {}).join(" ");
+ const haystack = `${item.description} ${item.category} ${personName(item.personId)} ${item.notes || ""} ${installmentLabel(item)} ${sourceValues}`.toLowerCase();
  const status = isOverdue(item) ? "vencido" : item.status;
  return (!search || haystack.includes(search)) && (statusFilter === "todos" || statusFilter === status);
 }
@@ -6083,6 +6189,16 @@ function syncSalesRankDateToPeriod() {
   els.salesRankDate.value = period === todayIso.slice(0, 7) ? todayIso : `${period}-01`;
  }
  syncSalesRankSellerGoalInput();
+}
+
+function transactionContextLabel(transaction) {
+ const source = transaction.sourceData;
+ if (!source) return transactionProjectLabel(transaction);
+ return [
+  importedFinanceDisplayValue(source.paymentMethod),
+  importedFinanceDisplayValue(source.bankAccount),
+  transaction.paidDate ? `Baixa ${formatDate(transaction.paidDate)}` : "",
+ ].filter(Boolean).join(" · ") || transactionProjectLabel(transaction);
 }
 
 function salesRankTargetForPeriod(period) {
@@ -10077,23 +10193,76 @@ function cleanText(value) {
  return value.replace(/\s+/g, " ").trim();
 }
 
+function normalizeBankCnpjGroup(value) {
+ return BANK_CNPJ_GROUPS[value] ? value : "iluminar";
+}
+
+function bankCnpjGroupLabel(account) {
+ return BANK_CNPJ_GROUPS[normalizeBankCnpjGroup(account?.cnpjGroup)].label;
+}
+
+function bankAccountKeyValue(account) {
+ return account.accountKey || `${account.bankId}-${account.accountId}`;
+}
+
+function bankAccountRegistrationCard(account) {
+ const provider = BANK_PROVIDERS[account.syncProvider] || BANK_PROVIDERS.mock;
+ const lastSync = account.lastSyncedAt ? `Última sincronização: ${new Date(account.lastSyncedAt).toLocaleString("pt-BR")}` : "Nunca sincronizado por API";
+ const details = [account.agency ? `Agência ${account.agency}` : "", account.displayName || ""].filter(Boolean).join(" · ");
+ const accountKey = bankAccountKeyValue(account);
+ return `
+  <article class="bank-sync-item">
+   <div>
+    <strong>${escapeHtml(account.bankId)} - Conta ${escapeHtml(account.accountId || "não identificada")}</strong>
+    ${details ? `<span class="muted block">${escapeHtml(details)}</span>` : ""}
+    <span class="muted block">${escapeHtml(provider.label)} - ${escapeHtml(lastSync)}</span>
+   </div>
+   <div class="bank-account-actions">
+    <button class="secondary-btn" type="button" data-edit-bank-account="${escapeHtml(accountKey)}">Editar dados</button>
+    <button class="secondary-btn" type="button" data-sync-account="${escapeHtml(accountKey)}">Sincronizar extrato</button>
+   </div>
+  </article>`;
+}
+
+function bankPreparedSlotCard(slot, account) {
+ if (account) return bankAccountRegistrationCard(account);
+ return `
+  <article class="bank-sync-item bank-account-slot">
+   <div>
+    <strong>${escapeHtml(slot.label)} · A configurar</strong>
+    <span class="muted block">Espaço preparado para informar banco, agência e conta.</span>
+   </div>
+   <button class="primary-btn" type="button" data-configure-bank-slot="${escapeHtml(slot.id)}">Inserir dados</button>
+  </article>`;
+}
+
 function renderBankSyncList() {
  const accounts = latestBankAccounts();
- els.bankSyncList.innerHTML = accounts.length ?
-   accounts.map((account) => {
-    const provider = BANK_PROVIDERS[account.syncProvider] || BANK_PROVIDERS.mock;
-    const lastSync = account.lastSyncedAt ? `Última sincronização: ${new Date(account.lastSyncedAt).toLocaleString("pt-BR")}` : "Nunca sincronizado por API";
-    return `
-   <article class="bank-sync-item">
-    <div>
-     <strong>${escapeHtml(account.bankId)} - Conta ${escapeHtml(account.accountId || "não identificada")}</strong>
-     <span class="muted">${escapeHtml(provider.label)} - ${escapeHtml(lastSync)}</span>
+ els.bankSyncList.innerHTML = Object.entries(BANK_CNPJ_GROUPS).map(([groupKey, group]) => {
+  const regularAccounts = accounts.filter((account) => normalizeBankCnpjGroup(account.cnpjGroup) === groupKey && !account.preparedSlotId);
+  const slots = BANK_PREPARED_SLOTS.filter((slot) => slot.cnpjGroup === groupKey);
+  const configuredSlots = slots.filter((slot) => accounts.some((account) => account.preparedSlotId === slot.id)).length;
+  return `
+   <section class="bank-account-group" data-bank-cnpj-group="${escapeHtml(groupKey)}">
+    <div class="bank-account-group-head">
+     <div>
+      <h3>${escapeHtml(group.label)}</h3>
+      <span class="muted">${regularAccounts.length + configuredSlots} conta(s) cadastrada(s) · ${slots.length - configuredSlots} espaço(s) disponível(is)</span>
+     </div>
     </div>
-    <button class="secondary-btn" type="button" data-sync-account="${escapeHtml(account.accountKey || `${account.bankId}-${account.accountId}`)}">Sincronizar extrato</button>
-   </article>`;
-   }).join("")
-  : emptyMessage("Importe um OFX ao menos uma vez para cadastrar uma conta antes de sincronizar por API.");
+    <div class="bank-account-group-list">
+     ${regularAccounts.map(bankAccountRegistrationCard).join("")}
+     ${slots.map((slot) => bankPreparedSlotCard(slot, accounts.find((account) => account.preparedSlotId === slot.id))).join("")}
+    </div>
+   </section>`;
+ }).join("");
 
+ document.querySelectorAll("[data-configure-bank-slot]").forEach((button) => {
+  button.addEventListener("click", () => openBankAccountDialog({ slotId: button.dataset.configureBankSlot }));
+ });
+ document.querySelectorAll("[data-edit-bank-account]").forEach((button) => {
+  button.addEventListener("click", () => openBankAccountDialog({ accountKey: button.dataset.editBankAccount }));
+ });
  document.querySelectorAll("[data-sync-account]").forEach((button) => {
   button.addEventListener("click", () => openBankSyncDialog(button.dataset.syncAccount));
  });
@@ -10101,7 +10270,89 @@ function renderBankSyncList() {
 
 function bankAccountDisplayName(account) {
  if (!account) return "Conta não encontrada";
- return `${account.bankId || "Banco"} - Conta ${account.accountId || "não identificada"}`;
+ return `${bankCnpjGroupLabel(account)} · ${account.bankId || "Banco"} - Conta ${account.accountId || "não identificada"}`;
+}
+
+function openBankAccountDialog({ slotId = "", accountKey = "" } = {}) {
+ const slot = BANK_PREPARED_SLOTS.find((item) => item.id === slotId);
+ const account = accountKey ? accountByKey(accountKey) : null;
+ if (!slot && !account) return;
+
+ els.bankAccountForm.reset();
+ els.bankAccountOriginalKey.value = account ? bankAccountKeyValue(account) : "";
+ els.bankAccountSlotId.value = slot?.id || account?.preparedSlotId || "";
+ const preparedSlot = BANK_PREPARED_SLOTS.find((item) => item.id === els.bankAccountSlotId.value);
+ els.bankAccountCnpjGroup.value = preparedSlot?.cnpjGroup || normalizeBankCnpjGroup(account?.cnpjGroup);
+ els.bankAccountCnpjGroup.disabled = Boolean(preparedSlot);
+ els.bankAccountBankId.value = account?.bankId || "";
+ els.bankAccountAgency.value = account?.agency || "";
+ els.bankAccountAccountId.value = account?.accountId || "";
+ els.bankAccountDisplayName.value = account?.displayName || "";
+ els.bankAccountGroupHint.textContent = preparedSlot
+  ? `Esta posição pertence a ${BANK_CNPJ_GROUPS[preparedSlot.cnpjGroup].label}.`
+  : "Você pode ajustar a qual CNPJ esta conta pertence.";
+ els.bankAccountDialog.showModal();
+}
+
+function saveBankAccountRegistration() {
+ if (!guardViewAccess("banco")) return;
+ const originalKey = els.bankAccountOriginalKey.value;
+ const slotId = els.bankAccountSlotId.value;
+ const slot = BANK_PREPARED_SLOTS.find((item) => item.id === slotId);
+ const bankId = els.bankAccountBankId.value.trim();
+ const accountId = els.bankAccountAccountId.value.trim();
+ const accountKey = `${bankId}-${accountId}`;
+ const duplicate = state.bankAccounts.some((item) => bankAccountKeyValue(item) === accountKey && bankAccountKeyValue(item) !== originalKey);
+ if (duplicate) {
+  toast("Esta conta bancária já está cadastrada.");
+  return;
+ }
+
+ const current = originalKey ? accountByKey(originalKey) : null;
+ const previousBankId = current?.bankId || "";
+ const previousAccountId = current?.accountId || "";
+ const registration = {
+  id: accountId,
+  accountKey,
+  bankId,
+  accountId,
+  agency: els.bankAccountAgency.value.trim(),
+  displayName: els.bankAccountDisplayName.value.trim(),
+  cnpjGroup: slot?.cnpjGroup || normalizeBankCnpjGroup(els.bankAccountCnpjGroup.value),
+  preparedSlotId: slotId,
+ };
+
+ if (current) Object.assign(current, registration);
+ else state.bankAccounts.push({
+  ...registration,
+  balance: 0,
+  balanceDate: "",
+  investmentBalance: 0,
+  investmentDate: "",
+  investmentSource: "",
+  source: "manual",
+  updatedAt: new Date().toISOString(),
+  syncProvider: "mock",
+  syncEndpoint: "",
+  lastSyncedAt: "",
+ });
+
+ if (current && (previousBankId !== bankId || previousAccountId !== accountId)) {
+  state.bankMovements.forEach((movement) => {
+   if (movement.bankId === previousBankId && movement.accountId === previousAccountId) {
+    movement.bankId = bankId;
+    movement.accountId = accountId;
+   }
+  });
+  state.bankApiConfigs.forEach((config) => {
+   if (config.accountKey === originalKey) config.accountKey = accountKey;
+  });
+ }
+
+ persist("financeiro");
+ renderAll();
+ els.bankAccountDialog.close();
+ toast("Conta bancária salva no grupo do CNPJ.");
 }
 
 function hydrateBankApiAccountOptions() {
@@ -10434,12 +10685,17 @@ function hydrateBankAccountFilter() {
  const accounts = new Map();
  state.bankMovements.filter((item) => !isSimulatedBankMovement(item)).forEach((item) => {
   const key = bankAccountKey(item);
-  if (!accounts.has(key)) accounts.set(key, { bankId: item.bankId || "Banco não identificado", accountId: item.accountId });
+  const registeredAccount = state.bankAccounts.find((account) => account.bankId === item.bankId && account.accountId === item.accountId);
+  if (!accounts.has(key)) accounts.set(key, {
+   bankId: item.bankId || "Banco não identificado",
+   accountId: item.accountId,
+   cnpjGroup: normalizeBankCnpjGroup(registeredAccount?.cnpjGroup),
+  });
  });
- const sorted = [...accounts.entries()].sort((a, b) => a[1].bankId.localeCompare(b[1].bankId) || String(a[1].accountId).localeCompare(String(b[1].accountId)));
+ const sorted = [...accounts.entries()].sort((a, b) => a[1].cnpjGroup.localeCompare(b[1].cnpjGroup) || a[1].bankId.localeCompare(b[1].bankId) || String(a[1].accountId).localeCompare(String(b[1].accountId)));
  els.bankAccountFilter.innerHTML =
   `<option value="todas">Todas as contas</option>` +
-  sorted.map(([key, acc]) => `<option value="${escapeHtml(key)}">${escapeHtml(acc.bankId)} - Conta ${escapeHtml(acc.accountId || "não identificada")}</option>`).join("");
+  sorted.map(([key, acc]) => `<option value="${escapeHtml(key)}">${escapeHtml(BANK_CNPJ_GROUPS[acc.cnpjGroup].label)} · ${escapeHtml(acc.bankId)} - Conta ${escapeHtml(acc.accountId || "não identificada")}</option>`).join("");
  els.bankAccountFilter.value = accounts.has(current) ? current : "todas";
 }
 
@@ -11782,6 +12038,298 @@ function deterministicImportId(prefix, value) {
   hash = Math.imul(hash, 16777619);
  }
  return `${prefix}-${(hash >>> 0).toString(36)}`;
+}
+
+function parseImportedFinanceDate(value) {
+ const match = String(value || "").trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+ return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
+}
+
+function importedFinanceDisplayValue(value) {
+ const text = String(value ?? "").trim();
+ return ["40", "41", "45"].includes(text) ? "" : text;
+}
+
+function importedFinanceNotes(batch, row) {
+ const sourceNotes = String(row.notes || "").trim();
+ return [
+  `Origem: ${batch.sourceFile}, linha ${row.row}.`,
+  row.situation ? `Situação original: ${row.situation}.` : "",
+  row.competenceDate ? `Competência: ${row.competenceDate}.` : "",
+  row.origin ? `Origem do lançamento: ${row.origin}.` : "",
+  row.paymentMethod ? `Forma de recebimento: ${row.paymentMethod}.` : "",
+  row.bankAccount ? `Conta bancária: ${row.bankAccount}.` : "",
+  row.invoice ? `Nota fiscal: ${row.invoice}.` : "",
+  row.recurrence ? `Recorrência: ${row.recurrence}${row.recurrenceQuantity ? ` (${row.recurrenceQuantity})` : ""}.` : "",
+  row.costCenter ? `Centro de custo original: ${row.costCenter}.` : "",
+  Number(row.realizedInterest || 0) || Number(row.realizedFine || 0) || Number(row.realizedDiscount || 0)
+   ? `Ajustes realizados: juros ${money(Number(row.realizedInterest || 0))}; multa ${money(Number(row.realizedFine || 0))}; desconto ${money(Number(row.realizedDiscount || 0))}.`
+   : "",
+  `Valor original: ${money(Number(row.originalAmount || 0))}; recebido: ${money(Number(row.receivedAmount || 0))}; em aberto: ${money(Number(row.openAmount || 0))}.`,
+  sourceNotes && sourceNotes !== "23" ? `Observações da planilha: ${sourceNotes}` : "",
+ ].filter(Boolean).join("\n");
+}
+
+function importedFinancePerson(normalized, batch, row) {
+ const name = String(row.customerName || "Cliente importado").trim();
+ let person = normalized.people.find((item) => normalizeText(item.name) === normalizeText(name));
+ if (person) {
+  if (person.type === "fornecedor") person.type = "ambos";
+  return person;
+ }
+ person = {
+  id: deterministicImportId("finance-import-person", `${batch.sourceId}:${name}`),
+  type: "cliente",
+  name,
+  document: "",
+  contact: "",
+  importSource: batch.sourceId,
+  createdAt: new Date().toISOString(),
+ };
+ normalized.people.push(person);
+ return person;
+}
+
+function applyFinanceReceivablesImports(normalized) {
+ const batches = Array.isArray(window.LUMERIS_FINANCE_RECEIVABLE_IMPORTS) ? window.LUMERIS_FINANCE_RECEIVABLE_IMPORTS : [];
+ const result = { people: 0, transactions: 0, matched: 0, receivedTotal: 0, openTotal: 0 };
+ batches.forEach((batch) => {
+  (batch.rows || []).forEach((row) => {
+   const peopleBefore = normalized.people.length;
+   const person = importedFinancePerson(normalized, batch, row);
+   if (normalized.people.length > peopleBefore) result.people += 1;
+   const dueDate = parseImportedFinanceDate(row.dueDate);
+   const paidDate = parseImportedFinanceDate(row.paidDate);
+   const receivedAmount = roundCurrency(Number(row.receivedAmount || 0));
+   const openAmount = roundCurrency(Number(row.openAmount || 0));
+   const portions = [];
+   if (receivedAmount > 0) portions.push({ key: "received", amount: receivedAmount, status: "recebido", paidDate: paidDate || dueDate, label: "parte recebida" });
+   if (openAmount > 0) portions.push({ key: "open", amount: openAmount, status: "aberto", paidDate: "", label: "saldo em aberto" });
+   if (!portions.length && Number(row.originalAmount || 0) > 0) {
+    portions.push({ key: "open", amount: roundCurrency(Number(row.originalAmount)), status: "aberto", paidDate: "", label: "saldo em aberto" });
+   }
+   const splitRow = portions.length > 1;
+   portions.forEach((portion) => {
+    const baseSourceKey = `${batch.sourceId}:row:${row.row}`;
+    const sourceKey = splitRow ? `${baseSourceKey}:${portion.key}` : baseSourceKey;
+    const transactionId = deterministicImportId("finance-import-receivable", sourceKey);
+    const sourceData = { ...row, sourceFile: batch.sourceFile, sourceId: batch.sourceId, period: batch.period, importPortion: portion.key };
+    const notes = [importedFinanceNotes(batch, row), splitRow ? `Parte importada: ${portion.label}.` : ""].filter(Boolean).join("\n");
+    let existing = normalized.transactions.find((item) => item.id === transactionId || item.importSourceKey === sourceKey);
+    if (!existing) {
+     existing = normalized.transactions.find((item) =>
+      item.type === "receber" &&
+      item.personId === person.id &&
+      item.dueDate === dueDate &&
+      item.status === portion.status &&
+      roundCurrency(Number(item.amount || 0)) === portion.amount &&
+      (portion.status === "aberto" || item.paidDate === portion.paidDate)
+     );
+    }
+
+    if (existing) {
+     existing.importSource = existing.importSource || batch.sourceId;
+     existing.importSourceKey = existing.importSourceKey || sourceKey;
+     existing.sourceData = existing.sourceData || sourceData;
+     if (!String(existing.notes || "").includes(batch.sourceFile)) {
+      existing.notes = [existing.notes, notes].filter(Boolean).join("\n\n");
+     }
+     result.matched += 1;
+     return;
+    }
+
+    const createdAt = `${portion.paidDate || dueDate || `${batch.period}-01`}T12:00:00.000Z`;
+    normalized.transactions.push({
+     id: transactionId,
+     type: "receber",
+     personId: person.id,
+     description: `${String(row.description || row.costCenter || "Conta a receber importada").trim()}${splitRow ? ` - ${portion.label}` : ""}`,
+     category: String(row.category || "Receitas diversas").trim(),
+     dreGroup: "receita_bruta",
+     dueDate,
+     amount: portion.amount,
+     status: portion.status,
+     paidDate: portion.paidDate,
+     notes,
+     directProjectCost: false,
+     projectId: "",
+     allocations: [],
+     saleId: "",
+     installmentNumber: "",
+     installmentTotal: "",
+     bankMovementId: "",
+     invoiceId: "",
+     importSource: batch.sourceId,
+     importSourceKey: sourceKey,
+     sourceData,
+     createdAt,
+     updatedAt: createdAt,
+    });
+    result.transactions += 1;
+    if (portion.status === "recebido") result.receivedTotal = roundCurrency(result.receivedTotal + portion.amount);
+    else result.openTotal = roundCurrency(result.openTotal + portion.amount);
+   });
+  });
+ });
+ return result;
+}
+
+function importedFinancePayableNotes(batch, row) {
+ const sourceNotes = importedFinanceDisplayValue(row.notes);
+ const paymentMethod = importedFinanceDisplayValue(row.paymentMethod);
+ const invoice = importedFinanceDisplayValue(row.invoice);
+ const recurrenceQuantity = importedFinanceDisplayValue(row.recurrenceQuantity);
+ const categories = [
+  [row.category1, row.categoryValue1],
+  [row.category2, row.categoryValue2],
+  [row.category3, row.categoryValue3],
+ ].filter(([name]) => String(name || "").trim())
+  .map(([name, value]) => `${String(name).trim()} (${money(Number(value || 0))})`)
+  .join("; ");
+ const costCenters = [
+  [row.costCenter1a, row.costCenterValue1a],
+  [row.costCenter2, row.costCenterValue2],
+  [row.costCenter3, row.costCenterValue3],
+  [row.costCenter4, row.costCenterValue4],
+  [row.costCenter1b, row.costCenterValue1b],
+  [row.costCenter1c, row.costCenterValue1c],
+ ].filter(([name]) => String(name || "").trim())
+  .map(([name, value]) => `${String(name).trim()} (${money(Number(value || 0))})`)
+  .join("; ");
+ return [
+  `Origem: ${batch.sourceFile}, linha ${row.row}.`,
+  row.situation ? `Situação original: ${row.situation}.` : "",
+  row.referenceCode ? `Código de referência: ${row.referenceCode}.` : "",
+  row.competenceDate ? `Competência: ${row.competenceDate}.` : "",
+  row.expectedDate ? `Data prevista: ${row.expectedDate}.` : "",
+  row.origin ? `Origem do lançamento: ${row.origin}.` : "",
+  paymentMethod ? `Forma de pagamento: ${paymentMethod}.` : "",
+  importedFinanceDisplayValue(row.bankAccount) ? `Conta bancária: ${importedFinanceDisplayValue(row.bankAccount)}.` : "",
+  invoice ? `Nota fiscal: ${invoice}.` : "",
+  row.recurrence ? `Recorrência: ${row.recurrence}${recurrenceQuantity ? ` (${recurrenceQuantity})` : ""}.` : "",
+  categories ? `Categorias da planilha: ${categories}.` : "",
+  costCenters ? `Centros de custo da planilha: ${costCenters}.` : "",
+  Number(row.realizedInterest || 0) || Number(row.realizedFine || 0) || Number(row.realizedDiscount || 0)
+   ? `Ajustes realizados: juros ${money(Number(row.realizedInterest || 0))}; multa ${money(Number(row.realizedFine || 0))}; desconto ${money(Number(row.realizedDiscount || 0))}.`
+   : "",
+  `Valor original: ${money(Number(row.originalAmount || 0))}; pago: ${money(Number(row.paidAmount || 0))}; em aberto: ${money(Number(row.openAmount || 0))}.`,
+  sourceNotes ? `Observações da planilha: ${sourceNotes}` : "",
+ ].filter(Boolean).join("\n");
+}
+
+function importedFinanceSupplier(normalized, batch, row) {
+ const name = String(row.supplierName || "Fornecedor importado").trim();
+ let person = normalized.people.find((item) => normalizeText(item.name) === normalizeText(name));
+ if (person) {
+  if (person.type === "cliente") person.type = "ambos";
+  return person;
+ }
+ person = {
+  id: deterministicImportId("finance-import-supplier", `${batch.sourceId}:${name}`),
+  type: "fornecedor",
+  name,
+  document: "",
+  contact: "",
+  importSource: batch.sourceId,
+  createdAt: new Date().toISOString(),
+ };
+ normalized.people.push(person);
+ return person;
+}
+
+function applyFinancePayablesImports(normalized) {
+ const batches = Array.isArray(window.LUMERIS_FINANCE_PAYABLE_IMPORTS) ? window.LUMERIS_FINANCE_PAYABLE_IMPORTS : [];
+ const result = { people: 0, transactions: 0, matched: 0, paidTotal: 0, openTotal: 0 };
+ batches.forEach((batch) => {
+  (batch.rows || []).forEach((row) => {
+   const peopleBefore = normalized.people.length;
+   const person = importedFinanceSupplier(normalized, batch, row);
+   if (normalized.people.length > peopleBefore) result.people += 1;
+   const dueDate = parseImportedFinanceDate(row.dueDate);
+   const paidDate = parseImportedFinanceDate(row.paidDate);
+   const paidAmount = roundCurrency(Number(row.paidAmount || 0));
+   const openAmount = roundCurrency(Number(row.openAmount || 0));
+   const portions = [];
+   if (paidAmount > 0) portions.push({ key: "paid", amount: paidAmount, status: "pago", paidDate: paidDate || dueDate, label: "parte paga" });
+   if (openAmount > 0) portions.push({ key: "open", amount: openAmount, status: "aberto", paidDate: "", label: "saldo em aberto" });
+   if (!portions.length && Number(row.originalAmount || 0) > 0) {
+    portions.push({ key: "open", amount: roundCurrency(Number(row.originalAmount)), status: "aberto", paidDate: "", label: "saldo em aberto" });
+   }
+   const splitRow = portions.length > 1;
+   portions.forEach((portion) => {
+    const baseSourceKey = `${batch.sourceId}:row:${row.row}`;
+    const sourceKey = splitRow ? `${baseSourceKey}:${portion.key}` : baseSourceKey;
+    const transactionId = deterministicImportId("finance-import-payable", sourceKey);
+    const baseDescription = String(row.description || row.category1 || "Conta a pagar importada").trim();
+    const description = `${baseDescription}${splitRow ? ` - ${portion.label}` : ""}`;
+    const sourceData = {
+     ...row,
+     sourceFile: batch.sourceFile,
+     sourceId: batch.sourceId,
+     period: batch.period,
+     importPortion: portion.key,
+    };
+    const notes = [
+     importedFinancePayableNotes(batch, row),
+     splitRow ? `Parte importada: ${portion.label}.` : "",
+    ].filter(Boolean).join("\n");
+    let existing = normalized.transactions.find((item) => item.id === transactionId || item.importSourceKey === sourceKey);
+    if (!existing) {
+     existing = normalized.transactions.find((item) =>
+      !item.importSourceKey &&
+      item.type === "pagar" &&
+      item.personId === person.id &&
+      item.dueDate === dueDate &&
+      item.status === portion.status &&
+      (portion.status === "aberto" || item.paidDate === portion.paidDate) &&
+      roundCurrency(Number(item.amount || 0)) === portion.amount &&
+      normalizeText(item.description) === normalizeText(description)
+     );
+    }
+    if (existing) {
+     existing.importSource = existing.importSource || batch.sourceId;
+     existing.importSourceKey = existing.importSourceKey || sourceKey;
+     existing.sourceData = existing.sourceData || sourceData;
+     if (!String(existing.notes || "").includes(batch.sourceFile)) {
+      existing.notes = [existing.notes, notes].filter(Boolean).join("\n\n");
+     }
+     result.matched += 1;
+     return;
+    }
+    const createdAt = `${portion.paidDate || dueDate || `${batch.period}-01`}T12:00:00.000Z`;
+    normalized.transactions.push({
+     id: transactionId,
+     type: "pagar",
+     personId: person.id,
+     description,
+     category: String(row.category1 || "Despesas diversas").trim(),
+     dreGroup: "despesas_operacionais",
+     dueDate,
+     amount: portion.amount,
+     status: portion.status,
+     paidDate: portion.paidDate,
+     notes,
+     directProjectCost: false,
+     projectId: "",
+     allocations: [],
+     saleId: "",
+     installmentNumber: "",
+     installmentTotal: "",
+     bankMovementId: "",
+     invoiceId: "",
+     importSource: batch.sourceId,
+     importSourceKey: sourceKey,
+     sourceData,
+     createdAt,
+     updatedAt: createdAt,
+    });
+    result.transactions += 1;
+    if (portion.status === "pago") result.paidTotal = roundCurrency(result.paidTotal + portion.amount);
+    else result.openTotal = roundCurrency(result.openTotal + portion.amount);
+   });
+  });
+ });
+ return result;
 }
 
 function stockUnitFromName(name) {
@@ -14652,7 +15200,7 @@ function openTransactionDialog(item = null) {
  els.transactionDirectProjectCost.checked = Boolean(item.directProjectCost);
  const allocations = item.allocations || [];
  els.transactionProjectMode.value = allocations.length > 1 ? "split" : allocations.length === 1 ? "single" : "none";
- els.transactionProject.value = allocations[0].projectId || "";
+ els.transactionProject.value = allocations[0]?.projectId || "";
  els.transactionUseInstallments.checked = false;
  els.transactionEntryAmount.value = 0;
  els.transactionInstallments.value = 1;
@@ -14703,10 +15251,15 @@ function saveTransaction() {
   directProjectCost: els.transactionDirectProjectCost.checked,
   projectId: allocations.length === 1 ? allocations[0].projectId : "",
   allocations,
-  saleId: existing.saleId || "",
-  installmentNumber: existing.installmentNumber || "",
-  installmentTotal: existing.installmentTotal || "",
-  bankMovementId: existing.bankMovementId || "",
+  saleId: existing?.saleId || "",
+  installmentNumber: existing?.installmentNumber || "",
+  installmentTotal: existing?.installmentTotal || "",
+  bankMovementId: existing?.bankMovementId || "",
+  invoiceId: existing?.invoiceId || "",
+  importSource: existing?.importSource || "",
+  importSourceKey: existing?.importSourceKey || "",
+  sourceData: existing?.sourceData || null,
+  createdAt: existing?.createdAt || new Date().toISOString(),
   updatedAt: new Date().toISOString(),
  };
 
@@ -15431,10 +15984,13 @@ function importBackup(event) {
 }
 
 function exportCsv(type) {
- const header = ["tipo", "pessoa", "descricao", "parcela", "categoria", "grupo_dre", "vencimento", "valor", "status", "baixa", "observacoes"];
+ const header = ["tipo", "pessoa", "descricao", "parcela", "categoria", "grupo_dre", "competencia", "vencimento", "valor_original", "valor", "valor_em_aberto", "status", "baixa", "forma_recebimento", "conta_bancaria", "nota_fiscal", "origem_lancamento", "recorrencia", "centro_custo_origem", "observacoes"];
  const rows = businessTransactions()
   .filter((item) => item.type === type)
-  .map((item) => [item.type, personName(item.personId), item.description, installmentLabel(item), item.category, dreGroupLabel(item.dreGroup), item.dueDate, item.amount, item.status, item.paidDate, item.notes]);
+  .map((item) => {
+   const source = item.sourceData || {};
+   return [item.type, personName(item.personId), item.description, installmentLabel(item), item.category, dreGroupLabel(item.dreGroup), source.competenceDate || "", item.dueDate, source.originalAmount ?? item.amount, item.amount, source.openAmount ?? "", item.status, item.paidDate, importedFinanceDisplayValue(source.paymentMethod), importedFinanceDisplayValue(source.bankAccount), importedFinanceDisplayValue(source.invoice), source.origin || "", source.recurrence || "", source.costCenter || "", item.notes];
+  });
  downloadCsv(`financeiro-lumeris-${type}-${todayIso}.csv`, [header, ...rows]);
 }
 
