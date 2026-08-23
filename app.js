@@ -5723,6 +5723,10 @@ function renderDashboard() {
  const pagarVencido = sum(pagar.filter(isOverdue));
  const realizadoMes = sum(transactions.filter(isPaidThisMonth).map(signedAmount));
 
+ renderDashboardSalesManagement();
+ renderDashboardProtocolManagement();
+ renderDashboardInstallationManagement();
+
  document.querySelector("#kpiReceberAberto").textContent = money(receberAberto);
  document.querySelector("#kpiPagarAberto").textContent = money(pagarAberto);
  document.querySelector("#kpiReceberVencido").textContent = `${money(receberVencido)} vencido`;
@@ -5731,35 +5735,224 @@ function renderDashboard() {
  document.querySelector("#kpiPagarVencido").textContent = `${money(pagarVencido)} vencido`;
  document.querySelector("#kpiSaldoPrevisto").textContent = money(receberAberto - pagarAberto);
  document.querySelector("#kpiRealizadoMes").textContent = money(realizadoMes);
- renderSectorOverview(receberAberto, pagarAberto);
+ document.querySelector("#dashboardFlowReceivables").textContent = money(receberAberto);
 
  renderBankBalances();
  renderCashflowBars();
  renderUpcoming();
  renderInvoiceDashboardKpis();
+ bindDashboardNavigation();
 }
 
-function renderSectorOverview(receberAberto, pagarAberto) {
- const monthSales = state.sales.filter((sale) => !isOperationalTestSale(sale) && isInPeriod(sale.saleDate, currentMonthStart, currentMonthEnd));
- const monthSalesTotal = sum(monthSales.map((sale) => sale.total || 0));
- const activeProjects = businessProjects().filter((project) => !["concluido", "cancelado"].includes(project.status));
- const scheduledInstallations = businessInstallations().filter((item) => !["concluida", "cancelada"].includes(item.status));
- const stockTotal = sum(state.stockItems.filter(isStockItemActive).map((item) => (item.quantity || 0) * (item.averageCost || 0)));
- const monthInvoices = state.invoices.filter((invoice) => invoice.kind !== "despesa" && invoice.status !== "cancelada" && isInPeriod(invoice.issueDate, currentMonthStart, currentMonthEnd));
- const monthInvoicesTotal = sum(monthInvoices.map(accountingValueOf));
+function dashboardPercentage(value, digits = 1) {
+ return `${Number(value || 0).toFixed(digits).replace(".", ",")}%`;
+}
 
- document.querySelector("#dashboardSalesTotal").textContent = money(monthSalesTotal);
- document.querySelector("#dashboardSalesSmall").textContent = `${monthSales.length} venda(s) no mês`;
- document.querySelector("#dashboardFinanceBalance").textContent = money(receberAberto - pagarAberto);
- document.querySelector("#dashboardFinanceSmall").textContent = `${money(receberAberto)} a receber / ${money(pagarAberto)} a pagar`;
- document.querySelector("#dashboardProjectsCount").textContent = String(activeProjects.length);
- document.querySelector("#dashboardProjectsSmall").textContent = `${state.projects.filter((project) => project.status === "homologacao").length} em homologação`;
- document.querySelector("#dashboardInstallationsCount").textContent = String(scheduledInstallations.length);
- document.querySelector("#dashboardInstallationsSmall").textContent = `${businessInstallations().filter((item) => item.status === "concluida").length} concluída(s)`;
- document.querySelector("#dashboardStockValue").textContent = money(stockTotal);
- document.querySelector("#dashboardStockSmall").textContent = `${state.stockItems.filter(isStockItemActive).length} item(ns) ativo(s)`;
- document.querySelector("#dashboardInvoicesTotal").textContent = money(monthInvoicesTotal);
- document.querySelector("#dashboardInvoicesSmall").textContent = `${monthInvoices.length} NF emitida(s) no mês`;
+function dashboardManagementKpi(label, value, hint, tone = "neutral") {
+ return `
+  <article class="management-kpi ${tone}">
+   <span>${escapeHtml(label)}</span>
+   <strong>${escapeHtml(String(value))}</strong>
+   <small>${escapeHtml(hint)}</small>
+  </article>`;
+}
+
+function dashboardStatusBar(label, count, total, tone = "neutral") {
+ const percentage = total > 0 ? (count / total) * 100 : 0;
+ return `
+  <div class="management-status-row ${tone}">
+   <div><span>${escapeHtml(label)}</span><strong>${count}</strong></div>
+   <div class="management-status-track"><i style="width:${Math.min(100, percentage)}%"></i></div>
+   <small>${dashboardPercentage(percentage)} dos itens acompanhados</small>
+  </div>`;
+}
+
+function dashboardSellerName(sellerKey) {
+ const entry = state.salesRankingEntries.find((item) => (
+  !isSalesTargetCompatibilityEntry(item) && normalizeText(item.seller) === sellerKey
+ ));
+ const marker = state.salesRankingEntries.find((entry) => (
+  isSalesSellerTargetCompatibilityEntry(entry) && normalizeText(entry.sellerKey || entry.seller) === sellerKey
+ ));
+ const user = state.users.find((item) => normalizeText(item.name || item.username) === sellerKey);
+ const seller = state.sellers.find((item) => normalizeText(item.name) === sellerKey);
+ return user?.name || seller?.name || entry?.seller || marker?.seller || sellerKey;
+}
+
+function renderDashboardSalesManagement() {
+ const period = todayIso.slice(0, 7);
+ const monthlyTarget = salesRankTargetForPeriod(period);
+ const entries = state.salesRankingEntries.filter((item) => !isSalesTargetCompatibilityEntry(item) && item.period === period);
+ const total = sum(entries.map((item) => Number(item.amount || 0)));
+ const monthlyPercentage = monthlyTarget > 0 ? (total / monthlyTarget) * 100 : 0;
+ const currentDecade = salesRankDecadeForPeriod(period);
+ const lastDay = new Date(Number(period.slice(0, 4)), Number(period.slice(5, 7)), 0).getDate();
+ const decades = [
+  { number: 1, label: "1ª dezena", start: 1, end: 10 },
+  { number: 2, label: "2ª dezena", start: 11, end: 20 },
+  { number: 3, label: "3ª dezena", start: 21, end: lastDay },
+ ].map((decade) => {
+  const decadeEntries = entries.filter((item) => {
+   const day = Number(salesRankEntryDate(item).slice(8, 10));
+   return day >= decade.start && day <= decade.end;
+  });
+  const sold = sum(decadeEntries.map((item) => Number(item.amount || 0)));
+  const target = monthlyTarget / 3;
+  return {
+   ...decade,
+   sold,
+   count: decadeEntries.length,
+   target,
+   percentage: target > 0 ? (sold / target) * 100 : 0,
+   contribution: monthlyTarget > 0 ? (sold / monthlyTarget) * 100 : 0,
+  };
+ });
+
+ document.querySelector("#dashboardSalesPeriod").textContent = monthLabel(period);
+ document.querySelector("#dashboardSalesGoal").textContent = money(monthlyTarget);
+ document.querySelector("#dashboardSalesResult").textContent = money(total);
+ document.querySelector("#dashboardSalesPercentage").textContent = dashboardPercentage(monthlyPercentage);
+ document.querySelector("#dashboardSalesPercentage").classList.toggle("achieved", monthlyPercentage >= 100);
+ document.querySelector("#dashboardSalesProgress").style.width = `${Math.min(100, monthlyPercentage)}%`;
+ document.querySelector("#dashboardSalesGap").textContent = monthlyTarget > 0
+  ? total >= monthlyTarget ? `${money(total - monthlyTarget)} acima da meta mensal.` : `Faltam ${money(monthlyTarget - total)} para atingir a meta mensal.`
+  : "Defina a meta mensal no Rank Vendas.";
+
+ document.querySelector("#dashboardSalesDecades").innerHTML = decades.map((decade) => {
+  const isCurrent = decade.number === currentDecade.number;
+  const tone = decade.percentage >= 100 ? "achieved" : isCurrent ? "current" : decade.number < currentDecade.number ? "attention" : "future";
+  return `
+   <article class="management-decade-card ${tone}">
+    <div><span>${decade.label}</span>${isCurrent ? "<b>Atual</b>" : ""}</div>
+    <small>Dias ${decade.start} a ${decade.end}</small>
+    <strong>${money(decade.sold)}</strong>
+    <div class="management-decade-numbers"><span>${dashboardPercentage(decade.percentage)} da meta da dezena</span><b>${decade.count} venda${decade.count === 1 ? "" : "s"}</b></div>
+    <div class="management-progress"><i style="width:${Math.min(100, decade.percentage)}%"></i></div>
+    <small>${dashboardPercentage(decade.contribution, 2)} da meta mensal · objetivo ${money(decade.target)}</small>
+   </article>`;
+ }).join("");
+
+ const target = state.salesTargets.find((item) => item.period === period);
+ const sellerKeys = new Set([
+  ...entries.map((item) => normalizeText(item.seller)),
+  ...Object.keys(target?.sellerTargets || {}),
+ ]);
+ const sellers = [...sellerKeys].filter(Boolean).map((sellerKey) => {
+  const name = dashboardSellerName(sellerKey);
+  const sellerTarget = salesRankSellerTargetForPeriod(period, name);
+  const sellerEntries = entries.filter((item) => normalizeText(item.seller) === sellerKey);
+  const decadeValues = decades.map((decade) => {
+   const sold = sum(sellerEntries.filter((item) => {
+    const day = Number(salesRankEntryDate(item).slice(8, 10));
+    return day >= decade.start && day <= decade.end;
+   }).map((item) => Number(item.amount || 0)));
+   return { sold, percentage: sellerTarget > 0 ? (sold / sellerTarget) * 100 : 0 };
+  });
+  return { name, target: sellerTarget, total: sum(sellerEntries.map((item) => Number(item.amount || 0))), decades: decadeValues };
+ }).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name, "pt-BR"));
+
+ document.querySelector("#dashboardSalesSellers").innerHTML = sellers.length ? `
+  <div class="management-seller-head"><span>Vendedor</span><span>1ª dezena</span><span>2ª dezena</span><span>3ª dezena</span><span>Total do mês</span></div>
+  ${sellers.map((seller) => `
+   <article class="management-seller-row">
+    <div><strong>${escapeHtml(seller.name)}</strong><small>Meta individual ${money(seller.target)}</small></div>
+    ${seller.decades.map((decade) => `<div><strong>${money(decade.sold)}</strong><small class="${decade.percentage >= SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD ? "achieved" : ""}">${dashboardPercentage(decade.percentage, 2)}</small></div>`).join("")}
+    <div><strong>${money(seller.total)}</strong><small>${dashboardPercentage(seller.target > 0 ? (seller.total / seller.target) * 100 : 0, 2)} da meta</small></div>
+   </article>`).join("")}`
+  : emptyMessage("Nenhuma venda registrada no Rank Vendas para este mês.");
+ document.querySelector("#dashboardFlowSales").textContent = String(entries.length);
+}
+
+function renderDashboardProtocolManagement() {
+ const all = state.protocols;
+ const open = all.filter(protocolIsOpen);
+ const overdue = open.filter((item) => { const days = protocolDaysRemaining(item); return days !== null && days < 0; });
+ const dueThisWeek = open.filter((item) => { const days = protocolDaysRemaining(item); return days !== null && days >= 0 && days <= 7; });
+ const waitingClient = open.filter((item) => item.status === "aguardando_cliente");
+ const waitingDocuments = open.filter((item) => item.status === "aguardando_documentos");
+ const waitingUtility = open.filter((item) => item.status === "aguardando_concessionaria");
+ const released = all.filter((item) => item.status === PROTOCOL_RELEASE_STATUS);
+ const completed = all.filter((item) => item.status === "concluido");
+
+ document.querySelector("#dashboardProtocolKpis").innerHTML = [
+  dashboardManagementKpi("Em aberto", open.length, "Tramitações ativas", open.length ? "neutral" : "ok"),
+  dashboardManagementKpi("Em atraso", overdue.length, "Prazo da concessionária vencido", overdue.length ? "danger" : "ok"),
+  dashboardManagementKpi("Vencem em 7 dias", dueThisWeek.length, "Prioridade da semana", dueThisWeek.length ? "warn" : "ok"),
+  dashboardManagementKpi("Aguardando cliente", waitingClient.length, "Dependem de retorno ou documento", waitingClient.length ? "warn" : "ok"),
+  dashboardManagementKpi("Liberados", released.length, "Prontos para avançar à instalação", "ok"),
+  dashboardManagementKpi("Concluídos", completed.length, "Tramitações finalizadas", "neutral"),
+ ].join("");
+
+ const statusRows = PROTOCOL_STATUSES.map((status) => ({
+  label: status.label,
+  count: open.filter((item) => item.status === status.id).length,
+ })).filter((row) => row.count > 0).sort((a, b) => b.count - a.count);
+ document.querySelector("#dashboardProtocolStatuses").innerHTML = statusRows.length
+  ? statusRows.slice(0, 6).map((row, index) => dashboardStatusBar(row.label, row.count, open.length, index === 0 ? "highlight" : "neutral")).join("")
+  : emptyMessage("Nenhum protocolo em aberto.");
+ document.querySelector("#dashboardProtocolFocus").innerHTML = `
+  <span class="management-focus-label">Atenção gerencial</span>
+  <strong>${overdue.length + waitingDocuments.length}</strong>
+  <h3>itens exigem ação imediata</h3>
+  <ul>
+   <li><b>${overdue.length}</b> protocolo(s) fora do prazo</li>
+   <li><b>${waitingDocuments.length}</b> aguardando documentos</li>
+   <li><b>${waitingUtility.length}</b> aguardando concessionária</li>
+  </ul>
+  <small>${released.length} protocolo(s) já liberaram a próxima etapa operacional.</small>`;
+ document.querySelector("#dashboardFlowProtocols").textContent = String(open.length);
+}
+
+function renderDashboardInstallationManagement() {
+ const installations = businessInstallations();
+ const pending = installations.filter((item) => !["concluida", "cancelada"].includes(normalizeInstallationStatus(item.status)));
+ const unscheduled = pending.filter(isInstallationWaitingScheduling);
+ const waitingRelease = pending.filter((item) => normalizeInstallationStatus(item.status).startsWith("aguardando_"));
+ const programmed = pending.filter((item) => normalizeInstallationStatus(item.status) === "programada");
+ const inProgress = pending.filter((item) => normalizeInstallationStatus(item.status) === "em_andamento");
+ const late = pending.filter(isInstallationLate);
+ const postSaleLate = pending.filter(isPostSaleContactLate);
+ const completedMonth = installations.filter((item) => {
+  const completed = item.completedDate || (normalizeInstallationStatus(item.status) === "concluida" ? String(item.updatedAt || "").slice(0, 10) : "");
+  return completed && completed >= currentMonthStart && completed <= currentMonthEnd;
+ });
+
+ document.querySelector("#dashboardInstallationKpis").innerHTML = [
+  dashboardManagementKpi("Pendentes", pending.length, "Serviços ainda não concluídos", pending.length ? "neutral" : "ok"),
+  dashboardManagementKpi("Sem programação", unscheduled.length, "Sem data e equipe definidas", unscheduled.length ? "warn" : "ok"),
+  dashboardManagementKpi("Aguardando liberação", waitingRelease.length, "Projeto, material, cliente ou concessionária", waitingRelease.length ? "warn" : "ok"),
+  dashboardManagementKpi("Em andamento", inProgress.length, "Execuções abertas agora", "neutral"),
+  dashboardManagementKpi("Em atraso", late.length, "Prazo operacional vencido", late.length ? "danger" : "ok"),
+  dashboardManagementKpi("Concluídas no mês", completedMonth.length, "Entregas realizadas no período", "ok"),
+ ].join("");
+
+ const statusRows = [
+  { label: "Sem programação", count: unscheduled.length, tone: unscheduled.length ? "warn" : "neutral" },
+  { label: "Aguardando liberações", count: waitingRelease.length, tone: waitingRelease.length ? "warn" : "neutral" },
+  { label: "Programadas", count: programmed.length, tone: "highlight" },
+  { label: "Em andamento", count: inProgress.length, tone: "highlight" },
+  { label: "Em atraso", count: late.length, tone: late.length ? "danger" : "neutral" },
+ ].filter((row) => row.count > 0);
+ document.querySelector("#dashboardInstallationStatuses").innerHTML = statusRows.length
+  ? statusRows.map((row) => dashboardStatusBar(row.label, row.count, pending.length, row.tone)).join("")
+  : emptyMessage("Nenhuma instalação pendente.");
+ document.querySelector("#dashboardInstallationFocus").innerHTML = `
+  <span class="management-focus-label">Fila crítica</span>
+  <strong>${unscheduled.length + late.length}</strong>
+  <h3>serviços precisam de decisão</h3>
+  <ul>
+   <li><b>${unscheduled.length}</b> sem programação</li>
+   <li><b>${late.length}</b> fora do prazo operacional</li>
+   <li><b>${postSaleLate.length}</b> contatos de pós-venda atrasados</li>
+  </ul>
+  <small>${programmed.length + inProgress.length} serviço(s) já estão programados ou em execução.</small>`;
+ document.querySelector("#dashboardFlowInstallations").textContent = String(pending.length);
+}
+
+function bindDashboardNavigation() {
+ document.querySelectorAll("#dashboard [data-dashboard-view]").forEach((button) => {
+  button.onclick = () => setView(button.dataset.dashboardView);
+ });
 }
 
 
