@@ -144,7 +144,12 @@ async function runSyncPatch(body) {
       // o JSON do ERP em cada confirmacao fazia uma alteracao pequena transferir
       // novamente a base inteira e multiplicava o consumo de rede.
       delete result.data;
-      return result;
+      return {
+        ...result,
+        committed: true,
+        mutationId,
+        operationCount: Array.isArray(body.operations) ? body.operations.length : 0,
+      };
     }
 
     const now = new Date();
@@ -178,6 +183,9 @@ async function runSyncPatch(body) {
 
     return {
       ok: true,
+      committed: true,
+      mutationId,
+      operationCount: Array.isArray(body.operations) ? body.operations.length : 0,
       updatedAt: now.toISOString(),
       version: nextVersion,
       revision: nextRevision,

@@ -24,9 +24,9 @@ const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
 const DEFAULT_SALES_RANK_SELLER_GOAL = 200000;
 const SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD = 33.33;
-// Versao 8 tambem concilia cadastros determinísticos das importações financeiras,
-// além de exigir o controle de manutenção com confirmação remota imediata.
-const SYNC_PROTOCOL_VERSION = 8;
+// Versao 9 exige um recibo do servidor vinculado a cada mutacao antes de a
+// interface informar que CRM, Rank ou outro setor foi gravado na nuvem.
+const SYNC_PROTOCOL_VERSION = 9;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
 const SYNC_BASE_STORAGE_KEY = "financeiro-lumeris-sync-base-v2";
@@ -1131,13 +1131,13 @@ function bindEvents() {
  document.querySelector("#manageSellersBtn").addEventListener("click", openSellerDialog);
  document.querySelector("#newTaskBtn").addEventListener("click", openTaskDialog);
 
- els.opportunityForm.addEventListener("submit", (event) => {
+ els.opportunityForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (event.submitter.value === "cancel") {
+  if (event.submitter?.value === "cancel") {
    els.opportunityDialog.close();
    return;
   }
-  saveOpportunity();
+  await saveOpportunity(event.submitter);
  });
 
  els.sellerForm.addEventListener("submit", (event) => {
@@ -1169,14 +1169,14 @@ function bindEvents() {
  els.taskSellerFilter.addEventListener("change", renderTasks);
  els.taskStatusFilter.addEventListener("change", renderTasks);
 
- els.opportunityLostForm.addEventListener("submit", (event) => {
+ els.opportunityLostForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (event.submitter.value === "cancel") {
+  if (event.submitter?.value === "cancel") {
    els.opportunityLostDialog.close();
    renderPipelineBoard(); // reverte o <select> que o usuário mudou visualmente, já que nada foi salvo
    return;
   }
-  confirmOpportunityLost();
+  await confirmOpportunityLost(event.submitter);
  });
 
  els.opportunityWonForm.addEventListener("submit", (event) => {
@@ -2517,6 +2517,78 @@ function persist(scopes, options = {}) {
  return true;
 }
 
+function hasPendingSyncForScopes(scopes) {
+ const normalizedScopes = normalizePersistScopes(scopes);
+ return Array.from(pendingSyncScopes).some((pendingScope) => (
+  pendingScope === "all" || normalizedScopes.includes("all") || normalizedScopes.includes(pendingScope)
+ ));
+}
+
+async function waitForSyncIdle(timeoutMs = SYNC_TIMEOUT_MS + 5000) {
+ const startedAt = Date.now();
+ while (syncInFlight) {
+  if (Date.now() - startedAt > timeoutMs) {
+   const error = new Error("Tempo esgotado aguardando a confirmação do servidor");
+   error.code = "remote_confirmation_timeout";
+   throw error;
+  }
+  await new Promise((resolve) => window.setTimeout(resolve, 50));
+ }
+}
+
+async function persistAndConfirm(scopes) {
+ const normalizedScopes = normalizePersistScopes(scopes);
+ const localSnapshot = normalizeState(cloneStateValue(state));
+ const expectedOperations = remoteSyncBaseState
+  ? buildSyncOperations(remoteSyncBaseState, localSnapshot, normalizedScopes)
+  : null;
+
+ if (expectedOperations && !expectedOperations.length) {
+  discardNoopPendingSyncScopes(normalizedScopes);
+  setSyncStatus("Nenhuma alteração nova para enviar", "ok");
+  return { ok: true, noChanges: true, revision: remoteRevision, version: remoteVersion };
+ }
+
+ if (!persist(normalizedScopes)) {
+  const error = new Error("Não foi possível preservar a alteração neste computador");
+  error.code = "local_save_failed";
+  throw error;
+ }
+
+ let acknowledgement = null;
+ for (let attempt = 0; attempt < 4; attempt += 1) {
+  window.clearTimeout(syncTimer);
+  await waitForSyncIdle();
+  window.clearTimeout(syncTimer);
+
+  const remainingOperations = remoteSyncBaseState
+   ? buildSyncOperations(remoteSyncBaseState, normalizeState(cloneStateValue(state)), normalizedScopes)
+   : ["remote-base-pending"];
+  if (!remainingOperations.length && !hasPendingSyncForScopes(normalizedScopes)) break;
+
+  const result = await pushToSheets({ rethrow: true });
+  if (result?.queued) {
+   attempt -= 1;
+   continue;
+  }
+  if (result && !result.noChanges) acknowledgement = result;
+ }
+
+ await waitForSyncIdle();
+ const remainingOperations = remoteSyncBaseState
+  ? buildSyncOperations(remoteSyncBaseState, normalizeState(cloneStateValue(state)), normalizedScopes)
+  : ["remote-base-pending"];
+ if (remainingOperations.length || hasPendingSyncForScopes(normalizedScopes) || !acknowledgement) {
+  const error = new Error("O servidor não confirmou a gravação completa da alteração");
+  error.code = "remote_confirmation_timeout";
+  setSyncStatus("Alteração não confirmada na nuvem. Dados preservados neste computador.", "error");
+  throw error;
+ }
+
+ setSyncStatus(`Gravado na nuvem · revisão ${acknowledgement.revision}`, "ok");
+ return acknowledgement;
+}
+
 async function initRemoteSync(options = {}) {
  if (!SHEETS_ENDPOINT) {
   setSyncStatus("Somente neste navegador (Sheets não configurado)", "offline");
@@ -3178,15 +3250,20 @@ function scheduleRemoteSync(scopes) {
  return true;
 }
 
-async function pushToSheets() {
+async function pushToSheets(options = {}) {
  if (activeSyncConflict) {
   syncConflictBlocked = true;
   setSyncStatus(`Conflito aguardando revisão: ${activeSyncConflict.detail}. Dados locais preservados.`, "error");
-  return;
+  if (options.rethrow) {
+   const error = new Error("Existe um conflito aguardando revisão");
+   error.code = "record_conflict";
+   throw error;
+  }
+  return null;
  }
  if (syncInFlight) {
   syncQueued = true;
-  return;
+  return { ok: false, queued: true };
  }
 
  syncInFlight = true;
@@ -3266,7 +3343,13 @@ async function pushToSheets() {
    if (!saveLocalState()) throw localSyncPersistenceError();
    saveSyncOutbox();
    if (!clearSyncBatch()) throw localSyncPersistenceError();
-  if (!pendingSyncScopes.size) setSyncStatus("Sincronizado com a nuvem", "ok");
+   if (!pendingSyncScopes.size) {
+    setSyncStatus(
+     result.noChanges ? "Nenhuma alteração nova para enviar" : `Gravado na nuvem · revisão ${result.revision}`,
+     "ok",
+    );
+   }
+   return result;
  } catch (error) {
   console.error(error);
   scopes.forEach((scope) => pendingSyncScopes.add(scope));
@@ -3331,6 +3414,7 @@ async function pushToSheets() {
    } else {
    setSyncStatus("Erro ao sincronizar. Dados locais preservados; troque de tela ou salve novamente para tentar.", "error");
   }
+  if (options.rethrow) throw error;
  } finally {
   syncInFlight = false;
   if (syncQueued && !syncConflictBlocked) scheduleRemoteSync(Array.from(pendingSyncScopes));
@@ -3352,6 +3436,7 @@ async function pushAtomicPatch(scopes, localState) {
  if (!operations.length) {
   return {
    ok: true,
+   noChanges: true,
    updatedAt: remoteUpdatedAt,
    version: remoteVersion,
    revision: remoteRevision,
@@ -3395,6 +3480,10 @@ async function pushAtomicPatch(scopes, localState) {
   error.userMessage = result.message || "";
   throw error;
  }
+ LumerisSyncConfirmation.assertSyncAcknowledgement(result, {
+   mutationId: batch.mutationId,
+   operationCount: batch.operations.length,
+ });
  return {
   ...result,
   appliedOperations: batch.operations,
@@ -3640,12 +3729,13 @@ async function persistMaintenanceStateImmediately(nextMaintenance, allowRetry = 
  const remoteMaintenance = normalizeMaintenanceState(remoteState.maintenance);
  if (syncCanonical(remoteMaintenance) !== syncCanonical(normalizedNext)) {
   const actor = currentSessionUser();
+  const mutationId = crypto.randomUUID();
   const response = await fetchWithTimeout(SHEETS_ENDPOINT, {
    method: "POST",
    body: JSON.stringify({
     action: "sync.patch",
     protocolVersion: SYNC_PROTOCOL_VERSION,
-    mutationId: crypto.randomUUID(),
+    mutationId,
     clientId: syncClientId(),
     actorId: String(actor?.id || actor?.username || ""),
     actorName: String(actor?.name || actor?.username || ""),
@@ -3670,6 +3760,7 @@ async function persistMaintenanceStateImmediately(nextMaintenance, allowRetry = 
    error.code = result.error || "maintenance_update_failed";
    throw error;
   }
+  LumerisSyncConfirmation.assertSyncAcknowledgement(result, { mutationId, operationCount: 1 });
   applyRemoteSyncMetadata(result);
  }
 
@@ -6476,7 +6567,7 @@ function discardNoopPendingSyncScopes(scopes) {
  if (!saveLocalState() || !saveSyncOutbox()) return false;
  automaticSyncFollowUpCount = 0;
  window.clearTimeout(syncTimer);
- setSyncStatus("Sincronizado com a nuvem", "ok");
+ setSyncStatus("Nenhuma alteração nova para enviar", "ok");
  return true;
 }
 
@@ -6527,7 +6618,7 @@ function ensureSalesTargetCompatibilityEntries() {
  return changed;
 }
 
-function saveSalesRankMonthlyGoal() {
+async function saveSalesRankMonthlyGoal() {
  const period = els.salesRankFilterPeriod.value || todayIso.slice(0, 7);
  const amount = roundCurrency(Number(els.salesRankMonthlyGoal.value || 0));
  if (!period || amount <= 0) {
@@ -6547,9 +6638,18 @@ function saveSalesRankMonthlyGoal() {
  if (index >= 0) state.salesTargets[index] = target;
  else state.salesTargets.push(target);
  ensureSalesTargetCompatibilityEntries();
- if (!persist("crm")) return;
- renderManualSalesRanking();
- toast(`Meta de ${monthLabel(period)} salva.`);
+ els.saveSalesRankGoalBtn.disabled = true;
+ try {
+  await persistAndConfirm("crm");
+  renderManualSalesRanking();
+  toast(`Meta de ${monthLabel(period)} gravada na nuvem.`);
+ } catch (error) {
+  console.error("Meta mensal não confirmada", error);
+  renderManualSalesRanking();
+  toast("Meta preservada neste computador, mas ainda não confirmada na nuvem.");
+ } finally {
+  els.saveSalesRankGoalBtn.disabled = false;
+ }
 }
 
 function salesRankDecadeForPeriod(period) {
@@ -6610,7 +6710,7 @@ function renderSalesRankGoalProgress(period, entries, total) {
  ].join("");
 }
 
-function saveManualSalesRankEntry(event) {
+async function saveManualSalesRankEntry(event) {
  event.preventDefault();
  const entryId = els.salesRankEntryId.value;
  const seller = els.salesRankSeller.value.trim();
@@ -6647,11 +6747,30 @@ function saveManualSalesRankEntry(event) {
   state.salesRankingEntries.push(entry);
  }
  updateSalesRankSellerTarget(period, seller, sellerGoal);
- if (!persist("crm")) return;
- resetManualSalesRankForm(period);
- els.salesRankFilterPeriod.value = period;
- renderManualSalesRanking();
- toast(existingEntry ? "Venda atualizada no ranking." : "Venda adicionada ao ranking.");
+ const submitButton = event.submitter || els.salesRankSubmitBtn;
+ const submitLabel = submitButton?.textContent || "Adicionar ao ranking";
+ if (submitButton) {
+  submitButton.disabled = true;
+  submitButton.textContent = "Gravando na nuvem...";
+ }
+ let confirmed = false;
+ try {
+  await persistAndConfirm("crm");
+  confirmed = true;
+  resetManualSalesRankForm(period);
+  els.salesRankFilterPeriod.value = period;
+  renderManualSalesRanking();
+  toast(existingEntry ? "Venda atualizada e gravada na nuvem." : "Venda adicionada e gravada na nuvem.");
+ } catch (error) {
+  console.error("Lançamento do ranking não confirmado", error);
+  renderManualSalesRanking();
+  toast("Venda preservada neste computador, mas ainda não confirmada na nuvem. Não feche esta aba.");
+ } finally {
+  if (submitButton) {
+   submitButton.disabled = false;
+   if (!confirmed) submitButton.textContent = submitLabel;
+  }
+ }
 }
 
 function resetManualSalesRankForm(period = "") {
@@ -6783,7 +6902,7 @@ function renderManualSalesRanking() {
   </article>`).join("") : emptyMessage("Nenhum lançamento manual neste período.");
 }
 
-function handleSalesRankListAction(event) {
+async function handleSalesRankListAction(event) {
  const button = event.target.closest("[data-action='save-rank-seller-goal']");
  if (!button) return;
  const seller = String(button.dataset.seller || "").trim();
@@ -6798,12 +6917,21 @@ function handleSalesRankListAction(event) {
   toast(`A meta de ${seller} já está em ${money(amount)}.`);
   return;
  }
- if (!persist("crm")) return;
- renderManualSalesRanking();
- toast(`Meta individual de ${seller} salva.`);
+ button.disabled = true;
+ try {
+  await persistAndConfirm("crm");
+  renderManualSalesRanking();
+  toast(`Meta individual de ${seller} gravada na nuvem.`);
+ } catch (error) {
+  console.error("Meta individual não confirmada", error);
+  renderManualSalesRanking();
+  toast("Meta preservada neste computador, mas ainda não confirmada na nuvem.");
+ } finally {
+  button.disabled = false;
+ }
 }
 
-function handleManualSalesRankAction(event) {
+async function handleManualSalesRankAction(event) {
  const button = event.target.closest("[data-action]");
  if (!button) return;
  const entry = state.salesRankingEntries.find((item) => item.id === button.dataset.id);
@@ -6815,9 +6943,14 @@ function handleManualSalesRankAction(event) {
  if (button.dataset.action !== "delete-rank-entry" || !window.confirm(`Excluir a venda de ${entry.client} do ranking?`)) return;
  state.salesRankingEntries = state.salesRankingEntries.filter((item) => item.id !== entry.id);
  if (els.salesRankEntryId.value === entry.id) resetManualSalesRankForm(entry.period);
- persist("crm");
  renderManualSalesRanking();
- toast("Lançamento excluído do ranking.");
+ try {
+  await persistAndConfirm("crm");
+  toast("Lançamento excluído e remoção gravada na nuvem.");
+ } catch (error) {
+  console.error("Exclusão do ranking não confirmada", error);
+  toast("Exclusão preservada neste computador, mas ainda não confirmada na nuvem.");
+ }
 }
 
 function saleRow(sale) {
@@ -13320,7 +13453,7 @@ function openOpportunityDialog(item = null) {
  els.opportunityDialog.showModal();
 }
 
-function saveOpportunity() {
+async function saveOpportunity(submitButton = null) {
  const now = new Date().toISOString();
  const id = els.opportunityId.value || crypto.randomUUID();
  const existing = state.opportunities.find((item) => item.id === id);
@@ -13387,20 +13520,52 @@ function saveOpportunity() {
   state.opportunities.push(data);
   addOpportunityHistory(id, "criacao", "", data.stageId);
  }
+ els.opportunityId.value = id;
 
- persist("crm");
- renderAll();
- els.opportunityDialog.close();
- toast("Oportunidade salva.");
- if (data.stage === "ganho" && (!existing || existing.stage !== "ganho") && !data.installationId && !data.contractId) {
-  openOpportunityWonDialog(data);
+ const submitLabel = submitButton?.textContent || "Salvar";
+ if (submitButton) {
+  submitButton.disabled = true;
+  submitButton.textContent = "Gravando na nuvem...";
+ }
+ try {
+  await persistAndConfirm("crm");
+  const confirmedOpportunity = state.opportunities.find((item) => item.id === id) || data;
+  renderAll();
+  els.opportunityDialog.close();
+  toast("Oportunidade gravada na nuvem.");
+  if (confirmedOpportunity.stage === "ganho" && (!existing || existing.stage !== "ganho") && !confirmedOpportunity.installationId && !confirmedOpportunity.contractId) {
+   openOpportunityWonDialog(confirmedOpportunity);
+  }
+ } catch (error) {
+  console.error("Oportunidade não confirmada", error);
+  toast("Oportunidade preservada neste computador, mas ainda não confirmada na nuvem. Não feche esta aba.");
+ } finally {
+  if (submitButton) {
+   submitButton.disabled = false;
+   submitButton.textContent = submitLabel;
+  }
  }
 }
 
-function deleteOpportunity() {
+async function deleteOpportunity() {
  const id = els.opportunityId.value;
  const opportunity = state.opportunities.find((item) => item.id === id);
  if (!opportunity) {
+  if (id && hasPendingSyncForScopes("crm")) {
+   els.opportunityDeleteBtn.disabled = true;
+   try {
+    await persistAndConfirm("crm");
+    els.opportunityDialog.close();
+    renderAll();
+    toast("Exclusão gravada na nuvem.");
+   } catch (error) {
+    console.error("Exclusão da oportunidade não confirmada", error);
+    toast("Exclusão preservada neste computador, mas ainda não confirmada na nuvem.");
+   } finally {
+    els.opportunityDeleteBtn.disabled = false;
+   }
+   return;
+  }
   toast("Oportunidade não encontrada.");
   return;
  }
@@ -13425,10 +13590,18 @@ function deleteOpportunity() {
  state.opportunityHistory = state.opportunityHistory.filter((item) => item.opportunityId !== id);
  state.interactions = state.interactions.filter((item) => item.opportunityId !== id);
  state.tasks = state.tasks.filter((item) => item.opportunityId !== id);
- persist("crm");
- els.opportunityDialog.close();
  renderAll();
- toast("Oportunidade excluída.");
+ els.opportunityDeleteBtn.disabled = true;
+ try {
+  await persistAndConfirm("crm");
+  els.opportunityDialog.close();
+  toast("Oportunidade excluída e remoção gravada na nuvem.");
+ } catch (error) {
+  console.error("Exclusão da oportunidade não confirmada", error);
+  toast("Exclusão preservada neste computador, mas ainda não confirmada na nuvem. Não feche esta aba.");
+ } finally {
+  els.opportunityDeleteBtn.disabled = false;
+ }
 }
 
 function renderPipelineBoard() {
@@ -13599,7 +13772,7 @@ function pipelineCard(opportunity) {
   </article>`;
 }
 
-function handleStageSelect(opportunityId, newStage) {
+async function handleStageSelect(opportunityId, newStage) {
  const opportunity = state.opportunities.find((item) => item.id === opportunityId);
  if (!opportunity || newStage === opportunity.stage) return;
 
@@ -13608,19 +13781,26 @@ function handleStageSelect(opportunityId, newStage) {
   return;
  }
 
- changeOpportunityStage(opportunity, newStage);
- if (newStage === "ganho") openOpportunityWonDialog(opportunity);
+ try {
+  await changeOpportunityStage(opportunity, newStage);
+  if (newStage === "ganho") openOpportunityWonDialog(opportunity);
+ } catch (error) {
+  console.error("Etapa da oportunidade não confirmada", error);
+  renderAll();
+  toast("Alteração preservada neste computador, mas ainda não confirmada na nuvem.");
+ }
 }
 
-function changeOpportunityStage(opportunity, newStage) {
+async function changeOpportunityStage(opportunity, newStage) {
  const now = new Date().toISOString();
+ const stageChanged = opportunity.stage !== newStage;
  opportunity.stage = newStage;
  opportunity.stageChangedAt = now;
- opportunity.stageHistory.push({ stage: newStage, at: now });
+ if (stageChanged) opportunity.stageHistory.push({ stage: newStage, at: now });
  opportunity.updatedAt = now;
  if (newStage === "ganho" && !opportunity.wonAt) opportunity.wonAt = now;
  if (newStage === "perdido" && !opportunity.lostAt) opportunity.lostAt = now;
- persist("crm");
+ await persistAndConfirm("crm");
  renderAll();
 }
 
@@ -13630,13 +13810,28 @@ function openOpportunityLostDialog(opportunity) {
  els.opportunityLostDialog.showModal();
 }
 
-function confirmOpportunityLost() {
+async function confirmOpportunityLost(submitButton = null) {
  const opportunity = state.opportunities.find((item) => item.id === els.opportunityLostId.value);
  if (!opportunity) return;
  opportunity.lostReason = els.opportunityLostReason.value.trim();
- changeOpportunityStage(opportunity, "perdido");
- els.opportunityLostDialog.close();
- toast("Oportunidade marcada como perdida.");
+ const submitLabel = submitButton?.textContent || "Confirmar";
+ if (submitButton) {
+  submitButton.disabled = true;
+  submitButton.textContent = "Gravando na nuvem...";
+ }
+ try {
+  await changeOpportunityStage(opportunity, "perdido");
+  els.opportunityLostDialog.close();
+  toast("Oportunidade marcada como perdida e gravada na nuvem.");
+ } catch (error) {
+  console.error("Perda da oportunidade não confirmada", error);
+  toast("Alteração preservada neste computador, mas ainda não confirmada na nuvem.");
+ } finally {
+  if (submitButton) {
+   submitButton.disabled = false;
+   submitButton.textContent = submitLabel;
+  }
+ }
 }
 
 function serviceUsuallyRequiresUtilityProtocol(serviceType) {
