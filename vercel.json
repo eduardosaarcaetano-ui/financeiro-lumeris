@@ -45,7 +45,7 @@
       ]
     },
     {
-      "source": "/(app.js|styles.css|sync-confirmation.js)",
+      "source": "/(app.js|styles.css|sync-confirmation.js|crm-ranking.js)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
       ]

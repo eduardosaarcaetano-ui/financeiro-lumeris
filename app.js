@@ -1,5 +1,6 @@
 ﻿const STORAGE_KEY = "financeiro-lumeris-v3";
 const LEGACY_STORAGE_KEYS = ["financeiro-lumeris-v2", "financeiro-lumeris-v1"];
+const CRM_RANKING = window.LumerisCrmRanking;
 
 // GitHub Pages e Vercel publicam o mesmo branch/app.js. Enquanto os dois
 // sistemas convivem, o GitHub Pages (host legado) continua falando com o
@@ -5860,7 +5861,7 @@ function dashboardStatusBar(label, count, total, tone = "neutral") {
 
 function dashboardSellerName(sellerKey) {
  const entry = state.salesRankingEntries.find((item) => (
-  !isSalesTargetCompatibilityEntry(item) && normalizeText(item.seller) === sellerKey
+  isActiveSalesRankEntry(item) && normalizeText(item.seller) === sellerKey
  ));
  const marker = state.salesRankingEntries.find((entry) => (
   isSalesSellerTargetCompatibilityEntry(entry) && normalizeText(entry.sellerKey || entry.seller) === sellerKey
@@ -5873,7 +5874,7 @@ function dashboardSellerName(sellerKey) {
 function renderDashboardSalesManagement() {
  const period = todayIso.slice(0, 7);
  const monthlyTarget = salesRankTargetForPeriod(period);
- const entries = state.salesRankingEntries.filter((item) => !isSalesTargetCompatibilityEntry(item) && item.period === period);
+ const entries = state.salesRankingEntries.filter((item) => isActiveSalesRankEntry(item) && item.period === period);
  const total = sum(entries.map((item) => Number(item.amount || 0)));
  const monthlyPercentage = monthlyTarget > 0 ? (total / monthlyTarget) * 100 : 0;
  const currentDecade = salesRankDecadeForPeriod(period);
@@ -6587,6 +6588,10 @@ function isSalesTargetCompatibilityEntry(item) {
  return isSalesMonthlyTargetCompatibilityEntry(item) || isSalesSellerTargetCompatibilityEntry(item);
 }
 
+function isActiveSalesRankEntry(item) {
+ return !isSalesTargetCompatibilityEntry(item) && CRM_RANKING.isActiveEntry(item);
+}
+
 function ensureSalesTargetCompatibilityEntries() {
  let changed = false;
  state.salesTargets.forEach((target) => {
@@ -6812,7 +6817,7 @@ function hydrateSalesRankSellerOptions() {
  };
  state.users.filter(isCommercialUser).forEach((user) => addSeller(user.name || user.username));
  state.sellers.filter((seller) => seller.active !== false).forEach((seller) => addSeller(seller.name));
- state.salesRankingEntries.filter((entry) => !isSalesTargetCompatibilityEntry(entry)).forEach((entry) => addSeller(entry.seller));
+ state.salesRankingEntries.filter(isActiveSalesRankEntry).forEach((entry) => addSeller(entry.seller));
  addSeller(selectedSeller);
  const names = [...sellersByName.values()].sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
  els.salesRankSeller.innerHTML = `<option value="">Selecione o vendedor</option>${names
@@ -6827,7 +6832,7 @@ function renderManualSalesRanking() {
  hydrateSalesRankSellerOptions();
  const period = els.salesRankFilterPeriod.value || todayIso.slice(0, 7);
  const entries = state.salesRankingEntries
-  .filter((item) => !isSalesTargetCompatibilityEntry(item) && item.period === period)
+  .filter((item) => isActiveSalesRankEntry(item) && item.period === period)
   .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
  const grouped = new Map();
  entries.forEach((item) => {
@@ -6895,9 +6900,10 @@ function renderManualSalesRanking() {
   <article class="sales-rank-entry">
    <div><strong>${escapeHtml(item.client)}</strong><span>${formatDate(salesRankEntryDate(item))} - ${escapeHtml(item.seller)}${item.city ? ` - ${escapeHtml(item.city)}` : ""}</span></div>
    <strong>${money(item.amount)}</strong>
-   <div class="sales-rank-entry-actions">
-    <button type="button" data-action="edit-rank-entry" data-id="${item.id}" aria-label="Editar lançamento">Editar</button>
-    <button type="button" data-action="delete-rank-entry" data-id="${item.id}" aria-label="Excluir lançamento">Excluir</button>
+   <div class="sales-rank-entry-actions">${CRM_RANKING.isAutomaticEntry(item) ?
+    `<span class="muted">Automático do CRM</span>` :
+    `<button type="button" data-action="edit-rank-entry" data-id="${item.id}" aria-label="Editar lançamento">Editar</button>
+     <button type="button" data-action="delete-rank-entry" data-id="${item.id}" aria-label="Excluir lançamento">Excluir</button>`}
    </div>
   </article>`).join("") : emptyMessage("Nenhum lançamento manual neste período.");
 }
@@ -13470,6 +13476,7 @@ async function saveOpportunity(submitButton = null) {
     : stageId === "negociacao" ? "negociacao"
      : "prospeccao";
  const closedDate = els.opportunityClosedDate.value || previous.closedDate || "";
+ const effectiveClosedDate = pipelineStage === "ganho" ? (closedDate || todayIso) : "";
  const data = {
   ...previous,
   id,
@@ -13482,8 +13489,8 @@ async function saveOpportunity(submitButton = null) {
   pipelineId: els.opportunityPipeline.value,
   stageId,
   stage: pipelineStage,
-  closedDate: pipelineStage === "ganho" ? closedDate : "",
-  wonAt: pipelineStage === "ganho" && closedDate ? new Date(`${closedDate}T12:00:00`).toISOString() : previous.wonAt || "",
+  closedDate: effectiveClosedDate,
+  wonAt: pipelineStage === "ganho" ? new Date(`${effectiveClosedDate}T12:00:00`).toISOString() : previous.wonAt || "",
   owner: ownerData.owner,
   ownerUserId: ownerData.ownerUserId,
   phone: els.opportunityPhone.value.trim(),
@@ -13507,6 +13514,11 @@ async function saveOpportunity(submitButton = null) {
   stageChangedAt: previous.stageId === stageId ? previous.stageChangedAt || now : now,
   stageHistory: Array.isArray(previous.stageHistory) && previous.stageHistory.length ? [...previous.stageHistory] : [{ stage: pipelineStage, at: now }],
  };
+ const wonValidationMessage = pipelineStage === "ganho" ? opportunityWonRankingValidationMessage(data) : "";
+ if (wonValidationMessage) {
+  toast(wonValidationMessage);
+  return;
+ }
  if (existing && existing.stageId !== data.stageId) {
   addOpportunityHistory(id, "mudanca de etapa", existing.stageId, data.stageId);
   data.lastMovedAt = now;
@@ -13520,6 +13532,10 @@ async function saveOpportunity(submitButton = null) {
   state.opportunities.push(data);
   addOpportunityHistory(id, "criacao", "", data.stageId);
  }
+ syncOpportunitySalesRank(data, {
+  createIfMissing: isOpportunityWon(data) && (!existing || !isOpportunityWon(existing)),
+  now,
+ });
  els.opportunityId.value = id;
 
  const submitLabel = submitButton?.textContent || "Salvar";
@@ -13785,6 +13801,10 @@ async function handleStageSelect(opportunityId, newStage) {
   await changeOpportunityStage(opportunity, newStage);
   if (newStage === "ganho") openOpportunityWonDialog(opportunity);
  } catch (error) {
+  if (error?.code === "crm_won_ranking_validation") {
+   renderAll();
+   return;
+  }
   console.error("Etapa da oportunidade não confirmada", error);
   renderAll();
   toast("Alteração preservada neste computador, mas ainda não confirmada na nuvem.");
@@ -13793,6 +13813,16 @@ async function handleStageSelect(opportunityId, newStage) {
 
 async function changeOpportunityStage(opportunity, newStage) {
  const now = new Date().toISOString();
+ const wasWon = isOpportunityWon(opportunity);
+ if (newStage === "ganho") {
+  const validationMessage = opportunityWonRankingValidationMessage(opportunity);
+  if (validationMessage) {
+   toast(validationMessage);
+   const validationError = new Error(validationMessage);
+   validationError.code = "crm_won_ranking_validation";
+   throw validationError;
+  }
+ }
  const stageChanged = opportunity.stage !== newStage;
  opportunity.stage = newStage;
  opportunity.stageChangedAt = now;
@@ -13800,6 +13830,7 @@ async function changeOpportunityStage(opportunity, newStage) {
  opportunity.updatedAt = now;
  if (newStage === "ganho" && !opportunity.wonAt) opportunity.wonAt = now;
  if (newStage === "perdido" && !opportunity.lostAt) opportunity.lostAt = now;
+ syncOpportunitySalesRank(opportunity, { createIfMissing: newStage === "ganho" && !wasWon, now });
  await persistAndConfirm("crm");
  renderAll();
 }
@@ -14393,6 +14424,7 @@ function completeOpportunityWonFlow(opportunity, settings = {}) {
  ensureProtocolFromWonOpportunity(opportunity, settings);
  ensureReceivablesFromWonOpportunity(opportunity, settings);
  const now = new Date().toISOString();
+ syncOpportunitySalesRank(opportunity, { createIfMissing: false, now });
  opportunity.postWinCompletedAt = opportunity.postWinCompletedAt || now;
  opportunity.postWinUpdatedAt = now;
  opportunity.updatedAt = now;
@@ -14638,6 +14670,58 @@ function opportunityWonDate(item) {
  return (item.closedDate || item.wonAt || item.stageChangedAt || item.lastMovedAt || item.updatedAt || item.createdAt || "").slice(0, 10);
 }
 
+function opportunityWonRankingValidationMessage(opportunity) {
+ if (!String(opportunity?.ownerUserId || opportunity?.owner || "").trim()) return "Informe o vendedor responsável antes de fechar a oportunidade como ganha.";
+ if (!opportunity?.personId || !state.people.some((person) => person.id === opportunity.personId)) return "Vincule um cliente antes de fechar a oportunidade como ganha.";
+ if (Number(opportunity?.value || 0) <= 0) return "Informe um valor maior que zero antes de fechar a oportunidade como ganha.";
+ return "";
+}
+
+function automaticSalesRankEntryForOpportunity(opportunityId) {
+ const deterministicId = CRM_RANKING.automaticEntryId(opportunityId);
+ return state.salesRankingEntries.find((entry) => (
+  entry.id === deterministicId
+  || (CRM_RANKING.isAutomaticEntry(entry) && entry.opportunityId === opportunityId)
+ ));
+}
+
+function syncOpportunitySalesRank(opportunity, options = {}) {
+ if (!CRM_RANKING) throw new Error("Módulo de integração CRM/Ranking não carregado.");
+ const now = options.now || new Date().toISOString();
+ const existing = automaticSalesRankEntryForOpportunity(opportunity.id);
+ if (!isOpportunityWon(opportunity)) {
+  if (!existing || !CRM_RANKING.isActiveEntry(existing)) return false;
+  const cancelled = CRM_RANKING.buildCancelledEntry(existing, {
+   now,
+   reason: "opportunity_no_longer_won",
+  });
+  state.salesRankingEntries = state.salesRankingEntries.map((entry) => entry === existing ? cancelled : entry);
+  return true;
+ }
+ if (!existing && !options.createIfMissing) return false;
+
+ const validationMessage = opportunityWonRankingValidationMessage(opportunity);
+ if (validationMessage) throw new Error(validationMessage);
+ const configuredUnit = unitName(opportunity.unitId);
+ const entry = CRM_RANKING.buildActiveEntry({
+  opportunityId: opportunity.id,
+  seller: opportunityOwnerDisplay(opportunity),
+  sellerUserId: opportunity.ownerUserId || "",
+  client: personName(opportunity.personId),
+  city: opportunity.location?.city || (configuredUnit === "Sem unidade" ? "" : configuredUnit),
+  amount: opportunity.value,
+  saleDate: opportunityWonDate(opportunity) || todayIso,
+  existing,
+  now,
+ });
+ if (existing) {
+  state.salesRankingEntries = state.salesRankingEntries.map((item) => item === existing ? entry : item);
+ } else {
+  state.salesRankingEntries.push(entry);
+ }
+ return true;
+}
+
 function opportunityLostDate(item) {
  return (item.lostAt || item.stageChangedAt || item.lastMovedAt || item.updatedAt || item.createdAt || "").slice(0, 10);
 }
@@ -14748,7 +14832,7 @@ function manualSalesRankingRowsForPeriod(mode) {
   ? { label: `Ano ${selectedYear}`, start: `${selectedYear}-01`, end: `${selectedYear}-12` }
   : { label: monthLabel(selectedMonth), start: selectedMonth, end: selectedMonth };
  const entries = state.salesRankingEntries.filter((item) => {
-  if (isSalesTargetCompatibilityEntry(item)) return false;
+  if (!isActiveSalesRankEntry(item)) return false;
   const entryPeriod = String(item.period || "").slice(0, 7);
   if (mode === "year" || mode === "ano") return entryPeriod.slice(0, 4) === selectedYear;
   return entryPeriod === selectedMonth;

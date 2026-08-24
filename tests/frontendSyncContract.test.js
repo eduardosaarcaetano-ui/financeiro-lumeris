@@ -8,6 +8,7 @@ const root = path.resolve(__dirname, "..");
 const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const api = fs.readFileSync(path.join(root, "api", "sync.js"), "utf8");
 const index = fs.readFileSync(path.join(root, "index.html"), "utf8");
+const crmRanking = fs.readFileSync(path.join(root, "crm-ranking.js"), "utf8");
 const vercel = fs.readFileSync(path.join(root, "vercel.json"), "utf8");
 
 assert.match(app, /const SYNC_PROTOCOL_VERSION = 9;/);
@@ -23,8 +24,16 @@ assert.match(noopBlock, /Nenhuma alteração nova para enviar/);
 
 assert.match(api, /committed: true/);
 assert.match(api, /mutationId/);
-assert.match(index, /Versão 9\.9/);
-assert.ok(index.indexOf("sync-confirmation.js") < index.indexOf("app.js?v=9.9-sync-confirmation-r1"));
+assert.match(index, /Versão 10\.0/);
+assert.ok(index.indexOf("sync-confirmation.js") < index.indexOf("crm-ranking.js?v=10.0-crm-ranking-r1"));
+assert.ok(index.indexOf("crm-ranking.js?v=10.0-crm-ranking-r1") < index.indexOf("app.js?v=10.0-crm-ranking-r1"));
+assert.match(crmRanking, /crm_won_sale/);
+assert.match(app, /syncOpportunitySalesRank/);
+assert.match(app, /syncOpportunitySalesRank\(data,[\s\S]{0,200}createIfMissing:/);
+assert.match(app, /syncOpportunitySalesRank\(opportunity, \{ createIfMissing: newStage === "ganho"/);
+assert.match(app, /seller: opportunityOwnerDisplay\(opportunity\)/);
+assert.match(app, /saleDate: opportunityWonDate\(opportunity\) \|\| todayIso/);
+assert.match(vercel, /crm-ranking\.js/);
 assert.match(vercel, /app\.js\|styles\.css\|sync-confirmation\.js/);
 assert.match(vercel, /max-age=0, must-revalidate/);
 assert.match(vercel, /no-store, max-age=0/);
