@@ -2818,6 +2818,7 @@ textarea {
 
 .searchable-select {
   position: relative;
+  min-width: 0;
 }
 
 .password-edit-field {
@@ -2854,6 +2855,7 @@ textarea {
 
 .searchable-select-input {
   padding-left: 34px;
+  width: 100%;
 }
 
 .searchable-select-options {

@@ -65,6 +65,7 @@ const MASTER_INITIAL_PASSWORD = "7695988";
 const DEFAULT_USER_PASSWORD = "Lumeris-2026";
 
 const SEARCH_ICON_SVG = '<svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>';
+const SEARCHABLE_SELECT_RESULT_LIMIT = 100;
 
 let currentInvoiceKind = "servico";
 
@@ -1032,6 +1033,14 @@ function bindEvents() {
  els.userRole.addEventListener("change", updateUserSectorUi);
  els.toggleUserPasswordBtn.addEventListener("click", toggleUserPasswordVisibility);
  els.userPassword.value = DEFAULT_USER_PASSWORD;
+ enhanceSearchableSelect(els.opportunityPerson, { placeholder: "Digite o nome do cliente" });
+ enhanceSearchableSelect(els.opportunityUnit, { placeholder: "Buscar unidade" });
+ enhanceSearchableSelect(els.opportunityPipeline, { placeholder: "Buscar pipeline" });
+ enhanceSearchableSelect(els.opportunityStage, { placeholder: "Buscar etapa" });
+ enhanceSearchableSelect(els.opportunityOwner, { placeholder: "Digite o responsável" });
+ enhanceSearchableSelect(els.opportunityProject, { placeholder: "Digite o projeto" });
+ enhanceSearchableSelect(els.salePerson, { placeholder: "Digite o nome do cliente" });
+ enhanceSearchableSelect(els.saleProject, { placeholder: "Digite o projeto ou centro de custo" });
  enhanceSearchableSelect(els.projectCustomer, { placeholder: "Buscar cliente" });
  enhanceSearchableSelect(els.bankProject, { placeholder: "Buscar projeto" });
  enhanceSearchableSelect(els.protocolCustomer, { placeholder: "Buscar cliente" });
@@ -3929,6 +3938,7 @@ function setOpportunityOwnerValue(opportunity = null) {
  } else {
   els.opportunityOwner.value = "";
  }
+ refreshSearchableSelect(els.opportunityOwner);
 }
 
 function readOpportunityOwnerFromForm() {
@@ -4231,18 +4241,28 @@ function enhanceSearchableSelect(selectEl, { placeholder = "Buscar" } = {}) {
  input.className = "searchable-select-input";
  input.placeholder = placeholder;
  input.autocomplete = "off";
+ input.setAttribute("role", "combobox");
+ input.setAttribute("aria-autocomplete", "list");
+ input.setAttribute("aria-expanded", "false");
  inputWrap.appendChild(input);
 
  const optionsBox = document.createElement("div");
  optionsBox.className = "searchable-select-options hidden";
+ optionsBox.id = `${selectEl.id || "select"}-search-options`;
+ optionsBox.setAttribute("role", "listbox");
+ input.setAttribute("aria-controls", optionsBox.id);
 
  selectEl.parentNode.insertBefore(wrap, selectEl);
  wrap.appendChild(inputWrap);
  wrap.appendChild(optionsBox);
  wrap.appendChild(selectEl);
 
+ let activeIndex = -1;
+
  function getOptions() {
-  return Array.from(selectEl.options).map((option) => ({ value: option.value, label: option.textContent }));
+  return Array.from(selectEl.options)
+   .filter((option) => !option.disabled)
+   .map((option) => ({ value: option.value, label: option.textContent }));
  }
 
  function syncInputFromSelect() {
@@ -4251,26 +4271,45 @@ function enhanceSearchableSelect(selectEl, { placeholder = "Buscar" } = {}) {
  }
 
  function renderOptions(filterText) {
-  const filter = filterText.trim().toLowerCase();
-  const items = getOptions().filter((option) => option.label.toLowerCase().includes(filter));
+  const filter = normalizeText(filterText);
+  const matches = getOptions().filter((option) => normalizeText(option.label).includes(filter));
+  const items = matches.slice(0, SEARCHABLE_SELECT_RESULT_LIMIT);
+  activeIndex = -1;
   optionsBox.innerHTML = items.length ?
-    items.map((option) => `<div class="searchable-select-option" data-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</div>`).join("")
+    `${items.map((option) => `<div class="searchable-select-option" role="option" aria-selected="false" data-value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</div>`).join("")}
+     ${matches.length > SEARCHABLE_SELECT_RESULT_LIMIT ? `<div class="searchable-select-empty">Mais resultados disponíveis. Continue digitando para refinar.</div>` : ""}`
    : `<div class="searchable-select-empty">Nenhum resultado</div>`;
+ }
+
+ function setActiveOption(nextIndex) {
+  const options = [...optionsBox.querySelectorAll("[data-value]")];
+  if (!options.length) return;
+  activeIndex = (nextIndex + options.length) % options.length;
+  options.forEach((option, index) => {
+   const active = index === activeIndex;
+   option.classList.toggle("active", active);
+   option.setAttribute("aria-selected", String(active));
+  });
+  options[activeIndex].scrollIntoView({ block: "nearest" });
  }
 
  function openOptions() {
   renderOptions(input.value);
   optionsBox.classList.remove("hidden");
+  input.setAttribute("aria-expanded", "true");
  }
 
  function closeOptions() {
   optionsBox.classList.add("hidden");
+  input.setAttribute("aria-expanded", "false");
+  activeIndex = -1;
  }
 
  input.addEventListener("focus", () => {
   input.select();
   renderOptions("");
   optionsBox.classList.remove("hidden");
+  input.setAttribute("aria-expanded", "true");
  });
 
  inputWrap.addEventListener("click", () => {
@@ -4278,6 +4317,7 @@ function enhanceSearchableSelect(selectEl, { placeholder = "Buscar" } = {}) {
   input.select();
   renderOptions("");
   optionsBox.classList.remove("hidden");
+  input.setAttribute("aria-expanded", "true");
  });
 
  input.addEventListener("input", () => {
@@ -4288,11 +4328,28 @@ function enhanceSearchableSelect(selectEl, { placeholder = "Buscar" } = {}) {
   if (event.key === "Escape") {
    closeOptions();
    syncInputFromSelect();
+  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+   event.preventDefault();
+   if (optionsBox.classList.contains("hidden")) openOptions();
+   const direction = event.key === "ArrowDown" ? 1 : -1;
+   const options = [...optionsBox.querySelectorAll("[data-value]")];
+   const nextIndex = activeIndex < 0 ? (direction > 0 ? 0 : options.length - 1) : activeIndex + direction;
+   setActiveOption(nextIndex);
   } else if (event.key === "Enter") {
    event.preventDefault();
-   const first = optionsBox.querySelector("[data-value]");
-   if (first) selectOption(first.dataset.value);
+   const options = [...optionsBox.querySelectorAll("[data-value]")];
+   const selectedOption = options[activeIndex] || options[0];
+   if (selectedOption) selectOption(selectedOption.dataset.value);
   }
+ });
+
+ input.addEventListener("blur", () => {
+  window.setTimeout(() => {
+   if (!wrap.contains(document.activeElement)) {
+    closeOptions();
+    syncInputFromSelect();
+   }
+  }, 0);
  });
 
  optionsBox.addEventListener("mousedown", (event) => {
@@ -4317,11 +4374,18 @@ function enhanceSearchableSelect(selectEl, { placeholder = "Buscar" } = {}) {
  }
 
  syncInputFromSelect();
- selectEl._searchableRefresh = syncInputFromSelect;
+ selectEl._searchableRefresh = () => {
+  syncInputFromSelect();
+  if (!optionsBox.classList.contains("hidden")) renderOptions(input.value);
+ };
 }
 
 function refreshSearchableSelect(selectEl) {
  selectEl._searchableRefresh?.();
+}
+
+function refreshSearchableSelects(...selects) {
+ selects.filter(Boolean).forEach(refreshSearchableSelect);
 }
 
 function normalizeAllocations(transaction, projects = state.projects) {
@@ -4483,6 +4547,14 @@ function hydrateCrmOptions() {
  setSelectOptions(els.opportunityProject, `<option value="">Sem projeto</option>${projectOptions}`);
  setSelectOptions(els.opportunityPerson, peopleOptions || `<option value="">Cadastre um cliente primeiro</option>`);
  if (els.opportunityOwner) els.opportunityOwner.innerHTML = opportunityOwnerSelectOptions();
+ refreshSearchableSelects(
+  els.opportunityPerson,
+  els.opportunityUnit,
+  els.opportunityPipeline,
+  els.opportunityStage,
+  els.opportunityOwner,
+  els.opportunityProject,
+ );
  if (initializeFilterDefaults) {
   [els.crmUnitFilter, els.crmPipelineFilter, els.crmOwnerFilter, els.crmStageFilter, els.crmProjectFilter]
    .filter(Boolean)
@@ -7553,6 +7625,7 @@ function hydrateProjectOptions() {
 
  els.transactionProject.innerHTML = projectOptions;
  els.saleProject.innerHTML = optionalProjectOptions;
+ refreshSearchableSelect(els.saleProject);
  els.bankProject.innerHTML = optionalProjectOptions;
  refreshSearchableSelect(els.bankProject);
  els.projectReportSelect.innerHTML = optionalProjectOptions;
@@ -13478,6 +13551,14 @@ function openOpportunityDialog(item = null) {
  renderOpportunityAttachmentRows();
  setOpportunityAttachmentStatus("Arraste links ou arquivos para anexar ao lead. Salve a oportunidade ao concluir.", "neutral");
  setOpportunityProposalForm(opportunity.proposal || {});
+ refreshSearchableSelects(
+  els.opportunityPerson,
+  els.opportunityUnit,
+  els.opportunityPipeline,
+  els.opportunityStage,
+  els.opportunityOwner,
+  els.opportunityProject,
+ );
  els.opportunityTitle.textContent = item ? "Editar oportunidade" : "Nova oportunidade";
  if (els.opportunityDeleteBtn) els.opportunityDeleteBtn.hidden = !opportunity.id;
  renderOpportunityHistory(opportunity.id || "");
@@ -14126,6 +14207,7 @@ function convertOpportunityToSale(opportunity) {
  pendingOpportunityConversion = { kind: "sale", opportunityId: opportunity.id, saleCountBefore: state.sales.length };
  openSaleDialog();
  els.salePerson.value = opportunity.personId;
+ refreshSearchableSelect(els.salePerson);
  els.saleDescription.value = opportunity.title;
  els.saleTotal.value = opportunity.value;
  renderInstallmentPreview();
@@ -15927,6 +16009,7 @@ function saveQuickPersonFromTransaction() {
  } else if (quickPersonTarget === "opportunity") {
   hydrateCrmOptions();
   els.opportunityPerson.value = person.id;
+  refreshSearchableSelect(els.opportunityPerson);
   fillOpportunityPhoneFromSelectedPerson(true);
  } else if (quickPersonTarget === "stockEntrySupplier") {
   els.stockEntrySupplier.value = person.id;
@@ -16104,6 +16187,7 @@ function hydrateSalePeople() {
  els.salePerson.innerHTML = people.length ?
    people.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")
   : `<option value="">Cadastre um cliente primeiro</option>`;
+ refreshSearchableSelect(els.salePerson);
 }
 
 function hydrateStatusOptions() {
