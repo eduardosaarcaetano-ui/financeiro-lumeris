@@ -10,13 +10,16 @@ const CRM_RANKING = window.LumerisCrmRanking;
 // remover IS_LEGACY_GITHUB_PAGES e deixar so o caminho relativo.
 const IS_LEGACY_GITHUB_PAGES = window.location.hostname === "eduardosaarcaetano-ui.github.io";
 const LEGACY_APPS_SCRIPT_ENDPOINT = "https://script.google.com/macros/s/AKfycbwvq0ov-i-Zdk3T5G-jm5WGPYLPnvZTvxxM53lTy4yAqd9XWQL4I2UKVeGAOdWCzQ83/exec";
-const SHEETS_ENDPOINT = new URLSearchParams(window.location.search).get("localtest") === "1"
+const APP_QUERY_PARAMS = new URLSearchParams(window.location.search);
+const IS_LOCAL_TEST = APP_QUERY_PARAMS.get("localtest") === "1";
+const IS_DESKTOP_SANDBOX = APP_QUERY_PARAMS.get("desktoptest") === "1";
+const SHEETS_ENDPOINT = IS_LOCAL_TEST
  ? ""
  : IS_LEGACY_GITHUB_PAGES ? LEGACY_APPS_SCRIPT_ENDPOINT : "/api/sync";
 // Anexos do CRM continuam sempre no Google Drive via Apps Script, em
 // qualquer host - so a sincronizacao geral dos dados mudou para o backend
 // novo. Ver AppsScript_Code.gs (acoes crm.createLeadFolder/crm.uploadLeadFile).
-const ATTACHMENTS_ENDPOINT = new URLSearchParams(window.location.search).get("localtest") === "1"
+const ATTACHMENTS_ENDPOINT = IS_LOCAL_TEST || IS_DESKTOP_SANDBOX
  ? ""
  : LEGACY_APPS_SCRIPT_ENDPOINT;
 const SYNC_DEBOUNCE_MS = 800;
