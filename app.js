@@ -4531,8 +4531,8 @@ function hydrateCrmOptions() {
   .map((owner) => `<option value="${escapeHtml(owner)}">${escapeHtml(owner)}</option>`)
   .join("");
  const projectOptions = state.projects.map((project) => `<option value="${project.id}">${escapeHtml(projectLabel(project))}</option>`).join("");
- const peopleOptions = state.people
-  .filter((person) => person.type === "cliente" || person.type === "ambos")
+ const peopleOptions = sortPeopleByName(state.people
+  .filter((person) => person.type === "cliente" || person.type === "ambos"))
   .map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`)
   .join("");
 
@@ -7089,7 +7089,7 @@ function openSaleInstallmentsDialog(saleId) {
   return;
  }
  els.saleInstallmentsSaleId.value = sale.id;
- const people = state.people.filter((person) => person.type === "cliente" || person.type === "ambos");
+ const people = sortPeopleByName(state.people.filter((person) => person.type === "cliente" || person.type === "ambos"));
  const personOptions = people.length
   ? people.map((person) => `<option value="${person.id}"${person.id === sale.personId ? " selected" : ""}>${escapeHtml(person.name)}</option>`).join("")
   : `<option value="${sale.personId}">${escapeHtml(personName(sale.personId))}</option>`;
@@ -7811,6 +7811,10 @@ function normalizeText(value) {
   .replace(/[\u0300-\u036f]/g, "")
   .toLowerCase()
   .trim();
+}
+
+function sortPeopleByName(people) {
+ return [...people].sort((a, b) => String(a?.name || "").localeCompare(String(b?.name || ""), "pt-BR", { sensitivity: "base" }));
 }
 
 function formatCurrency(value) {
@@ -16183,7 +16187,7 @@ function getEditedTransactionInstallments() {
 }
 
 function hydrateSalePeople() {
- const people = state.people.filter((person) => person.type === "cliente" || person.type === "ambos");
+ const people = sortPeopleByName(state.people.filter((person) => person.type === "cliente" || person.type === "ambos"));
  els.salePerson.innerHTML = people.length ?
    people.map((person) => `<option value="${person.id}">${escapeHtml(person.name)}</option>`).join("")
   : `<option value="">Cadastre um cliente primeiro</option>`;
