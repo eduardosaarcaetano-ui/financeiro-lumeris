@@ -31,6 +31,10 @@ assert.equal(result.ok, true);
 assert.deepEqual(result.nextData, consolidation.state);
 assert.equal(migration.duplicateSummary(result.nextData), 0);
 assert.equal(result.nextData.opportunities[0].personId, result.nextData.people[0].id);
+assert.equal(
+  migration.migrationChecksum({ people: [{ id: "b" }, { id: "a" }] }),
+  migration.migrationChecksum({ people: [{ id: "a" }, { id: "b" }] })
+);
 assert.equal(migration.parseArguments(["--expected-revision", "42", "--apply"]).expectedRevision, 42);
 assert.throws(() => migration.parseArguments(["--apply"]), /expected-revision/);
 console.log("personConsolidationMigration: patch atomico, invariantes e protecao de revisao validados");

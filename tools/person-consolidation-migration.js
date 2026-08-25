@@ -91,6 +91,15 @@ function duplicateSummary(state) {
   return Array.from(names.values()).filter((count) => count > 1).length;
 }
 
+function migrationChecksum(state) {
+  const normalized = JSON.parse(JSON.stringify(state || {}));
+  ARRAY_FIELDS.forEach((field) => {
+    if (!Array.isArray(normalized[field])) return;
+    normalized[field].sort((left, right) => String(left?.id || "").localeCompare(String(right?.id || "")));
+  });
+  return syncChecksum(normalized);
+}
+
 function assertInvariants(before, after, report) {
   if (report.conflicts.length) throw new Error(`Conflitos de documento detectados: ${report.conflicts.length}.`);
   if (duplicateSummary(after) !== 0) throw new Error("Ainda existem nomes completos duplicados apos a simulacao.");
@@ -148,7 +157,7 @@ async function run(options) {
     countsAfter: countByField(after),
     totalsBefore: businessTotals(before),
     totalsAfter: businessTotals(after),
-    predictedChecksum: syncChecksum(after),
+    predictedChecksum: migrationChecksum(after),
   };
   if (!options.apply) return summary;
 
@@ -178,14 +187,14 @@ async function run(options) {
 
   const verified = await fetchSnapshot(options.endpoint);
   if (verified.revision !== snapshot.revision + 1) throw new Error("Revisao final inesperada apos a migracao.");
-  if (syncChecksum(verified.data) !== summary.predictedChecksum) throw new Error("Checksum final diverge do estado simulado.");
+  if (migrationChecksum(verified.data) !== summary.predictedChecksum) throw new Error("Checksum final diverge do estado simulado.");
   assertInvariants(before, verified.data, consolidation.report);
   return {
     ...summary,
     mutationId,
     revisionAfter: verified.revision,
     versionAfter: verified.version,
-    verifiedChecksum: syncChecksum(verified.data),
+    verifiedChecksum: migrationChecksum(verified.data),
     verified: true,
   };
 }
@@ -199,4 +208,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { ARRAY_FIELDS, buildOperations, businessTotals, countByField, duplicateSummary, assertInvariants, parseArguments, run };
+module.exports = { ARRAY_FIELDS, buildOperations, businessTotals, countByField, duplicateSummary, migrationChecksum, assertInvariants, parseArguments, run };
