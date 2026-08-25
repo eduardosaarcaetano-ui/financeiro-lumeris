@@ -14,6 +14,7 @@ const created = buildActiveEntry({
  opportunityId,
  seller: "Victor Hugo",
  sellerUserId: "user-victor",
+ personId: "person-daniel",
  client: "Daniel Pataro",
  city: "Sorocaba - SP",
  amount: 12500,
@@ -27,6 +28,7 @@ assert.equal(created.source, "crm");
 assert.equal(created.period, "2026-08");
 assert.equal(created.amount, 12500);
 assert.equal(created.status, "active");
+assert.equal(created.personId, "person-daniel");
 assert.ok(isAutomaticEntry(created));
 assert.ok(isActiveEntry(created));
 

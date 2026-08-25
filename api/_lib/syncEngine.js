@@ -1,5 +1,7 @@
 "use strict";
 
+const personIdentity = require("../../person-identity");
+
 // Porte do protocolo de sync que vivia em AppsScript_Code.gs (applySyncPatch e
 // vizinhas). Mantido como logica pura (sem I/O) - quem le/grava o Postgres e
 // gerencia a transacao/lock e o handler em api/sync.js.
@@ -7,7 +9,7 @@
 // Incrementar esta versao bloqueia escritores antigos no servidor. Isso e
 // intencional: uma TV/aba com JavaScript em cache nao pode continuar gerando
 // gravacoes depois que o mecanismo de sincronizacao foi corrigido.
-const SYNC_PROTOCOL_VERSION = 9;
+const SYNC_PROTOCOL_VERSION = 10;
 
 const SYNC_SCOPE_FIELDS = {
   crm: ["crmUnits", "crmPipelines", "opportunityStages", "opportunities", "opportunityHistory", "sales", "salesRankingEntries", "salesTargets", "sellers", "interactions", "tasks"],
@@ -174,6 +176,30 @@ function applyOneSyncOperation(state, operation, allowedFields) {
   const incoming = cloneSyncValue(operation.value);
   if (!incoming || String(incoming.id || "") !== id) {
     return { invalid: { field, id, reason: "id_mismatch" } };
+  }
+
+  if (field === "people" && index < 0) {
+    const semanticMatch = personIdentity.findMatchingPerson(state[field], incoming);
+    if (semanticMatch.conflict) {
+      return {
+        conflict: {
+          field,
+          id,
+          reason: semanticMatch.conflict.reason,
+          canonicalId: semanticMatch.conflict.existingId || "",
+        },
+      };
+    }
+    if (semanticMatch.person) {
+      return {
+        conflict: {
+          field,
+          id,
+          reason: "semantic_duplicate",
+          canonicalId: semanticMatch.person.id,
+        },
+      };
+    }
   }
 
   // Pessoas geradas pelas planilhas usam IDs determinísticos. Duas abas podem

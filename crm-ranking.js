@@ -50,6 +50,7 @@
    opportunityId,
    seller,
    sellerUserId: String(input.sellerUserId || ""),
+   personId: String(input.personId || existing.personId || ""),
    client,
    city: String(input.city || "").trim(),
    amount,

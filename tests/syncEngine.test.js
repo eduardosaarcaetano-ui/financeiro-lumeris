@@ -85,4 +85,28 @@ const ordinaryPersonStillConflicts = patch(
 assert.equal(ordinaryPersonStillConflicts.ok, false);
 assert.equal(ordinaryPersonStillConflicts.error, "record_conflict");
 
-console.log("syncEngine: 4 cenarios validados");
+const duplicateNameWithNewId = patch(
+  storedWithPeople([{ id: "canonical", name: "José da Silva", type: "cliente", document: "", contact: "" }]),
+  financePersonOperation({ id: "new-id", name: " JOSE   DA SILVA ", type: "cliente", document: "", contact: "" }),
+);
+assert.equal(duplicateNameWithNewId.ok, false);
+assert.equal(duplicateNameWithNewId.error, "record_conflict");
+assert.equal(duplicateNameWithNewId.conflicts[0].reason, "semantic_duplicate");
+assert.equal(duplicateNameWithNewId.conflicts[0].canonicalId, "canonical");
+
+const sameNameDifferentDocument = patch(
+  storedWithPeople([{ id: "canonical", name: "Maria Souza", type: "cliente", document: "11111111111", contact: "" }]),
+  financePersonOperation({ id: "new-id", name: "MARIA SOUZA", type: "cliente", document: "22222222222", contact: "" }),
+);
+assert.equal(sameNameDifferentDocument.ok, false);
+assert.equal(sameNameDifferentDocument.conflicts[0].reason, "same_name_different_document");
+
+const duplicateDocumentWithDifferentName = patch(
+  storedWithPeople([{ id: "canonical", name: "Empresa Antiga", type: "cliente", document: "11222333000144", contact: "" }]),
+  financePersonOperation({ id: "new-id", name: "Empresa Atual", type: "cliente", document: "11.222.333/0001-44", contact: "" }),
+);
+assert.equal(duplicateDocumentWithDifferentName.ok, false);
+assert.equal(duplicateDocumentWithDifferentName.conflicts[0].reason, "semantic_duplicate");
+assert.equal(duplicateDocumentWithDifferentName.conflicts[0].canonicalId, "canonical");
+
+console.log("syncEngine: 7 cenarios validados");

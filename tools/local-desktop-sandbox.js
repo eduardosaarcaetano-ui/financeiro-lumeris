@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
 const engine = require("../api/_lib/syncEngine");
+const personIdentity = require("../person-identity");
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.ERP_DESKTOP_PORT || 4174);
@@ -21,6 +22,7 @@ const CONTENT_TYPES = {
 };
 
 let stored = null;
+let personConsolidationReport = null;
 const appliedMutations = new Set();
 
 function sendJson(response, status, value) {
@@ -41,8 +43,12 @@ async function loadReadOnlyProductionSnapshot() {
  if (!response.ok) throw new Error(`Falha ao carregar cópia de produção: HTTP ${response.status}`);
  const payload = await response.json();
  if (!payload?.ok || !payload.data) throw new Error("A produção não devolveu uma cópia válida dos dados.");
+ const consolidated = personIdentity.consolidatePeopleState(payload.data, {
+  mergedAt: new Date().toISOString(),
+ });
+ personConsolidationReport = consolidated.report;
  stored = {
-  data: structuredClone(payload.data),
+  data: structuredClone(consolidated.state),
   revision: Number(payload.revision || 0),
   updatedAt: payload.updatedAt || "",
   version: payload.version || engine.syncVersion(Number(payload.revision || 0), payload.updatedAt || ""),
@@ -166,6 +172,9 @@ async function handleRequest(request, response) {
    if (request.method === "POST") return await handleSyncPost(request, response);
    return sendJson(response, 405, { ok: false, error: "method_not_allowed" });
   }
+  if (requestUrl.pathname === "/api/desktop/person-consolidation-report") {
+   return sendJson(response, 200, { ok: true, report: personConsolidationReport, desktopSandbox: true });
+  }
   if (requestUrl.pathname.startsWith("/api/")) return sendJson(response, 404, { ok: false, error: "disabled_in_desktop_sandbox" });
   return serveStatic(requestUrl, response);
  } catch (error) {
@@ -178,8 +187,9 @@ async function start() {
  await loadReadOnlyProductionSnapshot();
  const server = http.createServer((request, response) => void handleRequest(request, response));
  server.listen(PORT, HOST, () => {
-  console.log(`ERP 10.2 desktop: http://${HOST}:${PORT}/?desktoptest=1`);
+  console.log(`ERP 10.3 desktop: http://${HOST}:${PORT}/?desktoptest=1&version=10.3`);
   console.log(`Cópia carregada da revisão ${stored.revision}. Alterações ficam somente na memória local.`);
+  console.log(`Clientes: ${personConsolidationReport.peopleBefore} -> ${personConsolidationReport.peopleAfter}; ${personConsolidationReport.mergedRecords} duplicatas consolidadas; ${personConsolidationReport.conflicts.length} conflito(s) pendente(s).`);
  });
 }
 

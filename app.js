@@ -28,9 +28,9 @@ const SYNC_SLOW_LOAD_NOTICE_MS = 8000;
 const SYNC_INIT_RETRY_DELAY_MS = 15000;
 const DEFAULT_SALES_RANK_SELLER_GOAL = 200000;
 const SALES_RANK_SELLER_GOAL_GREEN_THRESHOLD = 33.33;
-// Versao 9 exige um recibo do servidor vinculado a cada mutacao antes de a
+// Versao 10 exige recibo remoto e identidade unica de clientes antes de a
 // interface informar que CRM, Rank ou outro setor foi gravado na nuvem.
-const SYNC_PROTOCOL_VERSION = 9;
+const SYNC_PROTOCOL_VERSION = 10;
 const SYNC_CLIENT_STORAGE_KEY = "financeiro-lumeris-sync-client-v2";
 const SYNC_OUTBOX_STORAGE_KEY = "financeiro-lumeris-sync-outbox-v2";
 const SYNC_BASE_STORAGE_KEY = "financeiro-lumeris-sync-base-v2";
@@ -2411,14 +2411,15 @@ function seedInstallationBacklog(normalized) {
   const personNameSeed = seed.client.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim();
   let person = normalized.people.find((item) => normalizeText(item.name) === normalizeText(personNameSeed));
   if (!person) {
-   person = {
+   const personResult = upsertUniquePersonInState(normalized, {
     id: `seed-client-${projectSlug}`,
     type: "cliente",
     name: personNameSeed,
     document: "",
     contact: "",
-   };
-   normalized.people.push(person);
+   });
+   if (!personResult.ok) throw new Error(personIdentityConflictMessage(personResult));
+   person = personResult.person;
   }
 
   const seedProjectCode = projectDuplicateKey({ code: seed.code });
@@ -2980,6 +2981,55 @@ function rebaseSyncOperationsLocally(remoteState, operations) {
  return next;
 }
 
+async function resolveSemanticDuplicatePersonConflicts(conflicts) {
+ const targets = (Array.isArray(conflicts) ? conflicts : []).filter((conflict) =>
+  conflict?.field === "people"
+  && conflict.reason === "semantic_duplicate"
+  && conflict.id
+  && conflict.canonicalId
+ );
+ if (!targets.length || targets.length !== (conflicts || []).length) return false;
+
+ const latest = await fetchRemoteState();
+ const latestRemoteState = normalizeState(latest.data || {});
+ const currentLocalState = normalizeState(cloneStateValue(state));
+ const identity = window.LumerisPersonIdentity;
+ const aliases = new Map();
+
+ for (const conflict of targets) {
+  const duplicateId = String(conflict.id);
+  const canonicalId = String(conflict.canonicalId);
+  const duplicate = currentLocalState.people.find((person) => String(person.id) === duplicateId);
+  const remoteCanonical = latestRemoteState.people.find((person) => String(person.id) === canonicalId);
+  if (!duplicate || !remoteCanonical || duplicateId === canonicalId) return false;
+  const localCanonical = currentLocalState.people.find((person) => String(person.id) === canonicalId);
+  let merged = identity.mergePersonRecords(remoteCanonical, localCanonical || {});
+  merged = identity.mergePersonRecords(merged, duplicate);
+  merged.mergedFromIds = [...new Set([
+   ...(Array.isArray(merged.mergedFromIds) ? merged.mergedFromIds : []),
+   duplicateId,
+  ])];
+  merged.mergedRecords = [
+   ...(Array.isArray(merged.mergedRecords) ? merged.mergedRecords : []),
+   cloneStateValue(duplicate),
+  ];
+  currentLocalState.people = currentLocalState.people
+   .filter((person) => String(person.id) !== duplicateId && String(person.id) !== canonicalId);
+  currentLocalState.people.push(merged);
+  aliases.set(duplicateId, canonicalId);
+ }
+
+ identity.remapPersonReferences(currentLocalState, aliases);
+ applyRemoteSyncMetadata(latest);
+ remoteProtocolVersion = Number(latest.protocolVersion || remoteProtocolVersion || 1);
+ Object.assign(state, normalizeState(currentLocalState));
+ if (!saveLocalState()) throw localSyncPersistenceError();
+ renderAll();
+ remoteSyncBaseState = latestRemoteState;
+ if (!storeSyncBase(latestRemoteState)) throw localSyncPersistenceError();
+ return true;
+}
+
 function isInactiveDuplicateStockConflict(remoteState, conflict) {
  if (conflict?.field !== "stockItems" || !conflict.id) return false;
  const items = Array.isArray(remoteState?.stockItems) ? remoteState.stockItems : [];
@@ -3378,23 +3428,31 @@ async function pushToSheets(options = {}) {
    toast(error.userMessage || "O administrador ativou a manutenção. Seus dados locais foram preservados.");
    showMaintenance();
   } else if (error.code === "record_conflict") {
+   let resolvedDuplicatePerson = false;
    let resolvedInactiveDuplicate = false;
    let duplicateResolutionError = null;
    try {
-    resolvedInactiveDuplicate = await resolveInactiveDuplicateStockConflicts(error.conflicts, scopes);
+    resolvedDuplicatePerson = await resolveSemanticDuplicatePersonConflicts(error.conflicts);
+    if (!resolvedDuplicatePerson) {
+     resolvedInactiveDuplicate = await resolveInactiveDuplicateStockConflicts(error.conflicts, scopes);
+    }
    } catch (resolutionError) {
-    console.error("Falha ao reconciliar copia inativa do estoque", resolutionError);
+    console.error("Falha ao reconciliar cadastro duplicado", resolutionError);
     duplicateResolutionError = resolutionError;
    }
-   if (resolvedInactiveDuplicate) {
+   if (resolvedDuplicatePerson || resolvedInactiveDuplicate) {
      syncConflictBlocked = false;
      if (!clearSyncBatch()) {
       syncConflictBlocked = true;
       setSyncStatus("Sem espaço local para concluir a conciliação. Lote preservado.", "error");
       toast("Libere espaço do navegador e tente novamente.");
      } else {
-      setSyncStatus("Cópia inativa do estoque conciliada. Finalizando sincronização...", "syncing");
-      toast("Uma cópia antiga e inativa do estoque foi conciliada sem alterar o item ativo.");
+      setSyncStatus(resolvedDuplicatePerson
+       ? "Cliente existente localizado. Finalizando sincronização..."
+       : "Cópia inativa do estoque conciliada. Finalizando sincronização...", "syncing");
+      toast(resolvedDuplicatePerson
+       ? "Este cliente já existia. O cadastro único foi reutilizado automaticamente."
+       : "Uma cópia antiga e inativa do estoque foi conciliada sem alterar o item ativo.");
       scheduleRemoteSync(Array.from(pendingSyncScopes));
      }
    } else if (duplicateResolutionError?.code === "local_batch_persist_failed") {
@@ -6807,6 +6865,17 @@ async function saveManualSalesRankEntry(event) {
   toast("A data da venda precisa pertencer ao período selecionado.");
   return;
  }
+ const personResult = upsertUniquePersonInState(state, {
+  id: crypto.randomUUID(),
+  type: "cliente",
+  name: client,
+  document: "",
+  contact: "",
+ });
+ if (!personResult.ok) {
+  toast(personIdentityConflictMessage(personResult));
+  return;
+ }
  const existingEntry = entryId ? state.salesRankingEntries.find((item) => item.id === entryId) : null;
  const updatedAt = new Date().toISOString();
  const automaticEntry = CRM_RANKING.isAutomaticEntry(existingEntry);
@@ -6815,7 +6884,8 @@ async function saveManualSalesRankEntry(event) {
   ...(existingEntry || {}),
   id: existingEntry?.id || crypto.randomUUID(),
   seller,
-  client,
+  personId: personResult.person.id,
+  client: personResult.person.name,
   city: els.salesRankCity.value.trim(),
   amount: roundCurrency(amount),
   saleDate,
@@ -7811,6 +7881,64 @@ function normalizeText(value) {
   .replace(/[\u0300-\u036f]/g, "")
   .toLowerCase()
   .trim();
+}
+
+function upsertUniquePersonInState(targetState, candidate, { replaceExisting = false } = {}) {
+ const identity = window.LumerisPersonIdentity;
+ if (!identity) throw new Error("Serviço de identidade de clientes não carregado.");
+ const people = Array.isArray(targetState.people) ? targetState.people : (targetState.people = []);
+ const person = {
+  ...candidate,
+  id: candidate.id || crypto.randomUUID(),
+  name: String(candidate.name || "").trim().replace(/\s+/g, " "),
+  document: String(candidate.document || "").trim(),
+  contact: String(candidate.contact || "").trim(),
+  type: candidate.type || "cliente",
+ };
+ if (!person.name) return { ok: false, error: "missing_name" };
+
+ const currentIndex = people.findIndex((item) => String(item.id) === String(person.id));
+ const match = identity.findMatchingPerson(people, person, {
+  excludeId: currentIndex >= 0 ? person.id : "",
+ });
+ if (match.conflict) return { ok: false, error: match.conflict.reason, conflict: match.conflict };
+
+ if (match.person && currentIndex >= 0) {
+  people[currentIndex] = { ...people[currentIndex], ...person, id: people[currentIndex].id };
+  const consolidated = identity.consolidatePeopleState(targetState);
+  Object.keys(targetState).forEach((key) => delete targetState[key]);
+  Object.assign(targetState, consolidated.state);
+  const canonicalId = consolidated.aliases[person.id] || match.person.id;
+  return {
+   ok: true,
+   person: targetState.people.find((item) => item.id === canonicalId) || match.person,
+   reused: true,
+   consolidated: true,
+  };
+ }
+
+ if (match.person) {
+  const index = people.findIndex((item) => item.id === match.person.id);
+  people[index] = identity.mergePersonRecords(match.person, person);
+  return { ok: true, person: people[index], reused: true, consolidated: false };
+ }
+
+ if (currentIndex >= 0) {
+  people[currentIndex] = replaceExisting
+   ? { ...people[currentIndex], ...person, id: people[currentIndex].id }
+   : identity.mergePersonRecords(people[currentIndex], person);
+  return { ok: true, person: people[currentIndex], reused: false, consolidated: false };
+ }
+
+ people.push(person);
+ return { ok: true, person, reused: false, consolidated: false };
+}
+
+function personIdentityConflictMessage(result) {
+ if (result?.error === "same_name_different_document") {
+  return "Já existe uma pessoa com este nome completo e outro CPF/CNPJ. Revise os documentos antes de continuar.";
+ }
+ return "Informe o nome completo do cliente ou fornecedor.";
 }
 
 function sortPeopleByName(people) {
@@ -12308,11 +12436,15 @@ function ensureStockLocation(name) {
 function ensurePersonByName(name, type) {
  const trimmed = String(name || "").trim();
  if (!trimmed) return "";
- const existing = state.people.find((person) => person.name.toLowerCase() === trimmed.toLowerCase());
- if (existing) return existing.id;
- const person = { id: crypto.randomUUID(), type, name: trimmed, document: "", contact: "" };
- state.people.push(person);
- return person.id;
+ const result = upsertUniquePersonInState(state, {
+  id: crypto.randomUUID(),
+  type,
+  name: trimmed,
+  document: "",
+  contact: "",
+ });
+ if (!result.ok) throw new Error(personIdentityConflictMessage(result));
+ return result.person.id;
 }
 
 function ensureProjectByName(name) {
@@ -12391,9 +12523,7 @@ function importVendas2026Receivables() {
 
 function ensureImportedVendasPerson(row, sourceId, counters) {
  const name = String(row.customerName || row.name || "Cliente importado").trim();
- const existing = state.people.find((person) => person.name.toLowerCase() === name.toLowerCase());
- if (existing) return existing.id;
- const person = {
+ const result = upsertUniquePersonInState(state, {
   id: deterministicImportId("vendas-2026-person", `${sourceId}:${name}`),
   type: "cliente",
   name,
@@ -12401,11 +12531,12 @@ function ensureImportedVendasPerson(row, sourceId, counters) {
   contact: "",
   importSource: sourceId,
   createdAt: new Date().toISOString(),
- };
- state.people.push(person);
+ });
+ if (!result.ok) throw new Error(personIdentityConflictMessage(result));
+ if (result.reused) return result.person.id;
  counters.people += 1;
  counters.changed = true;
- return person.id;
+ return result.person.id;
 }
 
 function ensureImportedVendasProject(row, personId, sourceId, counters) {
@@ -12517,12 +12648,7 @@ function importedFinanceNotes(batch, row) {
 
 function importedFinancePerson(normalized, batch, row) {
  const name = String(row.customerName || "Cliente importado").trim();
- let person = normalized.people.find((item) => normalizeText(item.name) === normalizeText(name));
- if (person) {
-  if (person.type === "fornecedor") person.type = "ambos";
-  return person;
- }
- person = {
+ const result = upsertUniquePersonInState(normalized, {
   id: deterministicImportId("finance-import-person", `${batch.sourceId}:${name}`),
   type: "cliente",
   name,
@@ -12530,9 +12656,9 @@ function importedFinancePerson(normalized, batch, row) {
   contact: "",
   importSource: batch.sourceId,
   createdAt: `${batch.period || "2000-01"}-01T12:00:00.000Z`,
- };
- normalized.people.push(person);
- return person;
+ });
+ if (!result.ok) throw new Error(personIdentityConflictMessage(result));
+ return result.person;
 }
 
 function applyFinanceReceivablesImports(normalized) {
@@ -12664,12 +12790,7 @@ function importedFinancePayableNotes(batch, row) {
 
 function importedFinanceSupplier(normalized, batch, row) {
  const name = String(row.supplierName || "Fornecedor importado").trim();
- let person = normalized.people.find((item) => normalizeText(item.name) === normalizeText(name));
- if (person) {
-  if (person.type === "cliente") person.type = "ambos";
-  return person;
- }
- person = {
+ const result = upsertUniquePersonInState(normalized, {
   id: deterministicImportId("finance-import-supplier", `${batch.sourceId}:${name}`),
   type: "fornecedor",
   name,
@@ -12677,9 +12798,9 @@ function importedFinanceSupplier(normalized, batch, row) {
   contact: "",
   importSource: batch.sourceId,
   createdAt: `${batch.period || "2000-01"}-01T12:00:00.000Z`,
- };
- normalized.people.push(person);
- return person;
+ });
+ if (!result.ok) throw new Error(personIdentityConflictMessage(result));
+ return result.person;
 }
 
 function applyFinancePayablesImports(normalized) {
@@ -13510,11 +13631,15 @@ function addSeller() {
 
 function findOrCreatePersonByName(name, fallbackType = "cliente") {
  const trimmed = name.trim();
- const existing = state.people.find((person) => person.name.toLowerCase() === trimmed.toLowerCase());
- if (existing) return existing.id;
- const person = { id: crypto.randomUUID(), type: fallbackType, name: trimmed, document: "", contact: "" };
- state.people.push(person);
- return person.id;
+ const result = upsertUniquePersonInState(state, {
+  id: crypto.randomUUID(),
+  type: fallbackType,
+  name: trimmed,
+  document: "",
+  contact: "",
+ });
+ if (!result.ok) throw new Error(personIdentityConflictMessage(result));
+ return result.person.id;
 }
 
 function hydrateOpportunityPersonSuggestions() {
@@ -14822,6 +14947,7 @@ function syncOpportunitySalesRank(opportunity, options = {}) {
   opportunityId: opportunity.id,
   seller: opportunityOwnerDisplay(opportunity),
   sellerUserId: opportunity.ownerUserId || "",
+  personId: opportunity.personId,
   client: personName(opportunity.personId),
   city: opportunity.location?.city || (configuredUnit === "Sem unidade" ? "" : configuredUnit),
   amount: opportunity.value,
@@ -15471,19 +15597,20 @@ function upsertPersonFromInvoiceXml(data) {
  const type = meta.direction === "recebida" ? "fornecedor" : "cliente";
  const document = onlyDigits(data.document);
  const personNameFromXml = data.personName || "";
- const existing = state.people.find((person) => (document && onlyDigits(person.document) === document) || (personNameFromXml && person.name.toLowerCase() === personNameFromXml.toLowerCase()));
- if (existing) return existing.id;
- const person = {
+ const result = upsertUniquePersonInState(state, {
   id: crypto.randomUUID(),
   type,
   name: data.personName || `Cadastro XML ${document}`,
   document,
   contact: "",
- };
- state.people.push(person);
+ });
+ if (!result.ok) {
+  toast(personIdentityConflictMessage(result));
+  return "";
+ }
  persist("financeiro");
  renderPeople();
- return person.id;
+ return result.person.id;
 }
 
 function onlyDigits(value) {
@@ -15743,16 +15870,17 @@ function savePerson() {
   document: els.personDocument.value.trim(),
   contact: els.personContact.value.trim(),
  };
-
- const index = state.people.findIndex((person) => person.id === data.id);
- if (index >= 0) state.people[index] = data;
- else state.people.push(data);
+ const result = upsertUniquePersonInState(state, data, { replaceExisting: Boolean(els.personId.value) });
+ if (!result.ok) {
+  toast(personIdentityConflictMessage(result));
+  return;
+ }
 
  els.personForm.reset();
  els.personId.value = "";
- persist("financeiro");
+ persist(result.consolidated ? "all" : "financeiro");
  renderAll();
- toast("Cadastro salvo.");
+ toast(result.reused ? "Cadastro já existente reutilizado e atualizado." : "Cadastro salvo.");
 }
 
 function handlePersonAction(action, id) {
@@ -15768,7 +15896,17 @@ function handlePersonAction(action, id) {
   return;
  }
 
- const inUse = state.transactions.some((item) => item.personId === id) || state.sales.some((sale) => sale.personId === id) || state.invoices.some((item) => item.personId === id);
+ const inUse = state.transactions.some((item) => item.personId === id)
+  || state.sales.some((sale) => sale.personId === id)
+  || state.invoices.some((item) => item.personId === id)
+  || state.opportunities.some((item) => item.personId === id || item.contractDraft?.client?.id === id)
+  || state.tasks.some((item) => item.personId === id)
+  || state.projects.some((item) => item.customerId === id)
+  || state.protocols.some((item) => item.customerId === id)
+  || state.installations.some((item) => item.customerId === id)
+  || state.stockItems.some((item) => item.primarySupplierId === id)
+  || state.stockMovements.some((item) => item.supplierId === id)
+  || state.salesRankingEntries.some((item) => item.personId === id);
  if (inUse) {
   toast("Não é possível excluir: há lançamentos vinculados.");
   return;
@@ -15988,16 +16126,20 @@ function createSupplierFromStockEntryDialog() {
 }
 
 function saveQuickPersonFromTransaction() {
- const person = {
+ const candidate = {
   id: crypto.randomUUID(),
   type: els.quickPersonType.value,
   name: els.quickPersonName.value.trim(),
   document: els.quickPersonDocument.value.trim(),
   contact: els.quickPersonContact.value.trim(),
  };
-
- state.people.push(person);
- persist("config");
+ const result = upsertUniquePersonInState(state, candidate);
+ if (!result.ok) {
+  toast(personIdentityConflictMessage(result));
+  return;
+ }
+ const person = result.person;
+ persist(result.consolidated ? "all" : "config");
  hydratePersonOptions();
  hydrateSalePeople();
  hydrateProjectOptions();
@@ -16026,7 +16168,7 @@ function saveQuickPersonFromTransaction() {
  }
  els.quickPersonDialog.close();
  quickPersonTarget = "transaction";
- toast("Cadastro salvo e selecionado.");
+ toast(result.reused ? "Cadastro existente localizado e selecionado." : "Cadastro salvo e selecionado.");
 }
 
 function createProjectFromTransactionDialog() {
