@@ -178,7 +178,7 @@ async function start() {
  await loadReadOnlyProductionSnapshot();
  const server = http.createServer((request, response) => void handleRequest(request, response));
  server.listen(PORT, HOST, () => {
-  console.log(`ERP 10.0 desktop: http://${HOST}:${PORT}/?desktoptest=1`);
+  console.log(`ERP 10.1 desktop: http://${HOST}:${PORT}/?desktoptest=1`);
   console.log(`Cópia carregada da revisão ${stored.revision}. Alterações ficam somente na memória local.`);
  });
 }

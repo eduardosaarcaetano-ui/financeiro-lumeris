@@ -6736,6 +6736,9 @@ async function saveManualSalesRankEntry(event) {
   return;
  }
  const existingEntry = entryId ? state.salesRankingEntries.find((item) => item.id === entryId) : null;
+ const updatedAt = new Date().toISOString();
+ const automaticEntry = CRM_RANKING.isAutomaticEntry(existingEntry);
+ const sessionUser = currentSessionUser();
  const entry = {
   ...(existingEntry || {}),
   id: existingEntry?.id || crypto.randomUUID(),
@@ -6746,8 +6749,11 @@ async function saveManualSalesRankEntry(event) {
   saleDate,
   period,
   source: existingEntry?.source || "manual",
-  createdAt: existingEntry?.createdAt || new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+  status: automaticEntry ? CRM_RANKING.STATUS_ACTIVE : existingEntry?.status,
+  manualOverrideAt: automaticEntry ? updatedAt : existingEntry?.manualOverrideAt,
+  manualOverrideBy: automaticEntry ? String(sessionUser?.id || sessionUser?.username || currentCrmUser()) : existingEntry?.manualOverrideBy,
+  createdAt: existingEntry?.createdAt || updatedAt,
+  updatedAt,
  };
  if (existingEntry) {
   state.salesRankingEntries = state.salesRankingEntries.map((item) => item.id === entry.id ? entry : item);
@@ -6768,7 +6774,7 @@ async function saveManualSalesRankEntry(event) {
   resetManualSalesRankForm(period);
   els.salesRankFilterPeriod.value = period;
   renderManualSalesRanking();
-  toast(existingEntry ? "Venda atualizada e gravada na nuvem." : "Venda adicionada e gravada na nuvem.");
+  toast(existingEntry ? (automaticEntry ? "Venda automática editada manualmente e gravada na nuvem." : "Venda atualizada e gravada na nuvem.") : "Venda adicionada e gravada na nuvem.");
  } catch (error) {
   console.error("Lançamento do ranking não confirmado", error);
   renderManualSalesRanking();
@@ -6903,10 +6909,10 @@ function renderManualSalesRanking() {
   <article class="sales-rank-entry">
    <div><strong>${escapeHtml(item.client)}</strong><span>${formatDate(salesRankEntryDate(item))} - ${escapeHtml(item.seller)}${item.city ? ` - ${escapeHtml(item.city)}` : ""}</span></div>
    <strong>${money(item.amount)}</strong>
-   <div class="sales-rank-entry-actions">${CRM_RANKING.isAutomaticEntry(item) ?
-    `<span class="muted">Automático do CRM</span>` :
-    `<button type="button" data-action="edit-rank-entry" data-id="${item.id}" aria-label="Editar lançamento">Editar</button>
-     <button type="button" data-action="delete-rank-entry" data-id="${item.id}" aria-label="Excluir lançamento">Excluir</button>`}
+   <div class="sales-rank-entry-actions">
+    ${CRM_RANKING.isAutomaticEntry(item) ? `<span class="muted">Automático do CRM${item.manualOverrideAt ? " — editado manualmente" : ""}</span>` : ""}
+    <button type="button" data-action="edit-rank-entry" data-id="${item.id}" aria-label="Editar lançamento">Editar</button>
+    <button type="button" data-action="delete-rank-entry" data-id="${item.id}" aria-label="Excluir lançamento">Excluir</button>
    </div>
   </article>`).join("") : emptyMessage("Nenhum lançamento manual neste período.");
 }
@@ -6949,13 +6955,29 @@ async function handleManualSalesRankAction(event) {
   editManualSalesRankEntry(entry);
   return;
  }
- if (button.dataset.action !== "delete-rank-entry" || !window.confirm(`Excluir a venda de ${entry.client} do ranking?`)) return;
- state.salesRankingEntries = state.salesRankingEntries.filter((item) => item.id !== entry.id);
+ if (button.dataset.action !== "delete-rank-entry") return;
+ const automaticEntry = CRM_RANKING.isAutomaticEntry(entry);
+ const confirmationMessage = automaticEntry
+  ? `Excluir a venda de ${entry.client} somente do ranking? A oportunidade continuará no CRM e a exclusão ficará registrada para auditoria.`
+  : `Excluir a venda de ${entry.client} do ranking?`;
+ if (!window.confirm(confirmationMessage)) return;
+ if (automaticEntry) {
+  const cancelled = {
+   ...CRM_RANKING.buildCancelledEntry(entry, {
+    now: new Date().toISOString(),
+    reason: "manual_rank_exclusion",
+   }),
+   cancelledBy: String(currentSessionUser()?.id || currentSessionUser()?.username || currentCrmUser()),
+  };
+  state.salesRankingEntries = state.salesRankingEntries.map((item) => item.id === entry.id ? cancelled : item);
+ } else {
+  state.salesRankingEntries = state.salesRankingEntries.filter((item) => item.id !== entry.id);
+ }
  if (els.salesRankEntryId.value === entry.id) resetManualSalesRankForm(entry.period);
  renderManualSalesRanking();
  try {
   await persistAndConfirm("crm");
-  toast("Lançamento excluído e remoção gravada na nuvem.");
+  toast(automaticEntry ? "Lançamento automático retirado do ranking e preservado para auditoria." : "Lançamento excluído e remoção gravada na nuvem.");
  } catch (error) {
   console.error("Exclusão do ranking não confirmada", error);
   toast("Exclusão preservada neste computador, mas ainda não confirmada na nuvem.");
@@ -14702,6 +14724,10 @@ function syncOpportunitySalesRank(opportunity, options = {}) {
   return true;
  }
  if (!existing && !options.createIfMissing) return false;
+ if (existing && !options.createIfMissing && (
+  existing.manualOverrideAt
+  || (existing.status === CRM_RANKING.STATUS_CANCELLED && existing.cancellationReason === "manual_rank_exclusion")
+ )) return false;
 
  const validationMessage = opportunityWonRankingValidationMessage(opportunity);
  if (validationMessage) throw new Error(validationMessage);

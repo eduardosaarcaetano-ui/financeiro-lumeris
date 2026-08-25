@@ -57,7 +57,10 @@
    period: saleDate.slice(0, 7),
    status: STATUS_ACTIVE,
    cancelledAt: "",
+   cancelledBy: "",
    cancellationReason: "",
+   manualOverrideAt: "",
+   manualOverrideBy: "",
    createdAt: existing.createdAt || now,
    updatedAt: now,
   };

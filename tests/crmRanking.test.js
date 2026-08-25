@@ -47,14 +47,22 @@ assert.equal(updated.createdAt, created.createdAt, "a auditoria deve preservar a
 assert.equal(updated.seller, "Eduardo Saar");
 assert.equal(updated.amount, 15000.46);
 assert.equal(updated.period, "2026-09");
+assert.equal(updated.manualOverrideAt, "");
 
-const cancelled = buildCancelledEntry(updated, {
+const manuallyEdited = {
+ ...updated,
+ amount: 14900,
+ manualOverrideAt: "2026-09-02T10:00:00.000Z",
+ manualOverrideBy: "user-admin",
+};
+const cancelled = buildCancelledEntry(manuallyEdited, {
  now: "2026-09-03T09:00:00.000Z",
- reason: "opportunity_no_longer_won",
+ reason: "manual_rank_exclusion",
 });
 assert.equal(cancelled.status, "cancelled");
 assert.ok(!isActiveEntry(cancelled));
-assert.equal(cancelled.amount, updated.amount, "cancelar não pode apagar o valor histórico");
+assert.equal(cancelled.amount, manuallyEdited.amount, "cancelar não pode apagar o valor histórico");
+assert.equal(cancelled.cancellationReason, "manual_rank_exclusion");
 
 const reactivated = buildActiveEntry({
  opportunityId,
@@ -69,6 +77,8 @@ const reactivated = buildActiveEntry({
 });
 assert.equal(reactivated.status, "active");
 assert.equal(reactivated.cancelledAt, "");
+assert.equal(reactivated.manualOverrideAt, "");
+assert.equal(reactivated.manualOverrideBy, "");
 assert.equal(reactivated.id, created.id, "reativar não pode duplicar o lançamento");
 
 assert.throws(() => buildActiveEntry({ opportunityId, seller: "", client: "Cliente", amount: 1, saleDate: "2026-08-24" }), /vendedor/);
