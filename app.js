@@ -1521,13 +1521,13 @@ function bindEvents() {
  document.querySelector("#newProtocolBtn").addEventListener("click", () => openProtocolDialog());
  document.querySelector("#newProtocolInlineBtn").addEventListener("click", () => openProtocolDialog());
  document.querySelector("#protocolSettingsBtn").addEventListener("click", openProtocolSettingsDialog);
- els.protocolForm.addEventListener("submit", (event) => {
+ els.protocolForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (event.submitter.value === "cancel") {
    els.protocolDialog.close();
    return;
   }
-  saveProtocol();
+  await saveProtocol(event.submitter);
  });
  els.newProtocolCustomerBtn.addEventListener("click", createPersonFromProtocolDialog);
  [
@@ -4218,6 +4218,18 @@ async function saveUser(event) {
  if (index >= 0) state.users[index] = data;
  else state.users.push(data);
 
+ const submitButton = event.submitter;
+ if (submitButton) submitButton.disabled = true;
+ try {
+  await persistAndConfirm("config");
+ } catch (error) {
+  console.error("Usuário preservado localmente, mas não confirmado na nuvem", error);
+  toast("Alteração preservada neste computador, mas ainda não confirmada na nuvem. Salve novamente antes de fechar a tela.");
+  return;
+ } finally {
+  if (submitButton) submitButton.disabled = false;
+ }
+
  els.userForm.reset();
  els.userId.value = "";
  els.userPasswordLabel.textContent = "Senha";
@@ -4226,10 +4238,9 @@ async function saveUser(event) {
  els.userActive.checked = true;
  setUserSectorFields(DEFAULT_USER_SECTORS);
  updateUserSectorUi();
- persist("config");
  renderUsers();
  updateSessionUi();
-toast("Usuário salvo.");
+ toast("Usuário gravado na nuvem.");
 }
 
 async function handleUserAction(action, id) {
@@ -8777,7 +8788,7 @@ function openProtocolDialog(protocol = null) {
  els.protocolDialog.showModal();
 }
 
-function saveProtocol() {
+async function saveProtocol(submitButton = null) {
  const id = els.protocolId.value || crypto.randomUUID();
  const existing = state.protocols.find((item) => item.id === id);
  const now = new Date().toISOString();
@@ -8822,12 +8833,21 @@ function saveProtocol() {
   releaseProjectFromHomologation(data.projectId);
  }
 
- persist(releasesProject ? ["protocolo", "projetos"] : "protocolo");
+ if (submitButton) submitButton.disabled = true;
+ try {
+  await persistAndConfirm(releasesProject ? ["protocolo", "projetos"] : "protocolo");
+ } catch (error) {
+  console.error("Protocolo preservado localmente, mas não confirmado na nuvem", error);
+  toast("Alteração preservada neste computador, mas ainda não confirmada na nuvem. Salve novamente antes de fechar a tela.");
+  return;
+ } finally {
+  if (submitButton) submitButton.disabled = false;
+ }
  els.protocolDialog.close();
  clearProtocolFilters();
  setProtocolTab("tabela");
  renderAll();
- toast("Protocolo salvo.");
+ toast("Protocolo gravado na nuvem.");
 }
 
 function addProtocolHistory(protocolId, action, fromStatus, toStatus, notes = "") {
@@ -10032,7 +10052,7 @@ function renderInstallations() {
  });
 }
 
-function saveInstallation(event) {
+async function saveInstallation(event) {
  event.preventDefault();
  const id = els.installationId.value || crypto.randomUUID();
  const existing = state.installations.find((item) => item.id === id);
@@ -10081,11 +10101,21 @@ function saveInstallation(event) {
  syncProjectFromInstallation(data);
  mirrorSiblingInstallationStatus(data);
 
- persist("projetos");
+ const submitButton = event.submitter;
+ if (submitButton) submitButton.disabled = true;
+ try {
+  await persistAndConfirm("projetos");
+ } catch (error) {
+  console.error("Instalação preservada localmente, mas não confirmada na nuvem", error);
+  toast("Alteração preservada neste computador, mas ainda não confirmada na nuvem. Salve novamente antes de fechar a tela.");
+  return;
+ } finally {
+  if (submitButton) submitButton.disabled = false;
+ }
  renderAll();
  resetInstallationForm();
  setInstallationFormVisible(false);
- toast("Serviço salvo.");
+ toast("Serviço gravado na nuvem.");
 }
 
 function syncProjectFromInstallation(installation) {
